@@ -1,0 +1,137 @@
+Sub-directories:
+================
+01. Accelerator: 
+Contains the interface routines for using the Accelerator written in C 
+
+02. bin: 
+Contains the binaries files generated from the compiling/linking processes
+
+03. compilation_new: 
+Contains architecture directory/files for installation
+
+04. docs: 
+Contains the help files
+
+05. driver: 
+Contains the driver code for testing/utilizing the modules under the src 
+directory
+
+06. iolib: 
+Contains interface routines for using input/output controller written in C
+
+07. lib: 
+Contains general numerical routines
+
+08. plib: 
+Contains interface routines for using MPI library
+
+09. sample: 
+Contains sample input files for the MST code
+
+10. slulib: 
+Contains the Slulib and the interface routines for the screened-KKR code
+
+11. src: 
+Contains the major MST source code directory
+
+12. util:
+Contains some useful utility routines 
+
+
+
+Executables:
+============
+1. bin/lsms2.0:
+An obsolete LSMS code.
+
+2. bin/mst2.1:
+The current working code (main: src/mst2.1.F90), capable of performing the ab 
+initio electronic structure calculation for 3-d structures. 
+Its features include:
+   * Linear scaling calculation based on LSMS method
+   * Calculations based on KKR method
+   * Muffin-tin potential
+   * Full-potential
+   * Non-relativistic
+   * Scalar-relativistic
+   * Relativistic (muffin-tin potential only)
+   * Non-spin polarized/spin-polarized/spin-canted
+   * Lloyd formula for determining the Fermi energy
+   * Special k-points method for BZ integration
+   * LDA/LSDA for the exchange-correlation potentials
+Input files:
+   * i_* file: The main input file which contains the controling parameters
+     for running the SCF calculation and the parameters defining the system
+   * info_* file: The actual file name is specifiled in the i_* file. It
+     contains atom based controling parameters
+   * position data file: The actual file name is specified in the i_* file.
+   * potential file(s): The actual file name and format is specified in the
+     info_* file.
+   * kmeshs.inp: This is an optional input file, only used for the testing 
+     purpose.
+   * emeshs.inp: This is an optional input file, only used for the testing
+     purpose.
+Output files:
+   * o_n000* file: This file contains the major output information. Note that
+     it will not be created if the output is instructed (in the i_* input file)
+     to be printed out to the screen.
+   * k_n000* file: This file contains a brief information of the total energy
+     and the Fermi energy from each SCF iteration
+   * new potential file: The actual file name and format is specified in the
+     info_* file.
+
+3. bin/ssk:
+A driver code (main: driver/SingleSiteKrein.F90) for src/SSSolverModule.F90, a 
+Fortran-90 module for solving the single site scattering matrices and wave
+functions.
+Its features include:
+   * Muffin-tin potential
+   * Full-potential
+   * Non-relativistic
+   * Scalar-relativistic
+   * Partial and total phase shifts as function of energy
+   * DOS and integrated DOS inside/outside of an atomic cell
+Input files: The same as those used for mst.2.1.
+   * i_* file: The main input file which contains the controling parameters.
+   * info_* file: The actual file name is specifiled in the i_* file. It
+     contains atom based controling parameters
+   * position data file: The actual file name is specified in the i_* file.
+   * potential file(s): The actual file name and format is specified in the
+     info_* file.
+   * emeshs.inp: This is an optional input file, only used for the testing
+     purpose.
+Output files: Note that the file name contains the information of the angular
+momentum cut-offs and the energy mesh size.
+   * smd_*: The file contains the general total and partial phase shifts 
+     obtained from the S-matrix.
+   * del_*: The file contains the DOS and the integrated DOS calculated from
+     the Krein formula and Green function formula.
+   * DOS_*: In somewhat different format, the data are essentially the same as
+     that contained in del_* file.
+   * dos_*: In somewhat different format, the data are essentially the same as
+     that contained in del_* file.
+   * fed_*: The file contain the integrated DOS and DOS from the Krein formula
+     and that of the free electron.
+
+4. bin/newa:
+The code for generating an initial atomic potential
+Input file:
+   * *_a_in: one input file specifying the atom type, spin information, output
+     file name, etc
+Output files:
+   * *_a_out: standard file, whose name is specified in the input file
+   * *_a_pot: potential file, whose name is specified in the input file
+
+5. bin/newss:
+The code for generating an initial potential for the KKR/LSMS based electronic
+structure calculations.
+Input files:
+   * *_ss_in: one input file specifying lattice constant, crystal structure,
+     potential file name, etc.
+   * *_a_pot: one potential file generated from newa
+Output files:
+   * *_ss_out: contains major ouput data
+   * *_ss_k: contains a brief information of the total energy and the rms
+     from each SCF iteration
+   * *_ss_pot: the starting potential for the KKR/LSMS calculation
+

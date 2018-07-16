@@ -1,0 +1,11 @@
+System Description            : Fe, SC-2 (BCC) structure                        
+Number of Atoms in Unit Cell  : 2                                               
+Number of Atomic Species      : 1                                               
+Number of Atoms in Each Type  : 2(Fe)                                           
+Energy Offset                 : -2522                                           
+=======================================================================================
+    Iter     Energy      3PV     Efermi   Rms_rho    Rms_pot   Mix  Alg  Alpha    Mom  
+---------------------------------------------------------------------------------------
+**       1  -0.847788  -0.11568  0.75658  0.105E-01  0.184E-07  pot  S   0.1000  2.1854
+         2  -0.847788  -0.11568  0.75658  0.187E-07  0.111E-07  pot  S   0.1000  2.1854
+         3  -0.847788  -0.11568  0.75658  0.809E-09  0.973E-08  pot  S   0.1000  2.1854

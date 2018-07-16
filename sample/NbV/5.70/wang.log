@@ -1,0 +1,1000 @@
+  187  q
+  188  grep tot OUTCAR*
+  189  grep "tot" OUTCAR*
+  190  tail -5000 OUTCAR_1.04 
+  191  grep "free  energy   TOTEN" OUTCAR*
+  192  cd ..
+  193  ls
+  194  cd ..
+  195  ls
+  196  cd ..
+  197  ls
+  198  cd hcp/
+  199  ls
+  200  cd EOS/
+  201  ls
+  202  grep "free  energy   TOTEN" OUTCAR*
+  203  vim INCAR 
+  204  ls
+  205  tail slurm-3508.out 
+  206  squeue 
+  207  ls
+  208  squeue 
+  209  ls
+  210  cd ..
+  211  ls
+  212  cd FeNiCoCrMn/
+  213  ls
+  214  tail slurm-3513.out 
+  215  tail -5000 slurm-3513.out 
+  216  ls
+  217  cd ..
+  218  ls
+  219  tail -50000 OUTCAR 
+  220  ls
+  221  cd EOS/
+  222  ls
+  223  tail -5000 OUTCAR_1.00 
+  224  squeue 
+  225  ls
+  226  cd ..
+  227  ls
+  228  cd EOS/
+  229  ls
+  230  tail -5000 OUTCAR_0.96 
+  231  ls
+  232  cd ..
+  233  ls
+  234  cd ..
+  235  ls
+  236  cd fcc/
+  237  ls
+  238  cd fcc111/
+  239  ls
+  240  cd EOS/
+  241  ls
+  242  tail -5000 OUTCAR_0.96 
+  243  squeue 
+  244  ls
+  245  squeue 
+  246  top
+  247  ls
+  248  squeue 
+  249  exit
+  250  squeue 
+  251  ls
+  252  cd four-mn/
+  253  ls
+  254  cd hcp/
+  255  ls
+  256  cd par/
+  257  ls
+  258  vim INCAR 
+  259  s
+  260  ls
+  261  vim POSCAR 
+  262  mkdir par
+  263  ls
+  264  cd par/
+  265  ls
+  266  cp ../../FeNiCoMnCr/POSCAR .
+  267  vim POSCAR 
+  268  ls
+  269  cp ../INCAR .
+  270  vim INCAR 
+  271  ls
+  272  cp ../POTCAR .
+  273  ls
+  274  cp ../t.job .
+  275  vim t.job 
+  276  sbatch t.job 
+  277  squeue 
+  278  cd ..
+  279  ls
+  280  cd ..
+  281  ls
+  282  cd FeNiCoCrMn/
+  283  ls
+  284  tail slurm-3513.out 
+  285  tail -5000 slurm-3513.out 
+  286  squeue 
+  287  exit
+  288  top
+  289  ls
+  290  squeue 
+  291  ls
+  292  top
+  293  squeue 
+  294  top
+  295  ls
+  296  squeue 
+  297  top
+  298  ls
+  299  cd zrnbhf/
+  300  ls
+  301  exit
+  302  ls
+  303  cd four-mn/
+  304  ls
+  305  cd hcp/
+  306  ls
+  307  cd FeNiCoMnCr/
+  308  ls
+  309  tail CONTCAR 
+  310  less CONTCAR 
+  311  less POSCAR 
+  312  ls
+  313  cd ..
+  314  ls
+  315  cd ..
+  316  ls
+  317  cd fcc/
+  318  ls
+  319  cd fcc111/
+  320  ls
+  321  cd FeNiMnCrCo/
+  322  ls
+  323  vim POSCAR 
+  324  ls
+  325  cd ..
+  326  ls
+  327  less CONTCAR 
+  328  ls
+  329  tail OUTCAR 
+  330  ls
+  331  less CONTCAR 
+  332  ls
+  333  cd ..
+  334  ls
+  335  cd ..
+  336  ls
+  337  cd hcp/
+  338  ls
+  339  cd FeNiMnCrCo/
+  340  ls
+  341  vim POSCAR 
+  342  ls
+  343  cd ..
+  344  ls
+  345  cd FeNiCoMnCr/
+  346  ls
+  347  less POSCAR 
+  348  ls
+  349  cd ..
+  350  ls
+  351  cd FeNiCoCrMn/
+  352  ls
+  353  tail slurm-3513.out 
+  354  ls
+  355  vim POSCAR 
+  356  ls
+  357  cd ..
+  358  ls
+  359  cd FeNiCoMnCr/
+  360  ls
+  361  tail slurm-3511.out 
+  362  ls
+  363  cd ..
+  364  ls
+  365  tail ls
+  366  ls
+  367  less CONTCAR 
+  368  ls
+  369  squeue 
+  370  ls
+  371  cd FeNiMnCrCo/
+  372  ls
+  373  tail slurm-3514.out 
+  374  ls
+  375  cd ..
+  376  ls
+  377  cd FeNiCoCrMn/
+  378  ls
+  379  mkdir new
+  380  ls
+  381  cd new/
+  382  ls
+  383  cp ../POSCAR .
+  384  vim POSCAR 
+  385  rm POSCAR 
+  386  ls
+  387  vim POSCAR
+  388  ls
+  389  cp ../INCAR .
+  390  ls
+  391  vim INCAR 
+  392  ls
+  393  cp ../POTCAR .
+  394  ls
+  395  cp ../t.job .
+  396  vim t.job 
+  397  ls
+  398  sbatch t.job 
+  399  squeue 
+  400  ls
+  401  cd ..
+  402  ls
+  403  cd ..
+  404  ls
+  405  cd FeNiMnCrCo/
+  406  ls
+  407  vim POSCAR 
+  408  less CONTCAR 
+  409  tail -500 slurm-3514.out 
+  410  ls
+  411  squeue 
+  412  ls
+  413  less CONTCAR 
+  414  ls
+  415  tail slurm-3514.out 
+  416  cd ..
+  417  ls
+  418  cd FeNiCoMnCr/
+  419  ls
+  420  less POSCAR 
+  421  ls
+  422  less CONTCAR 
+  423  squeue 
+  424  ls
+  425  cd ..
+  426  ls
+  427  cd ..
+  428  ls
+  429  cd fcc/
+  430  ls
+  431  cd fcc111/
+  432  ls
+  433  cd EOS/
+  434  ls
+  435  cd ..
+  436  ls
+  437  less CONTCAR 
+  438  squeue 
+  439  exit
+  440  squeue 
+  441  ls
+  442  cd four-mn/
+  443  ls
+  444  cd fcc/
+  445  ls
+  446  cd fcc111/
+  447  ls
+  448  cd FeNiCoCrMn/
+  449  ls
+  450  tail slurm-3515.out 
+  451  ls
+  452  less CONTCAR 
+  453  ls
+  454  less POSCAR 
+  455  less CONTCAR 
+  456  ls
+  457  exit
+  458  squeue 
+  459  ls
+  460  cd ..
+  461  ls
+  462  cd
+  463  ls
+  464  cd four-mn/
+  465  ls
+  466  cd fcc/
+  467  ls
+  468  cd fcc111/
+  469  ls
+  470  cd FeNiMnCrCo/
+  471  ls
+  472  squeue 
+  473  ls
+  474  tail slurm-3519.out 
+  475  ls
+  476  cd ..
+  477  ls
+  478  cd FeNiCoCrMn/
+  479  ls
+  480  tail slurm-3515.out 
+  481  squeue 
+  482  tail -5000 slurm-3515.out 
+  483  ls
+  484  cd ..
+  485  ls
+  486  cd FeNiCOMn
+  487  FeNiCoMnCr/
+  488  ls
+  489  cd FeNiCoMnCr/
+  490  ls
+  491  squeue 
+  492  scancel 2523
+  493  scancel 2522
+  494  squeue 
+  495  scancel 3523
+  496  scancel 3522
+  497  squeue 
+  498  scancel 3521
+  499  ls
+  500  squeue 
+  501  ls
+  502  sbatch t.job 
+  503  squeue 
+  504  scancel 3520
+  505  squeue 
+  506  ls
+  507  squeue 
+  508  cd ..
+  509  ls
+  510  cd ..
+  511  ls
+  512  cd ..
+  513  ls
+  514  cd hcp/
+  515  ls
+  516  cd FeNiCoCrMn/
+  517  ls
+  518  cd new/
+  519  ls
+  520  vim t.job 
+  521  sbatch t.job 
+  522  squeue 
+  523  ls
+  524  squeue 
+  525  ls
+  526  cd ..
+  527  ls
+  528  cd ..
+  529  ls
+  530  cd ..
+  531  ls
+  532  cd fcc/
+  533  ls
+  534  cd fcc111/
+  535  ls
+  536  cd FeNiCoMnCr/
+  537  ls
+  538  pwd
+  539  tail slurm-3524.out 
+  540  ls
+  541  squeue 
+  542  ls
+  543  cd ..
+  544  ls
+  545  cd FeNiMnCrCo/
+  546  ls
+  547  tail slurm-3519.out 
+  548  cd ..
+  549  ls
+  550  cd ..
+  551  ls
+  552  cd ..
+  553  ls
+  554  cd hcp/
+  555  ls
+  556  cd FeNiMnCrCo/
+  557  ls
+  558  tail slurm-3514.out 
+  559  squeue 
+  560  ls
+  561  cd ..
+  562  ls
+  563  cd cd ..
+  564  ls
+  565  cd ..
+  566  ls
+  567  exit
+  568  ls
+  569  cd wo
+  570  ls
+  571  cd four-mn/
+  572  ls
+  573  cd fcc/
+  574  ls
+  575  squeue 
+  576  ls
+  577  squeue 
+  578  exit
+  579  squeue 
+  580  exit
+  581  squeue 
+  582  ls
+  583  squeue 
+  584  ls
+  585  cd ..
+  586  ls
+  587  cd
+  588  ls
+  589  cd four-mn/
+  590  ls
+  591  cd fcc/
+  592  ls
+  593  cd FeNiCoMnCr180/
+  594  ls
+  595  vim POSCAR 
+  596  ls
+  597  cd ..
+  598  ls
+  599  cd fcc111/
+  600  ls
+  601  cd FeNiCoCrMn/
+  602  ls
+  603  tail slurm-3515.out 
+  604  ls
+  605  cd ..
+  606  ls
+  607  tail slurm-3275.out 
+  608  ls
+  609  tail -5000 OUTCAR 
+  610  ls
+  611  cd ..
+  612  ls
+  613  cd fcc111/
+  614  ls
+  615  cd FeNiCoCrMn/
+  616  ls
+  617  less POSCAR 
+  618  ls
+  619  tail -5000 OUTCAR 
+  620  ls
+  621  cd ..
+  622  ls
+  623  vim POSCAR 
+  624  ls
+  625  cd FeNiCoCrMn/
+  626  ls
+  627  vim POSCAR 
+  628  ls
+  629  cd ..
+  630  ls
+  631  vim POSCAR 
+  632  cd FeNiCo
+  633  ls
+  634  cd FeNiCoCrMn/
+  635  ls
+  636  tail -5000 OUTCAR 
+  637  ls
+  638  squeue 
+  639  cd ..
+  640  ls
+  641  mkdir FeNiMnCoCr
+  642  cd FeNiMnCoCr/
+  643  ls
+  644  cp ../../../../potentials/Fe/POTCAR .
+  645  chmod 755 POTCAR 
+  646  cat ../../../../potentials/Ni/POTCAR >>POTCAR
+  647  cat ../../../../potentials/Mn_pv/POTCAR >>POTCAR
+  648  cat ../../../../potentials/Co/POTCAR >>POTCAR
+  649  cat ../../../../potentials/Cr_pv/POTCAR >>POTCAR
+  650  ls
+  651  cp ../FeNiMnCrCo/POSCAR .
+  652  vim POSCAR 
+  653  ls
+  654  cp ../FeNiMnCrCo/INCAR .
+  655  ls
+  656  vim ../t.job .
+  657  ls
+  658  cp ../t.job .
+  659  vim t.job 
+  660  sbatch t.job 
+  661  squeue 
+  662  ls
+  663  cd ..
+  664  ls
+  665  cd ..
+  666  ls
+  667  cd ..
+  668  ls
+  669  cd hcp/
+  670  ls
+  671  mkdir FeNiMnCoCr
+  672  ls
+  673  cd FeNiMnCrCo/
+  674  ls
+  675  cd ..
+  676  ls
+  677  cd FeNiMnCoCr/
+  678  ls
+  679  cp ../../fcc/fcc111/FeNiMnCoCr/POTCAR .
+  680  cp ../../fcc/fcc111/FeNiMnCoCr/INCAR .
+  681  cp ../hcp_5x5x3_ideal_best1_FeNiCoCrMn.vasp POSCAR
+  682  vim POSCAR 
+  683  ls
+  684  cp ../t.job .
+  685  vim t.job 
+  686  ls
+  687  sbatch t.job 
+  688  squeue 
+  689  cd ..
+  690  ls
+  691  cd ..
+  692  ls
+  693  cd fcc/
+  694  ls
+  695  cd fcc111/
+  696  ls
+  697  cd FeNiMnCoCr/
+  698  ls
+  699  vim INCAR 
+  700  ls
+  701  squeue 
+  702  cd ..
+  703  ls
+  704  cd ..
+  705  ls
+  706  cd h
+  707  ls
+  708  cd ..
+  709  ls
+  710  cd hcp/
+  711  ls
+  712  cd FeNiMnCoCr/
+  713  ls
+  714  vim INCAR 
+  715  squeue 
+  716  exit
+  717  squeue 
+  718  ls
+  719  cd ..
+  720  ls
+  721  cd
+  722  ls
+  723  cd four-mn/
+  724  ls
+  725  cd fcc/
+  726  ls
+  727  cd FeNiCoMnCr180/
+  728  ls
+  729  tail slurm-3527.out 
+  730  ls
+  731  vim INCAR 
+  732  ls
+  733  cd ..
+  734  ls
+  735  cd ..
+  736  ls
+  737  cd hcp/
+  738  ls
+  739  cd FeNiCoCrMn/
+  740  ls
+  741  cd new/
+  742  ls
+  743  squeue 
+  744  ls
+  745  squeue 
+  746  ls
+  747  tail slurm-3526.out 
+  748  ls
+  749  cd ..
+  750  ls
+  751  cd ..
+  752  ls
+  753  cd ..
+  754  ls
+  755  cd fcc/
+  756  ls
+  757  cd fcc111/
+  758  ls
+  759  cd FeNiCoCrMn/
+  760  ls
+  761  squeue 
+  762  ls
+  763  cd ..
+  764  ls
+  765  squeue 
+  766  ls
+  767  cd ..
+  768  ls
+  769  cd par/
+  770  ls
+  771  cd ..
+  772  ls
+  773  cd fcc111/
+  774  ls
+  775  cd ..
+  776  ls
+  777  cd FeNiCoMnCr180/
+  778  ls
+  779  tail slurm-3527.out 
+  780  cd ..
+  781  tail slurm-3147.out 
+  782  ls
+  783  cd ..
+  784  ls
+  785  cd ..
+  786  ls
+  787  cd h
+  788  ls
+  789  cd four-mn/
+  790  ls
+  791  cd hcp/
+  792  ls
+  793  cd FeNiCoCrMn/
+  794  ls
+  795  cd ..
+  796  ls
+  797  cd FeNiCoCrMn/
+  798  ls
+  799  cd new/
+  800  ls
+  801  cd ..
+  802  ls
+  803  tail slurm-3513.out 
+  804  ls
+  805  cd new/
+  806  ls
+  807  vim POSCAR 
+  808  ls
+  809  cd ..
+  810  ls
+  811  cd ..
+  812  ls
+  813  cd anti
+  814  mkdir anti
+  815  ls
+  816  cd anti/
+  817  ls
+  818  cp ../hcp_5x5x3_ideal_best1_FeNiCoCrMn.vasp POSCAR
+  819  ls
+  820  cp ../INCAR .
+  821  cp ../POTCAR .
+  822  ls
+  823  cp ../t.job .
+  824  ls
+  825  vim t.job 
+  826  vim INCAR 
+  827  cp ../FeNiCoCrMn/new/INCAR .
+  828  vim INCAR 
+  829  ls
+  830  grep PBE POTCAR 
+  831  ls
+  832  vim t.job 
+  833  ls
+  834  vim POSCAR 
+  835  sbatch t.job 
+  836  squeue 
+  837  top
+  838  ls
+  839  squeue 
+  840  top
+  841  ls
+  842  tail slurm-3530.out 
+  843  ls
+  844  cd ..
+  845  ls
+  846  cd ..
+  847  ls
+  848  cd fcc/
+  849  ls
+  850  cd fcc111/
+  851  ls
+  852  cd FeNiCoCrMn/
+  853  ls
+  854  cd ..
+  855  ls
+  856  cd ..
+  857  ls
+  858  cd fcc111/
+  859  ls
+  860  cd FeNiCoCrMn/
+  861  ls
+  862  squeue 
+  863  ls
+  864  mkdir new
+  865  ls
+  866  mv new anti
+  867  ls
+  868  cd anti/
+  869  ls
+  870  cp ../INCAR .
+  871  cp ../POTCAR .
+  872  ls
+  873  cp ../POSCAR .
+  874  ls
+  875  cp ../t.job .
+  876  vim t.job 
+  877  ls
+  878  vim POSCAR 
+  879  vim INCAR 
+  880  ls
+  881  vim t.job 
+  882  ls
+  883  vim POSCAR 
+  884  ls
+  885  vim INCAR 
+  886  sbatch t.job 
+  887  squeue 
+  888  cd ..
+  889  ls
+  890  cd ..
+  891  ls
+  892  cd FeNiMnCrCo/
+  893  ls
+  894  cd ..
+  895  ls
+  896  cd ..
+  897  ls
+  898  cd ..
+  899  ls
+  900  cd hcp/
+  901  ls
+  902  cd par/
+  903  ls
+  904  cd ..
+  905  ls
+  906  cd FeNiMnCoCr/
+  907  ls
+  908  tail slurm-3529.out 
+  909  ls
+  910  vim t.job 
+  911  ls
+  912  cd ..
+  913  ls
+  914  cd FeNiMnCoCr/
+  915  ls
+  916  tail slurm-3529.out 
+  917  tail -5000 slurm-3529.out 
+  918  ls
+  919  cd ..
+  920  ls
+  921  grep "ERROR FEXCF" slurm-1*
+  922  ls
+  923  cd ..
+  924  ls
+  925  cd fcc/
+  926  ls
+  927  cd fcc111/
+  928  ls
+  929  cd FeNiMnCoCr/
+  930  ls
+  931  squeue 
+  932  ls
+  933  vim t.job 
+  934  ls
+  935  cd ..
+  936  ls
+  937  cd ..
+  938  ls
+  939  cd ..
+  940  ls
+  941  cd hcp/
+  942  ls
+  943  cd FeNiMnCoCr/
+  944  ls
+  945  squeue 
+  946  ls
+  947  tail slurm-3529.out 
+  948  ls
+  949  vim POSCAR 
+  950  ls
+  951  less CONTCAR 
+  952  ls
+  953  vim INCAR 
+  954  ls
+  955  top
+  956  ls
+  957  vim INCAR 
+  958  ls
+  959  squeue 
+  960  ls
+  961  squeue 
+  962  ls
+  963  pwd
+  964  cd ..
+  965  ls
+  966  cd ..
+  967  ls
+  968  cd fcc/
+  969  ls
+  970  cd fcc111/
+  971  ls
+  972  cd FeNiMnCoCr/
+  973  ls
+  974  cd ..
+  975  ls
+  976  cd FeNiCoCrMn/
+  977  ls
+  978  cd anti/
+  979  ls
+  980  cd ..
+  981  ls
+  982  cd ..
+  983  ls
+  984  cd ..
+  985  ls
+  986  cd FeNiCoMnCr180/
+  987  ls
+  988  vim t.job 
+  989  ls
+  990  tail slurm-3527.out 
+  991  tail -50000 OUTCAR 
+  992  squeue 
+  993  ls
+  994  exit
+  995  squeue 
+  996  ls
+  997  exit
+  998  cpuinfo
+  999  squeue 
+ 1000  exit
+ 1001  ls
+ 1002  cd MST2.2
+ 1003  ls
+ 1004  which mpiifort
+ 1005  cd compilation_new/arch/
+ 1006  ls
+ 1007  cp dxc_xeon_intel iap2
+ 1008  vi iap2
+ 1009  which mpiifort
+ 1010  cd /nfshome/opt/intel/mkl/
+ 1011  ls
+ 1012  cd lib/
+ 1013  ls
+ 1014  cd ~/MST2.2/compilation_new/arch/
+ 1015  vi iap2 
+ 1016  cd ../..
+ 1017  vi makefile
+ 1018  make clean
+ 1019  make
+ 1020  make clean
+ 1021  cd sample/
+ 1022  ls
+ 1023  cd Cu
+ 1024  ls
+ 1025  cd NonRel_MT/
+ 1026  ls
+ 1027  vi i_lsms_Cu 
+ 1028  pwd
+ 1029  cd ../../..
+ 1030  ls
+ 1031  cd compilation_new/arch/
+ 1032  ls
+ 1033  cd ../..
+ 1034  vi makefile
+ 1035  make
+ 1036  cd sample/
+ 1037  ls
+ 1038  cd Au
+ 1039  ls
+ 1040  cd 7.56/
+ 1041  ls
+ 1042  cd ../
+ 1043  ls
+ 1044  cd ..
+ 1045  ls
+ 1046  mkdir V
+ 1047  mkdir Nb
+ 1048  mkdir U
+ 1049  cd Si
+ 1050  ls
+ 1051  cd KKR/
+ 1052  ls
+ 1053  cd ../..
+ 1054  ls
+ 1055  cd Mo
+ 1056  ls
+ 1057  cd KKR/
+ 1058  ls
+ 1059  cd MT
+ 1060  ls
+ 1061  cd 1a
+ 1062  ls
+ 1063  cd ../..
+ 1064  ls
+ 1065  cd ..
+ 1066  ls
+ 1067  cd ..
+ 1068  ls
+ 1069  cd V
+ 1070  ls
+ 1071  mkdir atom
+ 1072  cd atom/
+ 1073  ls
+ 1074  pwd
+ 1075  ../../../bin/newa 
+ 1076  vi in_newa
+ 1077  ../../../bin/newa 
+ 1078  ls
+ 1079  newa_in
+ 1080  vi newa_in
+ 1081  ls
+ 1082  cp newa_in newss_in
+ 1083  vi newss_in
+ 1084  ../../../bin/newss < newss_in 
+ 1085  ls
+ 1086  vi k_ss.out 
+ 1087  ls
+ 1088  vi Va_ss.pot
+ 1089  ls
+ 1090  ls -ltr
+ 1091  vi V_ss.pot 
+ 1092  ls
+ 1093  cd ..
+ 1094  ls
+ 1095  mkdir 5.70
+ 1096  cd 5.70
+ 1097  pwd
+ 1098  cp ../../Cu/NonRel_MT/i* .
+ 1099  ls
+ 1100  cp ../../Cu/NonRel_MT/position.dat .
+ 1101  ls
+ 1102  vi position.dat 
+ 1103  mv i_lsms_Cu i_lsms_V
+ 1104  mv info_table_Cu info_table_V
+ 1105  ls
+ 1106  vi i_lsms_V 
+ 1107  vi info_table_V 
+ 1108  cp ../atom/V_ss.pot .
+ 1109  ls
+ 1110  pwd
+ 1111  squeue 
+ 1112  scancel 3530
+ 1113  squeue 
+ 1114  scancel 3531
+ 1115  squeue 
+ 1116  ls
+ 1117  squeue 
+ 1118  ls
+ 1119  mpirun -n 8 ../../../bin/mst2 < i_lsms_V &
+ 1120  tail k_n00000_V 
+ 1121  ls
+ 1122  pwd
+ 1123  cd ..
+ 1124  ls
+ 1125  cd Nb
+ 1126  ls
+ 1127  mkdir atom
+ 1128  cd atom/
+ 1129  cp ../../V/atom/*in .
+ 1130  ls
+ 1131  vi newa_in 
+ 1132  vi newss_in 
+ 1133  pwd
+ 1134  ../../../bin/newa < newa_in 
+ 1135  ../../../bin/newss < newss_in 
+ 1136  ls
+ 1137  vi k_ss.out 
+ 1138  cd ..
+ 1139  mkdir 5.70
+ 1140  cd 5.70
+ 1141  cp ../atom/Nb_ss.pot .
+ 1142  cp ../../V/5.70/i* .
+ 1143  cp ../../V/5.70/position.dat .
+ 1144  vi position.dat 
+ 1145  ls
+ 1146  vi i_lsms_V 
+ 1147  vi info_table_V 
+ 1148  mv i_lsms_Nb
+ 1149  mv i_lsms_V i_lsms_Nb
+ 1150  mv info_table_V info_table_Nb
+ 1151  ls
+ 1152  mpirun -n 8 ../../../bin/mst2 < i_lsms_Nb 
+ 1153  tail k_n00000_Nb 
+ 1154  pwd
+ 1155  cd ../../
+ 1156  ls
+ 1157  mkdir VNb
+ 1158  cd VNb
+ 1159  ls
+ 1160  cd ..
+ 1161  mv VNb NbV
+ 1162  ls
+ 1163  cd NbV
+ 1164  ls
+ 1165  mkdir 5.70
+ 1166  cd 5.70
+ 1167  cp ../../Nb/5.70/i* .
+ 1168  cp ../../Nb/5.70/position.dat .
+ 1169  cp ../../Nb/5.70/Nb_mt_w_0001x1 .
+ 1170  cp ../../V/5.70/V_mt_w_0001x1 .
+ 1171  ls
+ 1172  mv Nb_mt_w_0001x1 Nb_mt_v
+ 1173  mv V_mt_w_0001x1 V_mt_v
+ 1174  kls
+ 1175  ls
+ 1176  vi info_table_Nb 
+ 1177  vi i_lsms_Nb 
+ 1178  vi position.dat 
+ 1179  ls
+ 1180  mv i_lsms_Nb i_lsms_NbV
+ 1181  mv info_table_Nb info_table_NbV
+ 1182  vi i_lsms_NbV 
+ 1183  mpirun -n 16 ../../../bin/mst2 < i_lsms_NbV 
+ 1184  squeue 
+ 1185  ls
+ 1186  history >wang.log

@@ -1,0 +1,42 @@
+MST2.3
+==================================================================
+Description:
+   This version implements parallel FFT using P3DFFT package in the 
+   solution of electrostatic potential.
+==================================================================
+Major changes include modifying/adding the following files
+   src/PotentialGenerationModule.F90
+   src/constructDataOnGrid.F90
+   src/ParallelFFTModule.F90
+   src/Uniform3DGridModule.F90
+-------------------------------------------------------------------
+
+
+MST2.2
+version: 1.0: April 2017 by Xianglin Liu
+==================================================================
+Description:
+   This new version includes implementation of the sine and cosine
+   formalism of the relativistic KKR method 
+   (In this version the magnetic part and CPA part haven't been fully 
+   implemented)
+===================================================================
+The following files are changed to enable the Dirac solver:
+   src/Makefile
+   src/AdaptIntegrationModule.F90
+   src/CrystalMatrixModule.F90
+   src/GFMethodModule.F90
+   src/PhysParamModule.F90
+   src/convertGijToRel.F90 !NOTE that the previous one by Yang has been replaced
+-------------------------------------------------------------------
+The following files are added to enable Dirac solver:
+   RelSSSolverModule.F90
+   RelMSSolverModule.F90
+-------------------------------------------------------------------
+The following files are MT-relativistic KKR based on Markus Eisenbach's code.
+It is not used in the current version.
+   src/RelScattererModule.F90
+   src/RelGreenFunctionModule.F90
+   src/DiracSolverModule
+-------------------------------------------------------------------
+ 

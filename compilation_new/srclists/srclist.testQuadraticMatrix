@@ -1,0 +1,6 @@
+driver/testQuadraticMatrix.F90
+lib/KindParamModule.F90
+lib/ErrorHandlerModule.F90
+lib/MathParamModule.F90
+lib/QuadraticMatrixModule.F90
+lib/MatrixDeterminantModule.F90

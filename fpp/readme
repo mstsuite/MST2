@@ -1,0 +1,19 @@
+fpp - Fortran preprocessor
+
+sources from http://netlib.org/fortran/
+for license information etc have a look in the original .tgz files
+
+
+
+original file: fdfpp.tgz, makefile has been modified (gnu makefile style)
+how to build:
+   - cd src
+   - edit makefile accordingly (should work if you have gcc and yacc)
+   - make
+
+
+
+alternatively you can use a minor variant of fdfpp using autoconf: fdfpp-martin.tgz
+   - untar it
+   - ./configure
+   - make

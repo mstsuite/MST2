@@ -1,0 +1,121 @@
+#!/bin/bash
+MYPWD=`pwd`
+SCRIPTDIR=`pwd | awk -v dd="/" '{ i=split($0,a,dd); print a[i] }'`
+DRIVER_MAKEFILE_INCLUDE=./include/makefile.driver.inc
+UTIL_MAKEFILE_INCLUDE=./include/makefile.util.inc
+rm -f $DRIVER_MAKEFILE_INCLUDE
+rm -f $UTIL_MAKEFILE_INCLUDE
+
+touch ../src/print_version_include.h
+
+# Building makefile
+cd $MYPWD/../
+perl $SCRIPTDIR/scripts/mkmf.lsms2 -a ./ -m $SCRIPTDIR/makefile.lsms2      -p ../bin/lsms2      $SCRIPTDIR/srclists/srclist.lsms2
+perl $SCRIPTDIR/scripts/mkmf.lsms2 -a ./ -m $SCRIPTDIR/makefile.lsms2.cuda -p ../bin/lsms2.cuda $SCRIPTDIR/srclists/srclist.lsms2 $SCRIPTDIR/srclists/srclist.cuda
+cd $MYPWD
+
+### test programs in the driver directory
+
+# calScatteringPoles 
+DRIVER_LIST="\
+ft                \
+madpot            \
+testStrConst      \
+testBZone         \
+testPZGETRI       \
+tst_bessel        \
+testMPP           \
+testMadelung      \
+testProcMapping   \
+testGroupComm     \
+tst_DataComm      \
+testNeighbor      \
+testPolyhedra     \
+testStepFunc      \
+testStepFunc2     \
+tst_SurfElements  \
+tst_ylm           \
+tst_integration   \
+tst_string        \
+tst_write         \
+tst_read          \
+tst_findFit       \
+pav               \
+testParallelIO    \
+testSineMatrixPole \
+testQuadraticMatrix"
+#
+# missing: findFactors testSetupProcDim
+# DRIVER_LIST=""
+
+
+UTIL_LIST="\
+charge  \
+chgaver \
+newss   \
+newa    \
+slice   \
+extrpot \
+murn    \
+eosfit  \
+genap   \
+setEvec \
+bireft  \
+measureVoronoi \
+cart2direct \
+gaps"
+
+
+   DRIVER_LIST2=$(echo $DRIVER_LIST)
+   echo ""                       >>$DRIVER_MAKEFILE_INCLUDE
+   echo ".PHONY: driver"         >>$DRIVER_MAKEFILE_INCLUDE
+   echo "driver: $DRIVER_LIST2"  >>$DRIVER_MAKEFILE_INCLUDE
+   echo ""                       >>$DRIVER_MAKEFILE_INCLUDE
+
+
+for i in $DRIVER_LIST; do
+   cd $MYPWD/../
+   perl $SCRIPTDIR/scripts/mkmf.lsms2 -a ./ -m $SCRIPTDIR/makefile.$i -p ../bin/$i $SCRIPTDIR/srclists/srclist.$i
+   cd $MYPWD
+
+   echo -e ".PHONY: $i"                                               >>$DRIVER_MAKEFILE_INCLUDE
+   echo -e "$i:"                                                      >>$DRIVER_MAKEFILE_INCLUDE
+   echo -e "\t@echo \"------------------------------ driver: $i ---------------------------------------------\""     >>$DRIVER_MAKEFILE_INCLUDE
+   echo -e "\t@cd \$(MAKEFILEDIR) && \$(MAKE) -f ./makefile.$i"     >>$DRIVER_MAKEFILE_INCLUDE
+   echo -e ""                                                         >>$DRIVER_MAKEFILE_INCLUDE
+done
+
+################################################################################
+###     utilitities
+################################################################################
+
+   UTIL_LIST2=$(echo $UTIL_LIST)
+   echo ""                     >>$UTIL_MAKEFILE_INCLUDE
+   echo ".PHONY: util"         >>$UTIL_MAKEFILE_INCLUDE
+   echo "util: $UTIL_LIST2"    >>$UTIL_MAKEFILE_INCLUDE
+   echo ""                     >>$UTIL_MAKEFILE_INCLUDE
+
+for i in $UTIL_LIST; do
+   cd $MYPWD/../
+   perl $SCRIPTDIR/scripts/mkmf.lsms2 -a ./ -m $SCRIPTDIR/makefile.$i -p ../bin/$i $SCRIPTDIR/srclists/srclist.$i
+   cd $MYPWD
+
+   echo -e ".PHONY: $i"                                               >>$UTIL_MAKEFILE_INCLUDE
+   echo -e "$i:"                                                      >>$UTIL_MAKEFILE_INCLUDE
+   echo -e "\t@echo \"------------------------------ util: $i ---------------------------------------------\""     >>$UTIL_MAKEFILE_INCLUDE
+   echo -e "\t@cd \$(MAKEFILEDIR) && \$(MAKE) -f ./makefile.$i"     >>$UTIL_MAKEFILE_INCLUDE
+   echo -e ""                                                         >>$UTIL_MAKEFILE_INCLUDE
+
+# fix for "gaps" program
+   if [ $i = "gaps" ] ; then 
+      perl -pi -e 's|\(LD\)|\(MPICC\) \$\(CFLAGS\) |g' makefile.$i
+      perl -pi -e 's|\(LDFLAGS\)||g' makefile.$i
+   fi
+
+done
+
+
+
+# loading the list of special rules into the makefile
+#./load_special_rules.script $(pwd) $(pwd)/../obj/makefile
+

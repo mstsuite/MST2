@@ -1,1 +1,1 @@
-# MST2
+initial README.md for MST2

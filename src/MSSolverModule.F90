@@ -1,0 +1,1336 @@
+!  *******************************************************************
+!  *                                                                 *
+!  * NAME:    MSSolverModule                                         *
+!  *                                                                 *
+!  * VERSION: 1.0                                                    *
+!  * DATE:    05/21/13                                               *
+!  *          Notes :                                                *
+!  *                                                                 *
+!  * DESCRIPTION:                                                    *
+!  * Module for solving Multiple Scattering Theory equations         *
+!  *                                                                 *
+!  * EXTERNAL MODULE DEPENDENCE                                      *
+!  *    KindParamModule                                              *
+!  *    MathParamModule                                              *
+!  *    ErrorHandlerModule                                           *
+!  *    WriteMatrixModule                                            *
+!  *    GauntFactorsModule                                           *
+!  *    RadialGridModule                                             *
+!  *    NeighborModule                                               *
+!  *    SpinRotationModule                                           *
+!  *    SurfElementsModule                                           *
+!  *    SSSolverModule                                               *
+!  *                                                                 *
+!  * USAGE:                                                          *
+!  *    ============================================================ *
+!  *    initMSSolver(num_latoms, z, index, lmaxkkr,                  *
+!  *                           lmaxphi, lmaxgreen, posi, neighbor,   *
+!  *                           pola, cant, rel, istop, iprint)       *
+!  *    Purpose: initialize the module for solving cluster MST       *
+!  *             equation                                            *
+!  *    Input:   num_latoms = no. of atoms that need to be solved    *
+!  *                          on local processor                     *
+!  *             z          = an integer array of size num_latoms.   *
+!  *                          z(i) is the atomic number of local     *
+!  *                          atom i, where i = 1,2,..., num_latoms. *
+!  *             index      = an integer array of size num_latoms.   *
+!  *                          index(i) is the global index of local  *
+!  *                          atom i, where i = 1,2,..., num_latoms, *
+!  *                          and 1 <= index(i) <= no. of total atoms*
+!  *             lmaxkkr    = an integer array of size num_latoms.   *
+!  *                          lmaxkkr(i) is the lmax cut off for     *
+!  *                          single-site wave function L-index for  *
+!  *                          atom i, where i = 1,2,..., num_latoms. *
+!  *             lmaxphi    = an integer array of size num_latoms.   *
+!  *                          lmaxphi(i) is the lmax cut off for     *
+!  *                          single-site wave function expansion for*
+!  *                          atom i, where i = 1,2,..., num_latoms. *
+!  *             lmaxgreen    = an integer array of size num_latoms. *
+!  *                          lmaxgreen(i) is the lmax cut off for   *
+!  *                          Green function expansion for atom i,   *
+!  *                          where i = 1,2,..., num_latoms.         *
+!  *             posi       = a real array of size 3*num_latoms.     *
+!  *                          posi(1:3,i) is 3D space coordinates of *
+!  *                          atom i, where i = 1,2,..., num_latoms. *
+!  *             pola       = 1, if non-spin-polarized;              *
+!  *                          2, if spin-polarized.                  *
+!  *             cant       = 1, if non-spin-canted;                 *
+!  *                          2, if spin-canted.                     *
+!  *             Note: Both pola and cant are of integer type.       *
+!  *                   If pola = 1 and cant = 2, an error message    *
+!  *                   will occur.                                   *
+!  *             rel        = 0, if non-relativistic                 *
+!  *                          1, if semi-relativistic                *
+!  *                          2, if fully-relativistic               *
+!  *             istop = routine name to stop (character string)     *
+!  *             iprint = print instruction parameter (integer)      *
+!  *    Output:  none                                                *
+!  *    ============================================================ *
+!  *    endMSSolver()                                                *
+!  *    Purpose: clean the memory allocated within the module.       *
+!  *    Input:   none                                                *
+!  *    Output:  none                                                *
+!  *    ============================================================ *
+!  *    solveMSTeqns(e,is)                                           *
+!  *    Purpose: solve multiple scattering theory equations for (all *
+!  *             the local atoms.                                    *
+!  *    Input:   e      = energy (complex).                          *
+!  *             is     = spin index (integer).                      *
+!  *    Output:  N/A                                                 *
+!  *******************************************************************
+module MSSolverModule
+   use KindParamModule, only : IntKind, RealKind, CmplxKind, LongIntKind
+   use MathParamModule, only : ZERO, CZERO, CONE, TEN2m6, TEN2m7, TEN2m8, HALF, SQRTm1
+   use ErrorHandlerModule, only : ErrorHandler, WarningHandler, StopHandler
+   use PublicTypeDefinitionsModule, only : NeighborStruct
+   use NeighborModule, only : getNeighbor, sortNeighbors
+!#ifdef TIMING
+   use TimerModule, only : getTime
+!#endif
+!
+public :: initMSSolver,            &
+          endMSSolver,             &
+          computeMSGreenFunction,  &
+          computeMSPDOS,           &
+          getMSGreenFunction,      &        ! Returns Green function in Local frame
+          getMSGreenMatrix,        &
+          getMSCellDOS,            &
+          getMSMTSphereDOS,        &
+          getMSCellPDOS,           &
+          getMSMTSpherePDOS
+!
+   interface getDOS
+      module procedure getDOS_is, getDOS_sc
+   end interface ! getDOS
+!
+private
+!
+   logical :: Initialized = .false.
+   logical :: isRealSpace = .false.
+   logical :: InitializedFactors = .false.
+!
+   integer (kind=IntKind) :: Relativity
+   integer (kind=IntKind) :: LocalNumAtoms
+   integer (kind=IntKind) :: n_spin_pola
+   integer (kind=IntKind) :: n_spin_cant
+!
+   character (len=50) :: stop_routine
+!
+   complex (kind=CmplxKind) :: Energy
+!
+   logical :: isPivoting = .false.
+   complex (kind=CmplxKind) :: PivoteEnergy = CZERO
+!
+   integer (kind=IntKind), allocatable :: print_instruction(:)
+   integer (kind=IntKind), allocatable :: lmax_kkr(:)
+   integer (kind=IntKind), allocatable :: lmax_phi(:)
+   integer (kind=IntKind), allocatable :: kmax_kkr(:)
+   integer (kind=IntKind), allocatable :: kmax_phi(:)
+   integer (kind=Intkind), allocatable :: lofk(:), mofk(:), jofk(:), m1m(:)
+   integer (kind=Intkind), allocatable :: lofj(:), mofj(:)
+   integer (kind=IntKind) :: lmax_phi_max, kmax_kkr_max, lmax_green_max
+   integer (kind=IntKind) :: kmax_phi_max, kmax_green_max, iend_max
+   integer (kind=IntKind) :: MaxPrintLevel
+!
+   real (kind=RealKind), allocatable :: Position(:,:)
+!
+   type (NeighborStruct), pointer :: Neighbor
+!
+   real (kind=RealKind) :: Kvec(3)
+!
+   type MSTStruct
+      integer :: lmax
+      integer :: iend
+      complex (kind=CmplxKind), pointer :: dos(:)
+      complex (kind=CmplxKind), pointer :: green(:,:,:)  ! Stores the multiple scattering component of the Green fucntion, and
+   end type MSTStruct                                    ! the single site scattering term is included.
+!
+   type (MSTStruct), allocatable :: mst(:)
+   complex (kind=CmplxKind), allocatable, target :: wspace(:), wspacep(:), gspace(:)
+   complex (kind=CmplxKind), allocatable, target :: gspacep(:)
+!
+   complex (kind=CmplxKind), pointer :: gaunt(:,:,:)
+   complex (kind=CmplxKind), allocatable :: store_space(:)
+!
+   integer (kind=IntKind), parameter :: method = 0 ! The method for performing the multi-L summations
+!
+   integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, kGID
+   integer (kind=IntKind) :: MSGF_Form   ! = 0, Green Function = Z*(Tau-t)*Z
+                                         ! = 1, Green Function = Z*Tau*Z - Z*J
+                                         ! = 2, Green Function = Z*Tau*Z
+   integer (kind=IntKind) :: MSDOS_Form  ! = 0, Green Function = Z*(Tau-t)*Z
+                                         ! = 1, Green Function = Z*Tau*Z - Z*J
+!
+   real (kind=RealKind), allocatable :: space_integrated_msdos_cell(:,:)
+   real (kind=RealKind), allocatable :: space_integrated_msdos_mt(:,:)
+   real (kind=RealKind), allocatable, target :: space_integrated_mspdos_cell(:,:,:)
+   real (kind=RealKind), allocatable, target :: space_integrated_mspdos_mt(:,:,:)
+   complex (kind=CmplxKind), allocatable, target :: gfws_comp(:)
+   complex (kind=CmplxKind), allocatable, target :: dosws_comp(:)
+!   
+contains
+!
+   include '../lib/arrayTools.F90'
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine initMSSolver( num_latoms, index, lmaxkkr, lmaxphi, lmaxgreen, &
+                            local_posi, pola, cant, rel, istop, iprint)
+!  ===================================================================
+   use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
+!
+   use GauntFactorsModule, only : initGauntFactors, endGauntFactors
+   use GauntFactorsModule, only : getK3, getNumK3, getGauntFactor
+!
+   use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA, isEmbeddedCluster
+!
+   use ClusterMatrixModule, only : initClusterMatrix
+!
+   use CrystalMatrixModule, only : initCrystalMatrix
+!
+   use CPAMediumModule, only : initCPAMedium
+!
+   implicit none
+!
+   character (len=22), parameter :: sname = 'initMSSolver'
+!
+   character (len=*), intent(in) :: istop
+!
+   integer (kind=IntKind), intent(in) :: num_latoms
+   integer (kind=IntKind), intent(in) :: index(num_latoms)
+   integer (kind=IntKind), intent(in) :: lmaxkkr(num_latoms)
+   integer (kind=IntKind), intent(in) :: lmaxphi(num_latoms)
+   integer (kind=IntKind), intent(in) :: lmaxgreen(num_latoms)
+   integer (kind=IntKind), intent(in) :: pola
+   integer (kind=IntKind), intent(in) :: cant
+   integer (kind=IntKind), intent(in) :: rel
+   integer (kind=IntKind), intent(in) :: iprint(num_latoms)
+!
+   real (kind=RealKind), intent(in) :: local_posi(3,num_latoms)
+!
+   integer (kind=IntKind) :: lmax, i
+   integer (kind=IntKind) :: klp1, klp2, i3, klg
+   integer (kind=IntKind), pointer :: nj3(:,:), kj3(:,:,:)
+!
+   real (kind=RealKind), pointer :: cgnt(:,:,:)
+!
+!  -------------------------------------------------------------------
+   call initParameters(num_latoms,lmaxkkr,lmaxphi,lmaxgreen,pola,cant,rel,istop,iprint)
+!  -------------------------------------------------------------------
+!
+   lmax = 0
+   do i=1,num_latoms
+      lmax = max( lmax, lmaxkkr(i), lmaxphi(i), lmaxgreen(i) )
+   enddo
+!  -------------------------------------------------------------------
+   call initGauntFactors(lmax,istop,-1)
+!  -------------------------------------------------------------------
+!
+   if ( isLSMS() ) then
+!     ----------------------------------------------------------------
+      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi,cant,rel,istop,iprint)
+!     ----------------------------------------------------------------
+      isRealSpace = .true.
+   else if ( isScreenKKR() ) then
+      call ErrorHandler('initMSSolver','Screen KKR is not implemented yet.')
+!     ----------------------------------------------------------------
+!     call initTauScreenKKR( bravais, LocalNumAtoms, cant, pola, local_posi, &
+!                            lmaxkkr, rel, iprint, istop )
+!     ----------------------------------------------------------------
+      isRealSpace = .true.
+   else if ( isKKR() ) then
+!     ----------------------------------------------------------------
+      call initCrystalMatrix( LocalNumAtoms, cant, lmaxkkr, rel, istop, iprint)
+!     ----------------------------------------------------------------
+      isRealSpace = .false.
+   else if ( isKKRCPA() ) then
+!     ----------------------------------------------------------------
+      call initCPAMedium(cant=cant, rel=rel, mix_type=2, max_iter = 30, &
+                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,             &
+                         istop=istop, iprint=maxval(iprint))
+!     ----------------------------------------------------------------
+      isRealSpace = .false.
+   else if (isEmbeddedCluster()) then
+!     ----------------------------------------------------------------
+      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi,cant,rel,istop,iprint)
+!     ----------------------------------------------------------------
+      isRealSpace = .false.
+   else
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver','Unknown MST calculation category')
+!     ----------------------------------------------------------------
+   endif
+!
+   nj3 => getNumK3()
+   kj3 => getK3()
+   cgnt => getGauntFactor()
+   gaunt => aliasArray3_c(gspacep,kmax_phi_max,kmax_green_max,kmax_phi_max)
+   gaunt = CZERO
+   if (method == 0 .or. method == 2) then
+      do klp2 = 1, kmax_phi_max
+         do klg = 1, kmax_green_max
+            do klp1 = 1, kmax_phi_max
+               do i3 = 1, nj3(klp1,klg)
+                  if (kj3(i3,klp1,klg) == klp2) then
+                     gaunt(klp1,klg,klp2) = cgnt(i3,klp1,klg)
+                  endif
+               enddo
+            enddo
+         enddo
+      enddo
+   else  ! Store gaunt differently to help speeding up the data access...
+      do klp1 = 1, kmax_phi_max
+         do klg = 1, kmax_green_max
+            do klp2 = 1, kmax_phi_max
+               do i3 = 1, nj3(klp1,klg)
+                  if (kj3(i3,klp1,klg) == klp2) then
+                     gaunt(klp2,klg,klp1) = cgnt(i3,klp1,klg)
+                  endif
+               enddo
+            enddo
+         enddo
+      enddo
+   endif
+!
+   nullify(nj3, kj3, cgnt)
+!
+!  -------------------------------------------------------------------
+   call endGauntFactors()
+!  -------------------------------------------------------------------
+!
+!  ===================================================================
+!  Use the existing "K-Mesh" MPI group to create a parallelization
+!  over the kl loop in the single site solver...
+!  -------------------------------------------------------------------
+   kGID = getGroupID('K-Mesh')
+   NumPEsInGroup = getNumPEsInGroup(kGID)
+   MyPEinGroup = getMyPEinGroup(kGID)
+!  -------------------------------------------------------------------
+!
+   Initialized = .true.
+   Energy = -10.0d0
+   MSGF_Form = 0
+   MSDOS_Form = 0
+!
+   end subroutine initMSSolver
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine initParameters(num_atoms, lmaxkkr, lmaxphi, lmaxgreen,  &
+                             pola, cant, rel, istop, iprint)
+!  ===================================================================
+   use RadialGridModule, only : getNumRmesh, getMaxNumRmesh
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: num_atoms
+   integer (kind=IntKind), intent(in) :: lmaxkkr(num_atoms)
+   integer (kind=IntKind), intent(in) :: lmaxphi(num_atoms)
+   integer (kind=IntKind), intent(in) :: lmaxgreen(num_atoms)
+   integer (kind=IntKind), intent(in) :: pola
+   integer (kind=IntKind), intent(in) :: cant
+   integer (kind=IntKind), intent(in) :: rel
+   integer (kind=IntKind), intent(in) :: iprint(num_atoms)
+   integer (kind=LongIntKind) :: wspace_size, gspace_size
+!
+   character (len=*), intent(in) :: istop
+!
+   integer (kind=IntKind) :: i, lmax_max, jmax, iend, kmax
+!
+   if (Initialized) then
+!     ----------------------------------------------------------------
+      call WarningHandler('initMSSolver',                   &
+                  'MSSolverModule has already been initialized')
+!     ----------------------------------------------------------------
+      return
+   else if (num_atoms < 1) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver','num_atoms < 1',num_atoms)
+!     ----------------------------------------------------------------
+   else if (pola < 1 .or. pola > 2) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver',                     &
+                        'Invalid spin polarization index',pola)
+!     ----------------------------------------------------------------
+   else if (cant < 1 .or. cant > 2) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver',                     &
+                        'Invalid spin canting index',cant)
+!     ----------------------------------------------------------------
+   else if (pola < cant ) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver',                     &
+                        'Polarization = 1, and Canting = 2')
+!     ----------------------------------------------------------------
+   else if (rel < 0 .or. rel > 2) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initMSSolver','rel < 0 or rel > 2', rel)
+!     ----------------------------------------------------------------
+   endif
+!
+   LocalNumAtoms = num_atoms
+   n_spin_pola = pola
+   n_spin_cant = cant
+   Relativity = rel
+   stop_routine = istop
+!
+   allocate( print_instruction(LocalNumAtoms) )
+   allocate( lmax_kkr(LocalNumAtoms) )
+   allocate( lmax_phi(LocalNumAtoms) )
+   allocate( kmax_kkr(LocalNumAtoms) )
+   allocate( kmax_phi(LocalNumAtoms) )
+!
+   kmax_kkr_max = 1
+   kmax_phi_max = 1
+   kmax_green_max = 1
+   lmax_phi_max = 0
+   lmax_green_max = 0
+   lmax_max = 0
+   do i=1, LocalNumAtoms
+      lmax_kkr(i) = lmaxkkr(i)
+      kmax_kkr(i) = (lmaxkkr(i)+1)**2
+      lmax_phi(i) = lmaxphi(i)
+      kmax_phi(i) = (lmaxphi(i)+1)**2
+      print_instruction(i) = iprint(i)
+      kmax_kkr_max = max(kmax_kkr_max, (lmaxkkr(i)+1)**2)
+      kmax_phi_max = max(kmax_phi_max, (lmaxphi(i)+1)**2)
+      kmax_green_max = max(kmax_green_max, (lmaxgreen(i)+1)**2)
+      lmax_phi_max = max(lmax_phi_max, lmaxphi(i))
+      lmax_green_max = max(lmax_green_max, lmaxgreen(i))
+      lmax_max = max(lmax_max, lmaxgreen(i), lmaxkkr(i), lmaxphi(i))
+   enddo
+!  -------------------------------------------------------------------
+   call genFactors(lmax_max)
+!  -------------------------------------------------------------------
+   MaxPrintLevel = maxval(print_instruction(1:LocalNumAtoms))
+!
+   allocate( mst(LocalNumAtoms) )
+   do i=1, LocalNumAtoms
+      kmax = (lmaxgreen(i)+1)**2
+      iend = getNumRmesh(i)
+      mst(i)%lmax = lmaxgreen(i)
+      mst(i)%iend = iend
+      allocate( mst(i)%dos(n_spin_cant*n_spin_cant) )
+      allocate( mst(i)%green(iend,kmax,n_spin_cant*n_spin_cant) )
+   enddo
+   iend_max = getMaxNumRmesh()
+   wspace_size = iend_max*kmax_phi_max*kmax_kkr_max
+   gspace_size = iend_max*kmax_green_max*kmax_phi_max
+   allocate( wspace(wspace_size), wspacep(kmax_phi_max*kmax_green_max) )
+   allocate( gspace(gspace_size), gspacep(kmax_phi_max*kmax_green_max*kmax_phi_max) )
+!
+   end subroutine initParameters
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine endMSSolver()
+!  ===================================================================
+   use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA,    &
+                             isEmbeddedCluster
+!
+   use ClusterMatrixModule, only : endClusterMatrix
+!
+   use CrystalMatrixModule, only : endCrystalMatrix
+!
+   use CPAMediumModule, only : endCPAMedium
+!
+   implicit none
+!
+   integer (kind=IntKind) :: i
+!
+   if (.not.Initialized) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('endMSSolver',                      &
+                        'MSSolverModule has not been initialized')
+!     ----------------------------------------------------------------
+   endif
+!
+   deallocate( print_instruction )
+   deallocate( lmax_kkr )
+   deallocate( lmax_phi )
+   deallocate( kmax_kkr )
+   deallocate( kmax_phi )
+   do i=1, LocalNumAtoms
+      deallocate( mst(i)%dos )
+      deallocate( mst(i)%green )
+   enddo
+   deallocate( mst, wspace, wspacep, gspace, gspacep )
+   nullify( Neighbor )
+!
+   if ( isRealSpace ) then
+!     ----------------------------------------------------------------
+      call endClusterMatrix()
+!     ----------------------------------------------------------------
+   else if (isScreenKKR()) then
+!     ----------------------------------------------------------------
+!     call endTauScreenKKR()
+!     ----------------------------------------------------------------
+   else
+!     ----------------------------------------------------------------
+      call endCrystalMatrix()
+!     ----------------------------------------------------------------
+      if (isKKRCPA()) then
+!        -------------------------------------------------------------
+         call endCPAMedium()
+!        -------------------------------------------------------------
+      else if (isEmbeddedCluster()) then
+!        -------------------------------------------------------------
+         call endClusterMatrix()
+!        -------------------------------------------------------------
+      endif
+   endif
+!
+   if (allocated(store_space)) then
+      deallocate(store_space)
+   endif
+!
+   deallocate( lofk, mofk, jofk, m1m, lofj, mofj )
+!
+   if (allocated(space_integrated_msdos_cell) ) then
+      deallocate( space_integrated_msdos_cell, space_integrated_msdos_mt, &
+                  space_integrated_mspdos_cell, space_integrated_mspdos_mt )
+      deallocate( gfws_comp, dosws_comp )
+   endif
+!
+   Initialized = .false.
+   isRealSpace = .false.
+   Energy = CZERO
+!
+   end subroutine endMSSolver
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDOS_is(is,id,mst_term_only) result(dos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: is, id
+!
+   logical, intent(out), optional :: mst_term_only
+!
+   complex (kind=CmplxKind) :: dos
+!
+   dos = mst(id)%dos(is)
+   if (present(mst_term_only)) then
+      if (MSDOS_Form == 0) then
+         mst_term_only = .true.
+      else
+         mst_term_only = .false.
+      endif
+   endif
+!
+   end function getDOS_is
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDOS_sc(id,mst_term_only) result(dos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+!
+   logical, intent(out), optional :: mst_term_only
+!
+   complex (kind=CmplxKind) :: dos(n_spin_cant*n_spin_cant)
+!
+   dos = mst(id)%dos
+   if (present(mst_term_only)) then
+      if (MSDOS_Form == 0) then
+         mst_term_only = .true.
+      else
+         mst_term_only = .false.
+      endif
+   endif
+!
+   end function getDOS_sc
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSGreenFunction(id,gform) result(green)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind), intent(out), optional :: gform
+!
+   complex (kind=CmplxKind), pointer :: green(:,:,:)
+!
+   green => mst(id)%green
+   if (present(gform)) then
+      gform = MSGF_Form
+   endif
+!
+   end function getMSGreenFunction
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSGreenMatrix(id) result(mat)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+!
+   complex (kind=CmplxKind), pointer :: mat(:,:,:)
+!
+   nullify(mat)
+!
+   call ErrorHandler('getMSGreenMatrix','Density matrix calculation is not implemented yet')
+!
+   end function getMSGreenMatrix
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine computeMSTMatrix(is,e)
+!  ===================================================================
+   use ScfDataModule, only : isScreenKKR, isKKRCPA, isKKR, isEmbeddedCluster
+!
+   use ClusterMatrixModule, only : calClusterMatrix
+!
+   use CrystalMatrixModule, only : calCrystalMatrix
+!
+   use CPAMediumModule, only : computeCPAMedium
+!
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: is
+!
+   complex (kind=CmplxKind), intent(in) :: e
+!
+!  ===================================================================
+!  call calClusterMatrix or calCrystalMatrix to calculate the TAU(0,0) matrix
+!  NOTE: Needs to be checked for is = 2 and n_spin_cant = 2
+!  ===================================================================
+   if ( isRealSpace ) then
+!     ----------------------------------------------------------------
+      call calClusterMatrix(e)
+!     ----------------------------------------------------------------
+   else if (isScreenKKR()) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('computeMSTMatrix','ScreenKKR is yet to be implemented')
+!     call calScreenTauBZ( e, is )
+!     ----------------------------------------------------------------
+   else if (isKKR()) then
+!     ----------------------------------------------------------------
+      call calCrystalMatrix(e)
+!     ----------------------------------------------------------------
+   else if (isKKRCPA()) then
+!     ----------------------------------------------------------------
+      call computeCPAMedium(e)
+!     ----------------------------------------------------------------
+   else if (isEmbeddedCluster()) then  ! Needs further work.....
+!     ----------------------------------------------------------------
+      call calClusterMatrix(e)
+!     ----------------------------------------------------------------
+      call computeCPAMedium(e)
+!     ----------------------------------------------------------------
+   else
+      call ErrorHandler('computeMSTMatrix','Undefined method')
+   endif
+!
+   end subroutine computeMSTMatrix
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine computeMSGreenFunction(is, e, add_Ts, add_Gs, isSphSolver)
+!  ===================================================================
+   use MPPModule, only : MyPE, syncAllPEs
+   use GroupCommModule, only : GlobalSumInGroup
+!
+   use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
+   use SSSolverModule, only : getSolutionFlags, getOmegaHatMatrix
+   use SSSolverModule, only : solveSingleScattering
+   use SSSolverModule, only : computeGreenFunction, getGreenFunction
+!
+   use ClusterMatrixModule, only : getClusterKau => getKau
+!
+   use CrystalMatrixModule, only : getCrystalKau => getKau
+!
+   implicit none
+!
+   logical, optional, intent(in) :: add_Ts, add_Gs, isSphSolver
+   logical :: add_SingleSiteT, add_SingleSiteG
+!
+   integer (kind=IntKind), intent(in) :: is
+!
+   complex (kind=CmplxKind), intent(in) :: e
+!
+   integer (kind=IntKind) :: n, info, id, js1, js2, ns, kmaxk, kmaxp, kmaxg, irmax
+   integer (kind=IntKind) :: klg, kl1, kl2, klp1, klp2, ir, kl2c, m2, np
+!
+   complex (kind=CmplxKind), pointer :: tfac(:,:), gfs(:,:)
+   complex (kind=CmplxKind), pointer :: PhiLr_right(:,:,:), PhiLr_left(:,:,:), kau00(:,:,:)
+   complex (kind=CmplxKind), pointer :: gf(:,:), pp(:,:), ppr(:,:), ppg(:,:,:)
+   complex (kind=CmplxKind), pointer :: pau00(:,:), OmegaHat(:,:), p_kau00(:,:)
+   complex (kind=CmplxKind) :: cfac, kappa
+!
+   character (len=20), parameter :: sname = 'computeMSGreenFunction'
+!
+!#ifdef TIMING
+   real (kind=RealKind) :: time
+!
+   time = getTime()
+!#endif
+   if (.not.Initialized) then
+      call ErrorHandler(sname,'module not initialized')
+   else if (is < 1 .or. is > n_spin_pola) then
+      call ErrorHandler(sname,'invalid spin index',is)
+   endif
+! 
+   if (present(add_Gs)) then
+      add_SingleSiteG = add_Gs
+   else
+      add_SingleSiteG = .false.
+   endif
+!
+   if (present(add_Ts)) then
+      add_SingleSiteT = add_Ts
+   else
+      add_SingleSiteT = .false.
+   endif
+!
+   if (add_SingleSiteG) then
+      MSGF_Form = 1
+   else if (add_SingleSiteT) then
+      MSGF_Form = 2
+   else
+      MSGF_Form = 0
+   endif
+!
+   if (add_SingleSiteG .or. add_SingleSiteT) then
+!     ================================================================
+!     This is the case when [Kau00 + kappa*OmegaHat] is used in the 
+!     calculation of the Green function and the DOS.
+!     ================================================================
+      if (.not.allocated(store_space)) then
+         allocate(store_space(kmax_kkr_max*kmax_kkr_max))
+      endif
+   endif
+!
+   if (add_SingleSiteG) then
+      do id = 1, LocalNumAtoms
+         do js1 = 1, n_spin_cant
+            ns = max(js1,is)
+            if (present(isSphSolver)) then
+!              -------------------------------------------------------
+               call solveSingleScattering(ns,id,e,CZERO,isSphSolver,useIrrSol='H')
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call solveSingleScattering(ns,id,e,CZERO,useIrrSol='H')
+!              -------------------------------------------------------
+            endif
+!           ----------------------------------------------------------
+            call computeGreenFunction(ns,id)
+!           ----------------------------------------------------------
+         enddo
+      enddo
+   else
+      do id = 1, LocalNumAtoms
+         do js1 = 1, n_spin_cant
+            ns = max(js1,is)
+!           ----------------------------------------------------------
+            call solveSingleScattering(ns,id,e,CZERO)
+!           ----------------------------------------------------------
+         enddo
+      enddo
+   endif
+!
+!  -------------------------------------------------------------------
+   call computeMSTMatrix(is,e)
+!  -------------------------------------------------------------------
+!
+#ifdef TIMING
+   if (MaxPrintLevel >= 0) then
+      write(6,*)'MSSolver:: Total Time  : ', getTime()-time
+   endif
+#endif
+!
+   Energy = e
+   kappa = sqrt(e)
+!
+   do id = 1, LocalNumAtoms
+      kmaxk = kmax_kkr(id)
+      kmaxp = kmax_phi(id)
+      kmaxg = (mst(id)%lmax+1)**2
+      if (isRealSpace) then
+         kau00 => getClusterKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+      else
+         kau00 => getCrystalKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+      endif
+!     ================================================================
+      irmax = getSolutionRmeshSize(id)
+      if (irmax < mst(id)%iend) then
+         call ErrorHandler(sname,'Source code error: irmax < iend',irmax,mst(id)%iend)
+      endif
+!     pp => aliasArray2_c(wspace,mst(id)%iend,kmaxp)
+      pp => aliasArray2_c(wspace,irmax,kmaxp)
+!     ppr => aliasArray2_c(wspace,mst(id)%iend*kmaxp,kmaxk)
+      ppr => aliasArray2_c(wspace,irmax*kmaxp,kmaxk)
+!     ppg => aliasArray3_c(gspace,mst(id)%iend,kmaxg,kmaxp)
+      ppg => aliasArray3_c(gspace,irmax,kmaxg,kmaxp)
+      tfac => aliasArray2_c(wspacep,kmaxp,kmaxg)
+      ns = 0
+      if (add_SingleSiteT) then
+         pau00 => aliasArray2_c(store_space,kmaxk,kmaxk)
+      endif
+      do js2 = 1, n_spin_cant
+!        =============================================================
+!        If needed, add kappa*Omega to Kau00, which is equivalent to add
+!        t_mat to [tau00 - t_mat]
+!        =============================================================
+         if (add_SingleSiteT) then
+!           ----------------------------------------------------------
+            OmegaHat => getOmegaHatMatrix(js2,id)
+!           ----------------------------------------------------------
+         endif
+         PhiLr_right => getRegSolution(js2,id)
+         do js1 = 1, n_spin_cant
+            PhiLr_left => getRegSolution(js1,id)
+            ns = ns + 1
+            gf => mst(id)%green(:,:,ns)
+            gf = CZERO
+            p_kau00 => kau00(:,:,ns)
+!           ==========================================================
+!           gf is the multiple scattering part of the Green function
+!           multiplied by r^2:
+!               gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
+!                  = Phi_L*Kau00*Phi_L^{*}*r^2
+!           Here implements three different methods for checking against each other
+!
+!           If needed, add kappa*Omega to Kau00, which is equivalent to add
+!           t_mat to [tau00 - t_mat]
+!           ==========================================================
+            if (add_SingleSiteT .and. js1 == js2) then
+!              -------------------------------------------------------
+               call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
+               call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
+!              -------------------------------------------------------
+               p_kau00 => pau00
+            endif
+!           ==========================================================
+            if (method == 0) then
+!              =======================================================
+!              ppr(ir,klp1,kl2) = sum_kl1 PhiLr_left(ir,klp1,kl1) * p_kau00(kl1,kl2)
+!              -------------------------------------------------------
+               call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
+!              -------------------------------------------------------
+               np = mod(kmaxk,NumPEsInGroup)
+               do kl2 = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
+                  m2 = mofk(kl2)
+                  kl2c = kl2 -2*m2
+                  cfac = m1m(m2)
+!                 ====================================================
+!                 ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) * gaunt(klp1,klg,klp2)
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                 ----------------------------------------------------
+!
+!                 ====================================================
+!                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
+!                 ====================================================
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
+                        do ir = 1, mst(id)%iend
+                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
+                        enddo
+                     enddo
+                  enddo
+               enddo ! kl2
+               if (NumPEsInGroup > 1) then
+!                 ----------------------------------------------------
+                  call GlobalSumInGroup(kGID,gf,mst(id)%iend,kmaxg)
+!                 ----------------------------------------------------
+               endif
+               do kl2 = kmaxk-np+1,kmaxk
+                  m2 = mofk(kl2)
+                  kl2c = kl2 -2*m2
+                  cfac = m1m(m2)
+!                 ====================================================
+!                 ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) * gaunt(klp1,klg,klp2)
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                 ----------------------------------------------------
+!
+!                 ====================================================
+!                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
+!                 ====================================================
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
+                        do ir = 1, mst(id)%iend
+                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
+                        enddo
+                     enddo
+                  enddo
+               enddo
+            else if (method == 1) then
+               do kl1 = kmaxk,1,-1
+                  do klp1 = kmaxp,1,-1
+                     do kl2 = kmaxk,1,-1
+                        m2 = mofk(kl2)
+                        kl2c = kl2 -2*m2
+!                       ==============================================
+!                       pp(ir,klp2;kl2,klp1,kl1) =
+!                           PhiLr_left(ir,klp1,kl1) * PhiLr_right(ir,klp2,kl2)
+!                       ==============================================
+                        pp = CZERO
+                        do klp2 = 1, kmaxp
+                           do ir = 1, irmax
+                              pp(ir,klp2) = PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2)
+                           enddo
+                        enddo
+!                       ==============================================
+!                       tfac(klp2,klg;kl2,klp1,kl1) = gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2)
+!                       ==============================================
+                        do klg = 1, kmaxg
+                           do klp2 = 1, kmaxp
+                              tfac(klp2,klg) = m1m(m2)*gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2c)
+                           enddo
+                        enddo
+!                       ==============================================
+!                       gf(ir,klg) = sum_{kl1,klp1,kl2,klp2} pp(ir,klp2;kl2,klp1,kl1) * tfac(klp2,klg;kl2,klp1,kl1)
+!                       ----------------------------------------------
+                        call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,pp,irmax,tfac,kmaxp,CONE,gf,mst(id)%iend)
+!                       ----------------------------------------------
+                     enddo ! kl2
+                  enddo ! do klp1
+               enddo ! do kl1
+            else
+               do kl2 = 1, kmaxk
+                  m2 = mofk(kl2)
+                  kl2c = kl2 -2*m2
+                  cfac = m1m(m2)
+!                 ----------------------------------------------------
+                  call zgemv('n',irmax*kmaxp,kmaxk,cfac,PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO,pp,1)
+!                 ----------------------------------------------------
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
+                        do klp1 = 1, kmaxp
+                           do ir = 1, mst(id)%iend
+                              gf(ir,klg) = gf(ir,klg) + gaunt(klp1,klg,klp2)*pp(ir,klp1)*PhiLr_right(ir,klp2,kl2)
+                           enddo
+                        enddo
+                     enddo
+                  enddo
+               enddo
+            endif
+            if (add_SingleSiteG .and. js1 == js2) then  ! This "js1==js2" logic
+                                                        ! needs to be checked for spin-canted case
+!              =======================================================
+!              Add the singe site Green function to gf = Z*(tau-t)*Z, 
+!              so that gf = Z*tau*Z - Z*J
+!              =======================================================
+               gfs => getGreenFunction(max(js1,is),id)
+               if (size(gfs,1) < size(gf,1)) then
+                  call ErrorHandler('computeMSGreenFunction',                                  &
+                                    '1st dim. of ss < 1st dim of ms green function arrays',    &
+                                    size(gfs,1), size(gf,1))
+               else if (size(gfs,2) < size(gf,2)) then
+                  call ErrorHandler('computeMSGreenFunction',                                  &
+                                    '2nd dim. of ss < 2nd dim of ms green function arrays',    &
+                                    size(gfs,2), size(gf,2))
+               endif
+               do klg = 1, kmaxg
+                  do ir = 1, mst(id)%iend
+                     gf(ir,klg) = gf(ir,klg) + gfs(ir,klg)
+                  enddo
+               enddo
+            endif
+         enddo ! do js1
+      enddo ! do js2
+   enddo ! do id
+!
+   nullify(p_kau00, pau00, OmegaHat)
+!
+   end subroutine computeMSGreenFunction
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine computeMSPDOS(is, e, add_Gs, isSphSolver)
+!  ===================================================================
+   use MathParamModule, only : PI2
+!
+   use PublicTypeDefinitionsModule, only : GridStruct
+!
+   use MPPModule, only : MyPE, syncAllPEs
+   use GroupCommModule, only : GlobalSumInGroup
+!
+   use StepFunctionModule, only : getVolumeIntegration
+!
+   use RadialGridModule, only : getGrid
+!
+   use ClusterMatrixModule, only : getClusterKau => getKau
+!
+   use CrystalMatrixModule, only : getCrystalKau => getKau
+!
+   use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
+   use SSSolverModule, only : getSolutionFlags, getOmegaHatMatrix
+   use SSSolverModule, only : solveSingleScattering
+!
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: is
+!
+   complex (kind=CmplxKind), intent(in) :: e
+!
+   logical, optional, intent(in) :: add_Gs, isSphSolver
+   logical :: add_SingleSite
+!
+   integer (kind=IntKind) :: id, ns, kmaxk, kmaxp, kmaxg, jmaxg, irmax, jmax_green_max
+   integer (kind=IntKind) :: n, info, js1, js2, jlg, lg, mg, js
+   integer (kind=IntKind) :: klg, klgc, kl, klp1, klp2, ir, klc, m, np
+!
+   real (kind=RealKind) :: dos_buf(kmax_phi_max,2)
+!
+   complex (kind=CmplxKind), pointer :: PhiLr_right(:,:,:), PhiLr_left(:,:,:), kau00(:,:,:)
+   complex (kind=CmplxKind), pointer :: gf(:,:), dos_r_jl(:,:)
+   complex (kind=CmplxKind), pointer :: pp(:,:), ppr(:,:), ppg(:,:,:)
+   complex (kind=CmplxKind), pointer :: pau00(:,:), OmegaHat(:,:), p_kau00(:,:)
+   complex (kind=CmplxKind) :: cfac, kappa
+!
+   type (GridStruct), pointer :: Grid
+!
+   character (len=20), parameter :: sname = 'computeMSPDOS'
+!
+   if (.not.Initialized) then
+      call ErrorHandler(sname,'module not initialized')
+   else if (is < 1 .or. is > n_spin_pola) then
+      call ErrorHandler(sname,'invalid spin index',is)
+   else if (present(add_Gs)) then
+      add_SingleSite = add_Gs
+   else
+      add_SingleSite = .false.
+   endif
+!
+   if (add_SingleSite) then
+      MSDOS_Form = 1
+!     ================================================================
+!     This is the case when [Kau00 + kappa*OmegaHat] is used in the 
+!     calculation of the Green function and the DOS.
+!     ================================================================
+      if (.not.allocated(store_space)) then
+         allocate(store_space(kmax_kkr_max*kmax_kkr_max))
+      endif
+!
+      do id = 1, LocalNumAtoms
+         do js1 = 1, n_spin_cant
+            ns = max(js1,is)
+            if (present(isSphSolver)) then
+!              -------------------------------------------------------
+               call solveSingleScattering(ns,id,e,CZERO,isSphSolver,useIrrSol='H')
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call solveSingleScattering(ns,id,e,CZERO,useIrrSol='H')
+!              -------------------------------------------------------
+            endif
+         enddo
+      enddo
+   else
+      MSDOS_Form = 0
+      do id = 1, LocalNumAtoms
+         do js1 = 1, n_spin_cant
+            ns = max(js1,is)
+!           ----------------------------------------------------------
+            call solveSingleScattering(ns,id,e,CZERO)
+!           ----------------------------------------------------------
+         enddo
+      enddo
+   endif
+!
+!  -------------------------------------------------------------------
+   call computeMSTMatrix(is,e)
+!  -------------------------------------------------------------------
+!
+   Energy = e
+   kappa = sqrt(Energy)
+!
+   if (.not.allocated(space_integrated_msdos_cell)) then
+      allocate( space_integrated_msdos_cell(n_spin_cant*n_spin_pola,LocalNumAtoms),       &
+                space_integrated_msdos_mt(n_spin_cant*n_spin_pola,LocalNumAtoms),         &
+                space_integrated_mspdos_cell(kmax_phi_max,n_spin_cant*n_spin_pola,LocalNumAtoms), &
+                space_integrated_mspdos_mt(kmax_phi_max,n_spin_cant*n_spin_pola,LocalNumAtoms) )
+      jmax_green_max = (lmax_green_max+1)*(lmax_green_max+2)/2
+      allocate( gfws_comp(iend_max*kmax_green_max), dosws_comp(iend_max*jmax_green_max) )
+   endif
+!
+   do id = 1, LocalNumAtoms
+      kmaxk = kmax_kkr(id)
+      kmaxp = kmax_phi(id)
+      kmaxg = (mst(id)%lmax+1)**2
+      jmaxg = (mst(id)%lmax+1)*(mst(id)%lmax+2)/2
+      if (isRealSpace) then
+         kau00 => getClusterKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+      else
+         kau00 => getCrystalKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+      endif
+!     ================================================================
+      irmax = getSolutionRmeshSize(id)
+      if (irmax < mst(id)%iend) then
+         call ErrorHandler(sname,'Source code error: irmax < iend',irmax,mst(id)%iend)
+      endif
+      pp => aliasArray2_c(wspace,irmax,kmaxp)
+      ppr => aliasArray2_c(wspace,irmax*kmaxp,kmaxk)
+      ppg => aliasArray3_c(gspace,irmax,kmaxg,kmaxp)
+      gf => aliasArray2_c(gfws_comp,irmax,kmaxg)
+      dos_r_jl => aliasArray2_c(dosws_comp,irmax,jmaxg)
+      Grid => getGrid(id)
+!
+      js = 0
+      if (add_SingleSite) then
+         pau00 => aliasArray2_c(store_space,kmaxk,kmaxk)
+      endif
+      do js2 = 1, n_spin_cant
+!        =============================================================
+!        If needed, add kappa*Omega to Kau00, which is equivalent to add
+!        t_mat to [tau00 - t_mat]
+!        =============================================================
+         if (add_SingleSite) then
+!           ----------------------------------------------------------
+            OmegaHat => getOmegaHatMatrix(js2,id)
+!           ----------------------------------------------------------
+         endif
+         PhiLr_right => getRegSolution(js2,id)
+         do js1 = 1, n_spin_cant
+            PhiLr_left => getRegSolution(js1,id)
+            js = js + 1
+            p_kau00 => kau00(:,:,js)
+!           ==========================================================
+!           gf is the multiple scattering part of the Green function
+!           multiplied by r^2:
+!               gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
+!                  = Phi_L*Kau00*Phi_L^{*}*r^2
+!           Here implements the 1st method
+!
+!           If needed, add kappa*Omega to Kau00, which is equivalent to add
+!           t_mat to [tau00 - t_mat]
+!           ==========================================================
+            if (add_SingleSite .and. js1 == js2) then
+!              -------------------------------------------------------
+               call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
+               call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
+!              -------------------------------------------------------
+               p_kau00 => pau00
+            endif
+!
+!           **********************************************************
+!           ==========================================================
+!           ppr(ir,klp1,kl) = sum_kl1 PhiLr_left(ir,klp1,kl1) * p_kau00(kl1,kl)
+!           ----------------------------------------------------------
+            call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
+!           ----------------------------------------------------------
+            np = mod(kmaxk,NumPEsInGroup)
+            dos_buf = ZERO
+            do kl = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
+               m = mofk(kl)
+               klc = kl -2*m
+               cfac = m1m(m)
+!              =======================================================
+!              ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) * gaunt(klp1,klg,klp2)
+!              -------------------------------------------------------
+               call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!              -------------------------------------------------------
+!
+!              =======================================================
+!              gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
+!              =======================================================
+               gf = CZERO
+               do klp2 = 1, kmaxp
+                  do klg = 1, kmaxg
+                     do ir = 1, mst(id)%iend
+                        gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
+                     enddo
+                  enddo
+               enddo
+!
+               cfac = SQRTm1/PI2
+               do jlg = 1, jmaxg
+                  lg = lofj(jlg); mg = mofj(jlg); 
+                  klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
+                  do ir = 1, mst(id)%iend
+                     dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
+                  enddo
+               enddo
+               dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
+                                                     jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+            enddo ! kl
+!
+            if (NumPEsInGroup > 1) then
+!              -------------------------------------------------------
+               call GlobalSumInGroup(kGID,dos_buf,kmax_phi_max,2)
+!              -------------------------------------------------------
+            endif
+!
+            do kl = kmaxk-np+1,kmaxk
+               m = mofk(kl)
+               klc = kl -2*m
+               cfac = m1m(m)
+!              =======================================================
+!              ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) * gaunt(klp1,klg,klp2)
+!              -------------------------------------------------------
+               call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!              -------------------------------------------------------
+!
+!              =======================================================
+!              gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
+!              =======================================================
+               gf = CZERO
+               do klp2 = 1, kmaxp
+                  do klg = 1, kmaxg
+                     do ir = 1, mst(id)%iend
+                        gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
+                     enddo
+                  enddo
+               enddo
+!
+               cfac = SQRTm1/PI2
+               do jlg = 1, jmaxg
+                  lg = lofj(jlg); mg = mofj(jlg); 
+                  klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
+                  do ir = 1, mst(id)%iend
+                     dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
+                  enddo
+               enddo
+               dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
+                                                     jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+            enddo
+!
+            ns = max(js,is)
+            space_integrated_msdos_cell(ns,id) = ZERO
+            space_integrated_msdos_mt(ns,id) = ZERO
+            do kl = kmaxk, 1, -1
+               space_integrated_mspdos_cell(kl,ns,id) = dos_buf(kl,1)
+               space_integrated_mspdos_mt(kl,ns,id) = dos_buf(kl,2)
+               space_integrated_msdos_cell(ns,id) = space_integrated_msdos_cell(ns,id) + &
+                                                    space_integrated_mspdos_cell(kl,ns,id)
+               space_integrated_msdos_mt(ns,id) = space_integrated_msdos_mt(ns,id) +     &
+                                                  space_integrated_mspdos_mt(kl,ns,id)
+            enddo
+!           **********************************************************
+         enddo ! do js1
+      enddo ! do js2
+   enddo ! do id
+!
+   nullify(p_kau00, pau00, OmegaHat)
+!
+   end subroutine computeMSPDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSCellDOS(ks,id) result(dos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: ks, id
+!
+   real (kind=RealKind) :: dos
+!
+   dos = space_integrated_msdos_cell(ks,id)
+!
+   end function getMSCellDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSMTSphereDOS(ks,id) result(dos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: ks, id
+!
+   real (kind=RealKind) :: dos
+!
+   dos = space_integrated_msdos_mt(ks,id)
+!
+   end function getMSMTSphereDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSCellPDOS(ks,id) result(pdos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: ks, id
+!
+   real (kind=RealKind), pointer :: pdos(:)
+!
+   pdos => space_integrated_mspdos_cell(:,ks,id)
+!
+   end function getMSCellPDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSMTSpherePDOS(ks,id) result(pdos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: ks, id
+!
+   real (kind=RealKind), pointer :: pdos(:)
+!
+   pdos => space_integrated_mspdos_mt(:,ks,id)
+!
+   end function getMSMTSpherePDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine genFactors(lmax)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+   integer (kind=IntKind) :: kmax, jmax, l, m, kl, n, jl
+!
+   kmax=(lmax+1)*(lmax+1)
+   jmax=(lmax+1)*(lmax+2)/2
+!
+   allocate( lofk(kmax), mofk(kmax), jofk(kmax), m1m(-lmax:lmax) )
+   allocate( lofj(jmax), mofj(jmax) )
+!
+!  ===================================================================
+!  calculate the factors: lofk, mofk, jofk, lofj, and mofj............
+!  ===================================================================
+   kl=0; jl = 0
+   do l=0,lmax
+      n=(l+1)*(l+2)/2-l
+      do m=-l,l
+         kl=kl+1
+         lofk(kl)=l
+         mofk(kl)=m
+         jofk(kl)=n+abs(m)
+         if (m >= 0) then
+            jl = jl + 1
+            lofj(jl) = l
+            mofj(jl) = m
+         endif
+      enddo
+   enddo
+!
+!  ===================================================================
+!  calculate the factor (-1)**m and store in m1m(-lmax:lmax)..........
+!  ===================================================================
+   m1m(0)=1
+   do m=1,lmax
+      m1m(m)=-m1m(m-1)
+   enddo
+   do m=-1,-lmax,-1
+      m1m(m)=-m1m(m+1)
+   enddo
+!
+   end subroutine genFactors
+!  ===================================================================
+end module MSSolverModule

@@ -1,0 +1,10 @@
+driver/tst_findFit.F90
+lib/KindParamModule.F90
+lib/MathParamModule.F90
+lib/ErrorHandlerModule.F90
+lib/hunt.F90
+lib/newder.F
+lib/findQuadraticFit.F90
+lib/findCubicFit.F90
+lib/Matrix3dModule.F90
+lib/fit.F

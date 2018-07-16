@@ -1,0 +1,24 @@
+# Default units:: atomic units
+# 
+# Uncomment following number if using Angsrtroms units
+# ==================================================
+#   3.22793700
+# 
+# If using Angstroms units, comment out the following number
+# ==================================================
+  6.10000000
+# 
+# The following three lines define the unit cell box
+# ==================================================
+        1.00000000000      0.00000000000      0.00000000000
+       -0.50000000000      0.86602540380      0.00000000000
+        0.00000000000      0.00000000000      1.59200000000
+# 
+# Number of atoms in unit cell:         2
+# Atom type: Zr Number of Atoms:        1
+# Atom type: Nb Number of Atoms:        1
+# 
+# The following lines are the position data of the atoms
+# ======================================================
+   Zr        0.33333333333      0.66666666667      0.25000000000
+   Nb        0.66666666667      0.33333333333      0.75000000000

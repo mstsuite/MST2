@@ -1,0 +1,5 @@
+Installation steps:
+===================
+Starting from the MST directory, take the following steps to build executables
+1. cd compilation_new/arch 
+2. make

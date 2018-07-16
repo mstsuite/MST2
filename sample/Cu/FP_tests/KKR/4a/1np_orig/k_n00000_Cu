@@ -1,0 +1,10 @@
+System Description            : Cu, FCC structure                               
+Number of Atoms in Unit Cell  : 4                                               
+Number of Atomic Species      : 1                                               
+Number of Atoms in Each Type  : 4(Cu)                                           
+Energy Offset                 : -3275                                           
+=======================================================================================
+    Iter     Energy      3PV     Efermi   Rms_rho    Rms_pot   Mix  Alg  Alpha 
+---------------------------------------------------------------------------------------
+**       1  -0.780593  -0.02455  0.68058  0.330E-03  0.491E-09  pot  B   0.1000
+         2  -0.780593  -0.02454  0.68058  0.301E-09  0.167E-08  pot  B   0.1000

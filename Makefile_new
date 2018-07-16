@@ -1,0 +1,85 @@
+MAKEFILEDIR=./compilation_new
+
+-include $(MAKEFILEDIR)/compilation.conf
+
+ifeq "$(Acceleration)" "1"
+.PHONY: default
+default: lsms2.cuda
+else
+.PHONY: default
+default: lsms2
+endif
+
+ifeq "$(Acceleration)" "1"
+.PHONY: all
+all: lsms2.cuda util driver
+else
+.PHONY: all
+all: lsms2 util driver
+endif
+
+.PHONY: printheader
+printheader:
+	clear
+	@echo  "********************************************************************************"
+	@echo  "********  LSMS 2.0, a locally self-consistent multiple scattering code  ********"
+	@echo  "********************************************************************************"
+	@echo
+	@echo  "               makefile flags: $(MAKEFLAGS)"
+	@echo
+
+
+.PHONY: help
+help: printheader
+	@echo  "       Choose one of the following options:"
+	@echo  ""
+	@echo  "  lsms          - compile the LSMS2 code (default)"
+	@echo  "  all           - compile all executables (lsms2, util, driver)"
+	@echo  "  util          - compile all utilities"
+	@echo  "  driver        - compile all driver"
+	@echo  ""
+	@echo  "  clean         - clean object files"
+	@echo  "  cleanall      - clean object and binary files"
+	@echo  "  cleanmakefile - clean makefiles"
+	@echo  "  makefile      - generate all makefiles"
+	@echo  "  -p #          - compile in parallel using # threads (gmake only)"
+	@echo  "  help          - this help"
+	@echo  ""
+	@echo  "  set compiler options in file : $(MAKEFILEDIR)/compilation.conf"
+	@echo  "  examples can be found in     : $(MAKEFILEDIR)/arch/..."
+	@echo  ""
+	@echo  "  exmmple for the symlink:"
+	@echo  "  cd $(MAKEFILEDIR); ln -s arch/XXXX  ./compilation.conf"
+
+
+.PHONY: clean
+clean:
+	@cd $(MAKEFILEDIR) && rm -f *.o *.mod  *~ *.d *.pc *.pcl ifc* *genmod.f90
+
+.PHONY: cleanall
+cleanall:  clean
+	@rm ./bin/*
+
+.PHONY: cleanmakefile
+cleanmakefile:  
+	@cd $(MAKEFILEDIR) && rm -f makefile.* include/makefile.*.inc
+
+
+.PHONY: makefile
+makefile:
+	@echo "building makefiles"
+	@cd $(MAKEFILEDIR) &&  ./mk_makefile.lsms2
+
+.PHONY: lsms2
+lsms2: printheader
+	@echo "building LSMS2"
+	@cd $(MAKEFILEDIR) && $(MAKE) -f ./makefile.lsms2 
+
+.PHONY: lsms2.cuda
+lsms2.cuda: printheader
+	@echo "building LSMS2 with CUDA"
+	@cd $(MAKEFILEDIR) && $(MAKE) -f ./makefile.lsms2.cuda
+
+
+sinclude $(MAKEFILEDIR)/include/makefile.driver.inc
+sinclude $(MAKEFILEDIR)/include/makefile.util.inc
