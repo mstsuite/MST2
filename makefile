@@ -44,7 +44,13 @@ CUDA_OPT += -c
 
 #=====================================================================
 
-all: main check util gen_link
+all: check-bin main check util gen_link
+
+#=====================================================================
+# Check bin directory to make sure it exists
+#=====================================================================
+check-bin:
+	if [ ! -d $(ODIR) ]; then echo $(ODIR) "folder does not exist and I am creating one ..."; mkdir $(ODIR); fi
 
 gen_link:
 	cd ../ ; rm -f $(MST2_DIR_LINK); ln -s $(WORK_DIR) $(MST2_DIR_LINK)
