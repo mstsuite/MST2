@@ -146,8 +146,8 @@ public
       integer (kind=IntKind), allocatable :: NumNeighboringAtoms(:)
       integer (kind=IntKind), allocatable :: NumTargetProcs(:)
       integer (kind=IntKind), allocatable :: NumSourceProcs(:)
-      integer (kind=IntKind), pointer :: TargetProc(:,:)
-      integer (kind=IntKind), pointer :: SourceProc(:,:)
+      integer (kind=IntKind), allocatable :: TargetProc(:,:)
+      integer (kind=IntKind), allocatable :: SourceProc(:,:)
    end type AtomOnUniformGridStruct
 !
    type UniformGridStruct
