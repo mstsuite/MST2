@@ -109,7 +109,7 @@ program mst2
    use SystemModule, only : writeMomentDirectionData, writeAtomPositionData
    use SystemModule, only : writeMomentMovie, writeAtomPositionMovie
    use SystemModule, only : updateSystemMovie, resetSystemMovie
-   use SystemModule, only : getLmaxKKR
+   use SystemModule, only : getLmaxKKR, getLmaxRho, getLmaxPot, getLmaxPhi
 !
    use MediumHostModule, only : initMediumHost, endMediumHost, printMediumHost
 !
@@ -507,7 +507,21 @@ program mst2
    call initSystem(def_id)
 !  -------------------------------------------------------------------
 !
-!  *******************************************************************
+!  ===================================================================
+!  Check data consistency
+!  ===================================================================
+   if (getLmaxKKR() /= getLmaxPhi()) then
+      call WarningHandler('main',                                  &
+           'Recommended setting lmax_kkr = lmax_phi in info_table file')
+   else if (isFullPotential()) then
+      if (getLmaxRho() /= 2*getLmaxKKR()) then
+         call WarningHandler('main',                                  &
+              'Recommended setting lmax_rho = 2*lmax_kkr in info_table file')
+      else if (getLmaxRho() /= getLmaxPot()) then
+         call WarningHandler('main',                                  &
+              'Recommended setting lmax_rho = lmax_pot in info_table file')
+      endif
+   endif
 !
 !  ===================================================================
 !  Determine if using Z*Tau*Z - Z*J formula for the Green function

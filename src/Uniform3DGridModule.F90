@@ -142,6 +142,7 @@ contains
       deallocate(pUG%AtomOnGrid%GlobalAtomIndex)
       if (pUG%AtomOnGrid%NumGridPointsOnCellBound > 0) then
          deallocate(pUG%AtomOnGrid%CBGridPointIndex)
+         deallocate(pUG%AtomOnGrid%NumNeighboringAtoms)
       endif
       if (allocated(pUG%AtomOnGrid%TargetProc)) then
          deallocate(pUG%AtomOnGrid%TargetProc)
@@ -449,6 +450,7 @@ contains
 !  write(6,'(a,d15.8)')'step_c_len*ngc = ',step_c_len*pUG%ngc
 !
    pAOG%NumGridPointsOnCellBound = 0
+   nullify(p_head, linked_list)
    do ia = 1, NumAtoms
       pAOG%GlobalAtomIndex(ia) = GlobalIndex(ia)
 !     ================================================================

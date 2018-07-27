@@ -2,9 +2,9 @@
 # Compilers and archiver tool
 #=====================================================================
 #FC=gfortran
-FC=mpif90
+FC=mpifort
 #F77=$(FC)
-F77=mpif90
+F77=mpifort
 CC=gcc
 CXX=gcc
 PREPROC = $(FC)
@@ -90,7 +90,7 @@ endif
 #=====================================================================
 Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
-   FFTW_PATH = $(HOME)/fftw-3
+   FFTW_PATH = /usr/local/packages/fftw-3.3.8
    FFTW_INC = $(FFTW_PATH)/include
    FFT_FLAG = -DFFTW -I$(FFTW_INC)
    ADDLIBS += -L$(FFTW_PATH)/lib -lfftw3

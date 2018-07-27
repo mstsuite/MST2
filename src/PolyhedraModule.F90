@@ -1095,9 +1095,9 @@ contains
 !  ==================================================================
    if(num_seeds.ge.16) then
       r=max(UnitBoxM(1),UnitBoxM(2),UnitBoxM(3))
-      n1=int(r/UnitBoxM(1)+0.8)
-      n2=int(r/UnitBoxM(2)+0.8)
-      n3=int(r/UnitBoxM(3)+0.8)
+      n1=min(int(r/UnitBoxM(1)+0.8),nmax)
+      n2=min(int(r/UnitBoxM(2)+0.8),nmax)
+      n3=min(int(r/UnitBoxM(3)+0.8),nmax)
       if((2*n1+1)*(2*n2+1)*(2*n3+1) .gt. n0max) then
          call ErrorHandler(sname,'Needs to increase nmax')
       endif

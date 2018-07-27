@@ -131,7 +131,7 @@ private
    integer (kind=IntKind) :: SpinIndex
    integer (kind=IntKind) :: LocalAtomID
 !
-   real (kind=RealKind), parameter :: rho_tol = TEN2m4
+   real (kind=RealKind), parameter :: rho_tol = TEN2m6
    real (kind=RealKind) :: FermiEnergy
    real (kind=RealKind) :: BandEnergy
    real (kind=RealKind) :: qvaltws
@@ -1989,14 +1989,17 @@ contains
          endif
       enddo LOOP_ir
       if (isZERO) then
-         if (getSymmetryFlags(id,jl) > 0) then
-            call WarningHandler('updateValenceDensity','Inconsistent symmetry in valence density for (l,m)',lofj(jl),mofj(jl))
-         endif
+!        if (getSymmetryFlags(id,jl) > 0) then
+!           call WarningHandler('updateValenceDensity','Non-zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+!        endif
          Density(id)%DenCompFlag(jl) = 0
          do ir = 1, NumRs
             Density(id)%rho_l(ir,jl) = CZERO
          enddo
       else
+         if (getSymmetryFlags(id,jl) == 0) then
+            call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+         endif
          Density(id)%DenCompFlag(jl) = 1
       endif
    enddo

@@ -102,8 +102,8 @@ contains
    type (UniformGridStruct), pointer :: pUG
 !
    comm = getCommunicator()
-   if (comm <= 0) then
-      call ErrorHandler('initParallelFFT','comm <= 0',                &
+   if (comm < 0) then
+      call ErrorHandler('initParallelFFT','comm < 0',                &
                         'Code PotentialGenerationModule needs to be redesigned')
    endif
 #ifdef P3DFFT

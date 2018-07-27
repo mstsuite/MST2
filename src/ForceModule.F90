@@ -84,7 +84,7 @@ contains
 !
    integer (kind=IntKind) :: id, iend, jrc, id_glb
 !
-   real (kind=RealKind) :: esf(3), fcs(3), Zi
+   real (kind=RealKind) :: esf(3), csf(3), Zi
    real (kind=RealKind), pointer :: r_mesh(:)
 !
    type (GridStruct), pointer :: Grid
@@ -98,16 +98,16 @@ contains
 !jrc = iend  !ywg, 12/03/2014
          iend = Grid%jend
          r_mesh => Grid%r_mesh(:)
-         esf = ZERO; fcs = ZERO
+         esf = ZERO; csf = ZERO
          Zi = getLocalAtomicNumber(id)
 !        -------------------------------------------------------------
          call calElectroStaticField( id, Zi, iend, r_mesh, esf )
-         call calForceOnCoreStates( id, jrc, r_mesh, fcs )
+         call calForceOnCoreStates( id, jrc, r_mesh, csf )
 !        -------------------------------------------------------------
-         force(1:3,id) = esf(1:3)+fcs(1:3)
+         force(1:3,id) = esf(1:3)+csf(1:3)
 #ifdef DebugForce
          if (print_level >= 0) then
-            write(6,'(a,i3,1x,f12.8,1x,6d16.8)')"Zi,esf,fcs::", id, Zi,esf,fcs
+            write(6,'(a,i3,1x,f12.8,1x,6d16.8)')"Zi,esf,csf::", id, Zi,esf,csf
          endif
 #endif
       else
@@ -304,7 +304,7 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calForceOnCoreStates(id,jrc,r_mesh,fcs)
+   subroutine calForceOnCoreStates(id,jrc,r_mesh,csf)
 !  ===================================================================
    use MathParamModule, only : ONE, TWO, THREE, FOUR, THIRD, PI, PI2, SQRTm1
    use ScfDataModule, only : n_spin_pola
@@ -320,7 +320,7 @@ contains
    integer (kind=IntKind) :: ir, ic, is, ia
 !
    real (kind=RealKind), intent(in) :: r_mesh(1:jrc)
-   real (kind=RealKind), intent(out) :: fcs(3)
+   real (kind=RealKind), intent(out) :: csf(3)
    real (kind=RealKind) :: vr2(1:jrc),dv(1:jrc)
    real (kind=RealKind) :: sqrt_r(0:jrc),rdv(0:jrc),intrdv(0:jrc)
    real (kind=RealKind), pointer :: deepcore(:), semicore(:)
@@ -334,7 +334,7 @@ contains
       sqrt_r(ir)=sqrt(r_mesh(ir))
    enddo
 !
-   fcs(1:3) = ZERO
+   csf(1:3) = ZERO
 !
    cfact = -SQRTm1
    do ia = 1, getLocalNumSpecies(id)
@@ -372,13 +372,13 @@ contains
             call FitInterp(4,sqrt_r(1:4),rdv(1:4),ZERO,rdv(0),dummy)
             call calIntegration(0,jrc+1,sqrt_r(0:jrc),rdv(0:jrc),intrdv(0:jrc))
 !           ---------------------------------------------------------
-            fcs(ic) = fcs(ic) + intrdv(jrc)*getLocalSpeciesContent(id,ia)
+            csf(ic) = csf(ic) + intrdv(jrc)*getLocalSpeciesContent(id,ia)
          enddo
       enddo
    enddo
-   fcs(1:3) = -TWO*sqrt(PI2*THIRD)*fcs(1:3)
+   csf(1:3) = -TWO*sqrt(PI2*THIRD)*csf(1:3)
 #ifdef DebugForce
-   write(6,'(a,3d16.8)')'fcs(1:3) = ',fcs(1:3)
+   write(6,'(a,3d16.8)')'csf(1:3) = ',csf(1:3)
 #endif
    nullify(deepcore, semicore)
 !
@@ -427,9 +427,18 @@ contains
       write(6,'(2x,i6,4x,4(2x,f15.8))')id,GlobalForce(1:3,id),f_mag
       fnet = fnet+GlobalForce(1:3,id)
    enddo
+   fnet = fnet/real(GlobalNumAtoms,kind=RealKind)
    write(6,'(80(''-''))')
-   write(6,'(a,f15.8,3(2x,f15.8))')"Average Force:",fnet(1:3)/GlobalNumAtoms, &
-                    sqrt(fnet(1)**2+fnet(2)**2+fnet(3)**2)/GlobalNumAtoms
+   write(6,'(a,3f15.8,2x,f15.8))')"Average Force:",fnet(1:3),sqrt(fnet(1)**2+fnet(2)**2+fnet(3)**2)
+   write(6,'(/,a)')'Applying condition that total force on unit cell = 0, the corrected Forces are'
+   write(6,'(80(''=''))')
+   write(6,'(a)')'   Global ID          Fx               Fy               Fz               |F|'
+   write(6,'(80(''-''))')
+   do id=1,GlobalNumAtoms
+      f_mag = sqrt((GlobalForce(1,id)-fnet(1))**2+(GlobalForce(2,id)-fnet(2))**2+(GlobalForce(3,id)-fnet(3))**2)
+      write(6,'(2x,i6,4x,4(2x,f15.8))')id,GlobalForce(:,id)-fnet,f_mag
+   enddo
+!
    write(6,'(80(''=''))')
 !
    end subroutine printForce

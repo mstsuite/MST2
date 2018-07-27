@@ -133,7 +133,7 @@ contains
 !
    character (len=*), optional :: des
 !
-   integer (kind=IntKind) :: ni, p, jmax_step, jmax_mad
+   integer (kind=IntKind) :: ni, p, jmax_step, jmax_mad, jmax
    integer (kind=IntKind) :: jls, kls, jlm, klm, i3, kl3, l3, jl3, nj3_i3
    integer (kind=IntKind), pointer :: nj3(:,:)
    integer (kind=IntKind), pointer :: kj3(:,:,:)
@@ -188,6 +188,18 @@ contains
       call calMadSymmetryFlags()
    else
       call calTruncSymmetryFlags()  ! Using truncation function to determine the symmetry
+   endif
+!
+   if ( print_level(1) > 0 ) then
+      write(6,'(/,a,/)')"calSymmetryFlags::   Flags"
+      do ni = 1, NumLocalSites
+         jmax = size(SymmFlags(ni)%flags)
+         write(6,*)"  l    m   flag"
+         do jls = 1, jmax
+            write(6,'(3i5)') lofj(jls), mofj(jls), SymmFlags(ni)%flags(jls)
+         enddo
+         write(6,'(60(''-''),/)')
+      enddo
    endif
 !
    end subroutine calSymmetryFlags

@@ -2241,7 +2241,7 @@ contains
 !
    atname = getAlloyElementName(id_g,ia)
    ztotss = getZtot(atname)
-   zcorss = getZsem(atname)
+   zcorss = getZcor(atname)
 !
    allocate( nc(numcmax,n_spin_pola) )
    allocate( lc(numcmax,n_spin_pola) )
@@ -2690,7 +2690,7 @@ contains
 !
    atname = getAlloyElementName(id_g,ia)
    ztotss = getZtot(atname)
-   zcorss = getZsem(atname)
+   zcorss = getZcor(atname)
    zsemss = getZsem(atname)
    zvalss = getZval(atname)
    numc = getNumCoreStates(atname)
