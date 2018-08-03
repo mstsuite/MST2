@@ -11,6 +11,7 @@ program testCoreStates
    use ScfDataModule, only : n_spin_pola, n_spin_cant
    use ScfDataModule, only : istop, EvBottom, isNonRelativisticCore
    use ScfDataModule, only : ngaussr, ngaussq
+   use ScfDataModule, only : isFrozenCore
 !
    use AtomModule, only : getPhiLmax, getStepFuncLmax, getPotLmax
 !
@@ -28,6 +29,7 @@ program testCoreStates
 !
    use CoreStatesModule, only : initCoreStates, calCoreStates, endCoreStates
    use CoreStatesModule, only : readCoreStates, printCoreStates, printCoreDensity
+   use CoreStatesModule, only : readCoreDensity, writeCoreDensity
 !
    use PolyhedraModule, only : initPolyhedra, endPolyhedra
    use PolyhedraModule, only : getVolume, getInscrSphVolume
@@ -43,6 +45,10 @@ program testCoreStates
    use PotentialModule, only : readPotential
 !
    implicit   none
+!
+   logical :: FrozenCoreFileExist = .false.
+!
+   character (len=50) :: FrozenCoreFileName = 'FrozenCoreDensity.dat'
 !
    integer (kind=IntKind) :: iprint = 0
    integer (kind=IntKind) :: NumAtoms, LocalNumAtoms
@@ -133,8 +139,29 @@ program testCoreStates
 !  ===================================================================
    call readCoreStates()
 !  -------------------------------------------------------------------
-   call calCoreStates()
-!  -------------------------------------------------------------------
+   if (isFrozenCore(fcf_name=FrozenCoreFileName,fcf_exist=FrozenCoreFileExist)) then
+      if (FrozenCoreFileExist) then
+         write(6,'(/,a)')'Frozen core density is read from a file'
+!        -------------------------------------------------------------
+         call readCoreDensity(FrozenCoreFileName)
+!        -------------------------------------------------------------
+      else
+         write(6,'(/,a)')'Frozen core calculation'
+!        -------------------------------------------------------------
+         call calCoreStates()
+!        -------------------------------------------------------------
+         write(6,'(/,a)')'Frozen core density is written to a file'
+!        -------------------------------------------------------------
+         call writeCoreDensity(FrozenCoreFileName)
+!        -------------------------------------------------------------
+      endif
+   else
+      write(6,'(/,a)')'Calculate the core states'
+!     ----------------------------------------------------------------
+      call calCoreStates()
+!     ----------------------------------------------------------------
+   endif
+!
    do id = 1,LocalNumAtoms
       if (atom_print_level(id) >= 0) then
 !        -------------------------------------------------------------

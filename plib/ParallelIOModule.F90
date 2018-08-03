@@ -19,7 +19,9 @@ public :: initParallelIO,        &
           getNumOutputClients,   &  ! returns the number of procs being my clients for output
           getOutputClient,       &  ! returns a client proc for output
           isInputProc,           &
+          isInputHeadProc,       &
           isOutputProc,          &
+          isOutputHeadProc,      &
           getIOCommunicator,     &
           getMyPEinIOGroup,      &
           getNumPEsinIOGroup,    &
@@ -67,6 +69,7 @@ private
 !
    integer (kind=IntKind) :: MyProcInGroup
    integer (kind=IntKind) :: NumProcsInGroup
+   integer (kind=IntKind) :: HeadProc_read, Headproc_write
 !
    integer (kind=IntKind) :: IOCommunicator
 !
@@ -135,6 +138,10 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
+!  -------------------------------------------------------------------
+   call determineHeadProc()
+!  -------------------------------------------------------------------
+!
    end subroutine initPIO1
 !  ===================================================================
 !
@@ -154,6 +161,8 @@ contains
 !
 !  -------------------------------------------------------------------
    call setupIOClient(.true.)
+!  -------------------------------------------------------------------
+   call determineHeadProc()
 !  -------------------------------------------------------------------
 !
    end subroutine initPIO2
@@ -248,6 +257,37 @@ contains
    endif
 !
    end subroutine setupIOClient
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine determineHeadProc()
+!  ===================================================================
+   use MPPModule, only : MyPE, GlobalMax
+!
+   implicit none
+!
+   integer (kind=IntKind) :: head_proc(2)
+!
+   if ( ImInputProc ) then
+      head_proc(1) = MyPE
+   else
+      head_proc(1) = 0
+   endif
+!
+   if ( ImOutputProc ) then
+      head_proc(2) = MyPE
+   else
+      head_proc(2) = 0
+   endif
+!  -------------------------------------------------------------------
+   call GlobalMax(head_proc,2)
+!  -------------------------------------------------------------------
+   HeadProc_read = head_proc(1)
+   HeadProc_write = head_proc(2)
+!
+   end subroutine determineHeadProc
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1107,6 +1147,26 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isInputHeadProc() result(y)
+!  ===================================================================
+   use MPPMOdule, only : MyPE
+!
+   implicit none
+!
+   logical :: y
+!
+   if ( ImInputProc .and. MyPE == HeadProc_read ) then
+      y = .true.
+   else
+      y = .false.
+   endif
+!
+   end function isInputHeadProc
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function isOutputProc() result(y)
 !  ===================================================================
    implicit none
@@ -1116,6 +1176,26 @@ contains
    y = ImOutputProc
 !
    end function isOutputProc
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isOutputHeadProc() result(y)
+!  ===================================================================
+   use MPPMOdule, only : MyPE
+!
+   implicit none
+!
+   logical :: y
+!
+   if ( ImOutputProc .and. MyPE == HeadProc_write ) then
+      y = .true.
+   else
+      y = .false.
+   endif
+!
+   end function isOutputHeadProc
 !  ===================================================================
 !
 !  *******************************************************************

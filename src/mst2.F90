@@ -91,6 +91,7 @@ program mst2
    use ScfDataModule, only : isLdaCorrectionNeeded, getUJfile
    use ScfDataModule, only : getSingleSiteSolverType, getDOSrunID
    use ScfDataModule, only : NumSS_IntEs, isSSIrregularSolOn
+   use ScfDataModule, only : isFrozenCore
 !
    use PotentialTypeModule, only : initPotentialType, endPotentialType,      &
                                    isASAPotential, isMuffinTinPotential,     &
@@ -162,7 +163,7 @@ program mst2
    use RadialGridModule, only : getNumRmesh, getRmesh, getGrid
 !
    use CoreStatesModule, only : initCoreStates, calCoreStates, endCoreStates
-   use CoreStatesModule, only : readCoreStates
+   use CoreStatesModule, only : readCoreStates, readCoreDensity, writeCoreDensity
    use CoreStatesModule, only : printCoreStates, printCoreDensity
 !
    use BZoneModule, only : initBZone, printBZone, endBZone, getNumRotations, &
@@ -260,6 +261,7 @@ program mst2
    logical :: isRmtExternal = .false.
    logical :: initSystemMovie=.true.
    logical :: IsoParamVINT = .false.
+   logical :: FrozenCoreFileExist = .false.
 !
    character (len=12) :: str_stdin= 'i_lsms_stdin'
    character (len=80) :: info_table, info_path
@@ -269,6 +271,7 @@ program mst2
    character (len=10) :: exec_time
    character (len=200) :: FileName
    character (len=50) :: StorageKey
+   character (len=50) :: FrozenCoreFileName = 'FrozenCoreDensity.dat'
 !
    integer (kind=IntKind) :: MyPE, NumPEs
    integer (kind=IntKind) :: funit, funit_sysmov, en_movie
@@ -701,7 +704,7 @@ program mst2
 !!   write(6,'(12x,a)')'*                                                      *'
 !!   write(6,'(12x,a)')'*  Ab Initio Electronic Structure Calculation Package  *'
 !!   write(6,'(12x,a)')'*                                                      *'
-!!   write(6,'(12x,a)')'*                    Version 2.2                       *'
+!!   write(6,'(12x,a)')'*                    Version 2.3                       *'
 !!   write(6,'(12x,a)')'*                                                      *'
 !!   write(6,'(12x,a)')'********************************************************'
 !!   write(6,'(/)')
@@ -1145,6 +1148,13 @@ program mst2
          LocalNumValenceElectrons(i)=getZval( getLocalAtomicNumber(i) )
       enddo
 !
+      if (isFrozenCore(fcf_name=FrozenCoreFileName,fcf_exist=FrozenCoreFileExist)) then
+         if (FrozenCoreFileExist) then
+!           ----------------------------------------------------------
+            call readCoreDensity(FrozenCoreFileName)
+!           ----------------------------------------------------------
+         endif
+      endif
    endif
 !  -------------------------------------------------------------------
    call syncAllPEs()
@@ -1388,7 +1398,7 @@ program mst2
 !        =============================================================
 !        calculate the core states.
 !        =============================================================
-         if (.not.isTestPotential()) then
+         if (.not.isTestPotential() .and. .not.isFrozenCore(iter=iscf)) then
 !           ----------------------------------------------------------
             call calCoreStates(evb)
 !           ----------------------------------------------------------
@@ -1403,6 +1413,17 @@ program mst2
 !                 ----------------------------------------------------
                endif
             enddo
+         else if (isFrozenCore(iter=iscf)) then
+            if (.not.isFrozenCore(iter=iscf-1) .and. .not.FrozenCoreFileExist) then
+               call writeCoreDensity(FrozenCoreFileName)
+               FrozenCoreFileExist = .true.
+            endif
+            if (node_print_level >= 0) then
+               write(6,'(//,80(''=''))')
+               write(6,'(18x,a)')'Frozen core: core states are not recalculated'
+               write(6,'(80(''=''),/)')
+               call FlushFile(6)
+            endif
          endif
 !        =============================================================
 !        generate new evec direction and set constrain field to the

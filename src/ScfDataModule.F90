@@ -32,6 +32,7 @@ public :: initScfData,                 &
           isEmbeddedCluster,           &
           isScreenKKR_LSMS,            &
           isSingleSite,                &
+          isFrozenCore,                &
           isLloyd,                     &
           getLloydMode,                &
           getKmeshFileName,            &
@@ -153,6 +154,11 @@ public
    integer (kind=IntKind), private :: ss_solution_method = -1
    integer (kind=IntKind), private :: sss_method = 2
 !
+   logical, private :: FrozenCore = .false.
+   logical, private :: FrozenCoreFile_specified = .false.
+   integer (kind=IntKind), private :: nFrozenCore = 0
+   character (len=50), private :: FrozenCoreFile_name = ' '
+!
 contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initScfData(tbl_id)
@@ -163,9 +169,11 @@ contains
 !
    integer (kind=IntKind), intent(in) :: tbl_id
 !
-   integer (kind=IntKind) :: rstatus
+   integer (kind=IntKind) :: rstatus, n
 !
    logical :: isDefined
+!
+   character (len=50) :: s50
 !
    TableID = tbl_id
 !
@@ -312,6 +320,28 @@ contains
                         ! the switch to KKR is controled in the energy loop
    endif 
 !
+!  -------------------------------------------------------------------
+   rstatus = getKeyValue(tbl_id,'Frozen-Core Calculation',n)
+!  -------------------------------------------------------------------
+   if (rstatus /= 0) then
+      FrozenCore = .false.
+      nFrozenCore = nscf
+   else if (n < 1) then
+      FrozenCore = .false.
+      nFrozenCore = nscf
+   else
+      FrozenCore = .true.
+      nFrozenCore = n
+   endif
+!
+   if (getKeyValue(tbl_id,'Frozen-Core File Name',s50) == 0) then
+      FrozenCoreFile_name = s50
+      FrozenCoreFile_specified = .true.
+   else
+      FrozenCoreFile_name = ' '
+      FrozenCoreFile_specified = .false.
+   endif
+!
    end subroutine initScfData
 !  ===================================================================
 !
@@ -361,6 +391,47 @@ contains
    endif
 !
    end function isSingleSiteEContour
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isFrozenCore(iter,fcf_name,fcf_exist) result(fc)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in), optional :: iter
+!
+   character (len=*), intent(inout), optional :: fcf_name
+!
+   logical, intent(out), optional :: fcf_exist
+   logical :: fc
+!
+   if (present(fcf_name) .and. FrozenCoreFile_specified) then 
+      fcf_name = FrozenCoreFile_name
+   endif
+!
+   if (present(fcf_exist)) then
+      if (present(fcf_name)) then
+         inquire(file=fcf_name,exist=fcf_exist)
+      else if (FrozenCoreFile_specified) then
+         inquire(file=FrozenCoreFile_name,exist=fcf_exist)
+      else
+         call ErrorHandler('isFrozenCore','Frozen core file name is not specified')
+      endif
+   endif
+!
+   if (present(iter)) then
+      if (iter > nFrozenCore) then
+         fc = FrozenCore
+      else
+         fc = .false.
+      endif
+   else
+      fc = FrozenCore
+   endif
+!
+   end function isFrozenCore
 !  ===================================================================
 !
 !  *******************************************************************

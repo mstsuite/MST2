@@ -12,6 +12,7 @@ public :: initCoreStates,     &
           endCoreStates,      &
           calCoreStates,      &
           readCoreStates,     &
+          readCoreDensity,    &
           printCoreStates,    &
           printCoreDensity,   &
           getDeepCoreDensity, &
@@ -27,6 +28,7 @@ public :: initCoreStates,     &
           getInterstitialSemiCoreDensity,  &
           getInterstitialDeepCoreDensity,  &
           writeCoreStates,    &
+          writeCoreDensity,   &
           getCoreSplitTable,     &
           getCoreNumStatesTable, &
           getCoreDescriptionTable
@@ -786,6 +788,635 @@ contains
    maxnc_save = 0
 !
    end subroutine endCoreStates
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine readCoreDensity(fname)
+!  ===================================================================
+   use InterpolationModule, only : PolyInterp
+!
+   use MPPMOdule, only : setCommunicator, resetCommunicator,          &
+                         sendMessage, recvMessage, syncAllPEs
+!
+   use ParallelIOModule, only : isInputProc, getMyInputProc,          &
+                                getNumInputClients, getInputClient,   &
+                                getIOCommunicator, getMyPEinIOGroup,  &
+                                getNumPEsInIOGroup
+!
+   use Atom2ProcModule, only : getGlobalIndex
+!
+   implicit none
+!
+   character (len=*), intent(in) :: fname
+!
+   integer (kind=IntKind) :: integer4_size,real8_size
+   integer (kind=IntKind) :: cunit, i, id, ia, ic, ig, is, fp_pos
+   integer (kind=IntKind) :: isize, fsize, imsgbuf_size, fmsgbuf_size
+   integer (kind=IntKind) :: num_clients, proc_client, present_atom
+!
+   integer (kind=IntKind) :: MyPEinIOGroup, NumPEsInIOGroup, io_comm
+   integer (kind=IntKind) :: msgid1, msgid2
+!
+!  Assuming that the size of the core density file does not exceed 2**31 bytes.
+   integer (kind=IntKind) :: file_loc(GlobalNumAtoms+1) 
+   integer (kind=IntKind) :: block_size(2,GlobalNumAtoms)
+!
+   integer (kind=IntKind), allocatable :: imsgbuf(:)
+   integer (kind=IntKind) :: rsize, jcore, jinsc
+   integer (kind=IntKind) :: j_inter, irp, jrp, j
+!
+   real (kind=RealKind), allocatable :: fmsgbuf(:) , x_mesh(:)
+   real (kind=RealKind) :: xstart, hin, hout, vol_core, vol_coreint, rcore_mt
+   real (kind=RealKind) :: err
+!
+   logical :: Interp
+!
+!  -------------------------------------------------------------------
+   MyPEinIOGroup = getMyPEinIOGroup()
+   NumPEsInIOGroup = getNumPEsInIOGroup()
+   io_comm = getIOCommunicator()
+   call setCommunicator(io_comm,MyPEinIOGroup,NumPEsInGroup,sync=.true.)
+!  -------------------------------------------------------------------
+   call c_dtsize(integer4_size,real8_size)
+!  -------------------------------------------------------------------
+!
+   if ( isInputProc() ) then
+!     ----------------------------------------------------------------
+      call c_gopen(cunit,trim(adjustl(fname)),len_trim(adjustl(fname)), &
+                   'READ',4,'XDR',3)
+!     ----------------------------------------------------------------
+      fp_pos=1
+!     ----------------------------------------------------------------
+      call c_fseek(cunit,fp_pos,0)
+      call c_read_integer(cunit,block_size,2*GlobalNumAtoms)
+!     ----------------------------------------------------------------
+      num_clients = getNumInputClients()
+      do i = 1, num_clients
+!        -------------------------------------------------------------
+         proc_client = getInputClient(i)
+         call sendMessage(block_size,2,GlobalNumAtoms,212232,proc_client)
+!        -------------------------------------------------------------
+      enddo
+   else
+!     ----------------------------------------------------------------
+      call recvMessage(block_size,2,GlobalNumAtoms,212232,getMyInputProc())
+!     ----------------------------------------------------------------
+   endif
+!
+!  ===================================================================
+!  Determine the address of the core density data for each atomic site
+!  in the core density file.
+!  ===================================================================
+   imsgbuf_size = 0
+   fmsgbuf_size = 0
+   do ig = 1, GlobalNumAtoms
+      file_loc(ig) = block_size(1,ig)*integer4_size + block_size(2,ig)*real8_size
+      imsgbuf_size = max(block_size(1,ig),imsgbuf_size)
+      fmsgbuf_size = max(block_size(2,ig),fmsgbuf_size)
+   enddo
+   do ig = 2, GlobalNumAtoms
+      file_loc(ig) = file_loc(ig) + file_loc(ig-1)
+   enddo
+   do ig = GlobalNumAtoms+1, 2, -1
+      file_loc(ig) = file_loc(ig-1) + 1
+   enddo
+   file_loc(1) = 1
+   file_loc = file_loc + 2*GlobalNumAtoms*integer4_size
+!
+   allocate(imsgbuf(imsgbuf_size), fmsgbuf(fmsgbuf_size))
+   do id = 1, LocalNumAtoms
+      ig = getGlobalIndex(id)
+      if ( isInputProc() ) then
+!        =============================================================
+!        read in the core density data...................................
+!        =============================================================
+         fp_pos=file_loc(ig)
+!        -------------------------------------------------------------
+         call c_fseek(cunit,fp_pos,0)
+         call c_read_integer(cunit,imsgbuf,block_size(1,ig))
+!        -------------------------------------------------------------
+         fp_pos = fp_pos + block_size(1,ig)*integer4_size
+!        -------------------------------------------------------------
+         call c_fseek(cunit,fp_pos,0)
+         call c_read_double(cunit,fmsgbuf,block_size(2,ig))
+!        -------------------------------------------------------------
+!
+         num_clients = getNumInputClients()
+         do i = 1, num_clients
+            proc_client = getInputClient(i)
+            present_atom = getGlobalIndex(id,proc_client)
+            fp_pos=file_loc(present_atom)
+!           ----------------------------------------------------------
+            call c_fseek(cunit,fp_pos,0)
+            call c_read_integer(cunit,imsgbuf,block_size(1,present_atom))
+!           ----------------------------------------------------------
+            fp_pos = fp_pos + block_size(1,present_atom)*integer4_size
+!           ----------------------------------------------------------
+            call c_fseek(cunit,fp_pos,0)
+            call c_read_double(cunit,fmsgbuf,block_size(2,present_atom))
+!           ----------------------------------------------------------
+            call sendMessage(imsgbuf,block_size(1,present_atom),212233,proc_client)
+            call sendMessage(fmsgbuf,block_size(2,present_atom),212234,proc_client)
+!           ----------------------------------------------------------
+         enddo
+      else
+!        -------------------------------------------------------------
+         call recvMessage(imsgbuf,block_size(1,ig),212233,getMyInputProc())
+         call recvMessage(fmsgbuf,block_size(2,ig),212234,getMyInputProc())
+!        -------------------------------------------------------------
+      endif
+!
+!     ================================================================
+!     Restore the data read in from the core density file.
+!     ================================================================
+      if (imsgbuf(1) /= ig) then
+         call ErrorHandler('readCoreDensity','Inconsistent global index',imsgbuf(1),ig)
+      endif
+      if (Core(id)%NumSpecies /= imsgbuf(2)) then
+         call ErrorHandler('readCoreDensity','Inconsistent number of species',imsgbuf(2),Core(id)%NumSpecies)
+      endif
+      Core(id)%MaxNumc = imsgbuf(3)
+      rsize = imsgbuf(4)
+      jcore = imsgbuf(5)
+      jinsc = imsgbuf(6)
+      isize = 6
+!
+      xstart = fmsgbuf(1)
+      hin = fmsgbuf(2)
+      hout = fmsgbuf(3)
+      vol_core = fmsgbuf(4)
+      vol_coreint = fmsgbuf(5)
+      rcore_mt = fmsgbuf(6)
+      fsize = 6
+!
+!
+!     ================================================================
+!     In case the radial grid associated with the core density data differs
+!     from the current radial grid, we need to interpolate the data onto
+!     the current radial grid. 
+!     ================================================================
+      if (abs(xstart-Core(id)%Grid%xstart) > TEN2m6 .or.              &
+          abs(hin-Core(id)%Grid%hin) > TEN2m6 .or.                    &
+          abs(hout-Core(id)%Grid%hout) > TEN2m6 .or.                  &
+          abs(rcore_mt-Core(id)%rcore_mt) > TEN2m6 .or.               &
+          jinsc /= Core(id)%Grid%jinsc .or.                           &
+          rsize /= Core(id)%rsize) then
+!        =============================================================
+!        generate radial grid for the Core density read-in ...........
+!        =============================================================
+         allocate(x_mesh(rsize))
+!        -------------------------------------------------------------
+         call dcopy(rsize,fmsgbuf(fsize+1),1,x_mesh,1)
+!        -------------------------------------------------------------
+         do j=1, rsize
+            x_mesh(j)=log(x_mesh(j))
+         enddo
+!
+!        =============================================================
+!        interpolate core density onto the existing radial mesh ......
+!        =============================================================
+         if (rsize < n_inter) then
+!           ----------------------------------------------------------
+            call ErrorHandler('readCoreDensity','rsize < n_inter',rsize,n_inter)
+!           ----------------------------------------------------------
+         endif
+         Interp = .true.
+      else
+!        -------------------------------------------------------------
+         call dcopy(rsize,fmsgbuf(fsize+1),1,Core(id)%r_mesh,1)
+!        -------------------------------------------------------------
+         fsize = fsize + rsize
+         Interp = .false.
+      endif
+!
+      do ia = 1, Core(id)%NumSpecies
+         Core(id)%numc_below(ia) = imsgbuf(isize+1)
+         Core(id)%numc(ia) = imsgbuf(isize+2)
+         isize = isize + 2
+         do ic = 1, Core(id)%numc(ia)
+            Core(id)%nc(ic,ia) = imsgbuf(isize+1)
+            Core(id)%lc(ic,ia) = imsgbuf(isize+2)
+            Core(id)%kc(ic,ia) = imsgbuf(isize+3)
+            isize = isize + 3
+         enddo
+!
+         do is = 1, n_spin_pola
+            Core(id)%ecorv(is,ia) = fmsgbuf(fsize+1)
+            Core(id)%esemv(is,ia) = fmsgbuf(fsize+2)
+            Core(id)%core_ke(is,ia) = fmsgbuf(fsize+3)
+            Core(id)%semi_ke(is,ia) = fmsgbuf(fsize+4)
+            fsize = fsize + 4
+         enddo
+         Core(id)%ztotss(ia) = fmsgbuf(fsize+1)
+         Core(id)%zsemss(ia) = fmsgbuf(fsize+2)
+         Core(id)%zcorss(ia) = fmsgbuf(fsize+3)
+         Core(id)%qcpsc_mt(ia) = fmsgbuf(fsize+4)
+         Core(id)%qcpsc_ws(ia) = fmsgbuf(fsize+5)
+         Core(id)%mcpsc_mt(ia) = fmsgbuf(fsize+6)
+         Core(id)%mcpsc_ws(ia) = fmsgbuf(fsize+7)
+         Core(id)%qsemmt(ia) = fmsgbuf(fsize+8)
+         Core(id)%qcormt(ia) = fmsgbuf(fsize+9)
+         Core(id)%qsemws(ia) = fmsgbuf(fsize+10)
+         Core(id)%qcorws(ia) = fmsgbuf(fsize+11)
+         Core(id)%qcorout(ia) = fmsgbuf(fsize+12)
+         fsize = fsize + 12
+         do is = 1, n_spin_pola
+            do ic = 1, Core(id)%numc(ia)
+               Core(id)%ec(ic,is,ia) = fmsgbuf(fsize+1)
+               fsize = fsize + 1
+            enddo
+            if (Interp) then
+               j_inter=1
+               do j=1, Core(id)%rsize
+!                 -------------------------------------------------------
+                  call hunt(rsize,x_mesh,Core(id)%Grid%x_mesh(j),j_inter)
+!                 -------------------------------------------------------
+                  if (j_inter > rsize-(n_inter-1)/2) then
+                     irp=rsize-n_inter+1
+                  else if (2*j_inter+1 > n_inter) then
+                     irp=j_inter-(n_inter-1)/2
+                  else
+                     irp=1
+                  endif
+                  jrp = fsize + irp
+!                 ----------------------------------------------------
+                  call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),  &
+                                  fmsgbuf(jrp:jrp+n_inter-1),         &
+                                  Core(id)%Grid%x_mesh(j),Core(id)%corden(j,is,ia),err)
+!                 ----------------------------------------------------
+                  jrp = jrp + rsize
+!                 ----------------------------------------------------
+                  call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),  &
+                                  fmsgbuf(jrp:jrp+n_inter-1),         &
+                                  Core(id)%Grid%x_mesh(j),Core(id)%semden(j,is,ia),err)
+!                 ----------------------------------------------------
+               enddo
+               fsize = fsize + 2*rsize
+            else
+!              -------------------------------------------------------
+               call dcopy(rsize,fmsgbuf(fsize+1),1,Core(id)%corden(1,is,ia),1)
+!              -------------------------------------------------------
+               fsize = fsize + rsize
+!              -------------------------------------------------------
+               call dcopy(rsize,fmsgbuf(fsize+1),1,Core(id)%semden(1,is,ia),1)
+!              -------------------------------------------------------
+               fsize = fsize + rsize
+            endif
+         enddo
+      enddo
+!
+      if (Interp) then
+         deallocate(x_mesh)
+      endif
+   enddo
+!
+   if( isInputProc() ) then
+      call c_close(cunit)
+   endif
+!
+   call resetCommunicator()
+!
+   deallocate(imsgbuf, fmsgbuf)
+!
+   end subroutine readCoreDensity
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine writeCoreDensity(fname)
+!  ===================================================================
+   use MPPModule, only : MyPE, GlobalSum, setCommunicator, resetCommunicator
+   use MPPModule, only : nbsendMessage, recvMessage, waitMessage
+!
+   use ParallelIOModule, only : isOutputProc, getMyOutputProc,        &
+                                getNumOutputClients, getOutputClient, &
+                                getIOCommunicator, getMyPEinIOGroup,  &
+                                getNumPEsInIOGroup, isOutputHeadProc
+!
+   use Atom2ProcModule, only : getGlobalIndex
+!
+   implicit none
+!
+   character (len=*), intent(in) :: fname
+!
+   integer (kind=IntKind) :: integer4_size,real8_size
+   integer (kind=IntKind) :: cunit, i, id, ia, ic, ig, is, fp_pos
+   integer (kind=IntKind) :: isize, fsize, imsgbuf_size, fmsgbuf_size
+   integer (kind=IntKind) :: num_clients, proc_client, present_atom
+!
+   integer (kind=IntKind) :: MyPEinIOGroup, NumPEsInIOGroup, io_comm
+   integer (kind=IntKind) :: msgid1, msgid2
+!
+!  Assuming that the size of the core density file does not exceed 2**31 bytes.
+   integer (kind=IntKind) :: file_loc(GlobalNumAtoms+1) 
+   integer (kind=IntKind) :: block_size(2,GlobalNumAtoms)
+!
+   integer (kind=IntKind), allocatable :: imsgbuf(:)
+!
+   real (kind=RealKind), allocatable :: fmsgbuf(:) 
+!
+   if (getMyOutputProc() < 0) then
+      return
+   endif
+!
+   MyPEinIOGroup = getMyPEinIOGroup()
+   NumPEsInIOGroup = getNumPEsInIOGroup()
+   io_comm = getIOCommunicator()
+   call setCommunicator(io_comm,MyPEinIOGroup,NumPEsInGroup,sync=.true.)
+!
+!  -------------------------------------------------------------------
+   call c_dtsize(integer4_size,real8_size)
+!  -------------------------------------------------------------------
+!
+   if ( isOutputProc() ) then
+!     ----------------------------------------------------------------
+      call c_gopen(cunit,trim(adjustl(fname)),len_trim(adjustl(fname)), &
+                   'WRITE',5,'XDR',3)
+!     ----------------------------------------------------------------
+   endif
+!
+!  ===================================================================
+!  Determine the total bytes of the core density data contributed by 
+!  each atomic sites...
+!  ===================================================================
+   block_size = 0
+   imsgbuf_size = 0
+   fmsgbuf_size = 0
+   do id = 1, LocalNumAtoms
+!     ================================================================
+!     The following data are to be stored
+!
+!     integer :: GlobalIndex
+!     integer :: Core(id)%NumSpecies
+!     integer :: Core(id)%MaxNumc
+!     integer :: Core(id)%rsize
+!     integer :: Core(id)%jcore
+!     integer :: Core(id)%Grid%jinsc
+!     real (kind=RealKind) :: Core(id)%Grid%xstart
+!     real (kind=RealKind) :: Core(id)%Grid%hin
+!     real (kind=RealKind) :: Core(id)%Grid%hout
+!     real (kind=RealKind) :: Core(id)%vol_core
+!     real (kind=RealKind) :: Core(id)%vol_coreint
+!     real (kind=RealKind) :: Core(id)%rcore_mt
+!     ================================================================
+      ig = getGlobalIndex(id)
+!     file_loc(ig) = file_loc(ig) + 6*integer4_size + 6*real8_size
+      isize = 6
+      fsize = 6
+!
+!     ================================================================
+!     The following data are to be stored
+!     real (kind=RealKind) :: Core(id)%r_mesh(:)
+!     ================================================================
+      fsize = fsize + Core(id)%rsize
+!
+      do ia = 1, Core(id)%NumSpecies
+!        =============================================================
+!        The following data are to be stored
+!
+!        integer :: Core(id)%numc_below(ia)
+!        integer :: Core(id)%numc(ia)
+!        real (kind=RealKind) :: Core(id)%ecorv(:,:)
+!        real (kind=RealKind) :: Core(id)%esemv(:,:)
+!        real (kind=RealKind) :: Core(id)%core_ke(:,:)
+!        real (kind=RealKind) :: Core(id)%semi_ke(:,:)
+!        real (kind=RealKind) :: Core(id)%ztotss(:)
+!        real (kind=RealKind) :: Core(id)%zsemss(:)
+!        real (kind=RealKind) :: Core(id)%zcorss(:)
+!        real (kind=RealKind) :: Core(id)%qcpsc_mt(:)
+!        real (kind=RealKind) :: Core(id)%qcpsc_ws(:)
+!        real (kind=RealKind) :: Core(id)%mcpsc_mt(:)
+!        real (kind=RealKind) :: Core(id)%mcpsc_ws(:)
+!        real (kind=RealKind) :: Core(id)%qsemmt(:)
+!        real (kind=RealKind) :: Core(id)%qcormt(:)
+!        real (kind=RealKind) :: Core(id)%qsemws(:)
+!        real (kind=RealKind) :: Core(id)%qcorws(:)
+!        real (kind=RealKind) :: Core(id)%qcorout(:)
+!        =============================================================
+!        file_loc(ig) = file_loc(ig) + 2*integer4_size + (n_spin_pola*4+12)*real8_size
+         isize = isize + 2
+         fsize = fsize + (n_spin_pola*4+12)
+!
+         do ic = 1, Core(id)%numc(ia)
+!           ==========================================================
+!           The following data are to be stored
+!
+!           integer :: Core(id)%nc(:,:)
+!           integer :: Core(id)%lc(:,:)
+!           integer :: Core(id)%kc(:,:)
+!           real (kind=RealKind) :: Core(id)%ec(:,:,:)
+!           ==========================================================
+!           file_loc(ig) = file_loc(ig) + 3*integer4_size + n_spin_pola*real8_size
+            isize = isize + 3
+            fsize = fsize + n_spin_pola
+         enddo
+!        =============================================================
+!        The following data are to be stored
+!
+!        real (kind=RealKind) :: Core(id)%corden(:,:,:)
+!        real (kind=RealKind) :: Core(id)%semden(:,:,:)
+!        =============================================================
+!        file_loc(ig) = file_loc(ig) + 2*Core(id)%rsize*n_spin_pola*real8_size
+         fsize = fsize + 2*Core(id)%rsize*n_spin_pola
+      enddo
+      imsgbuf_size = max(isize,imsgbuf_size)
+      fmsgbuf_size = max(fsize,fmsgbuf_size)
+      block_size(1,ig) = isize
+      block_size(2,ig) = fsize
+   enddo
+!  -------------------------------------------------------------------
+   call GlobalSum(block_size,2,GlobalNumAtoms)
+!  -------------------------------------------------------------------
+!
+!  ===================================================================
+!  The first piece of information is written which records the size of 
+!  the core density data for each atomic site. This information will be
+!  used to determine the location of the core density data of an atomic 
+!  site when the file is read.
+!  ===================================================================
+   if ( isOutputHeadProc() ) then
+      fp_pos = 1
+!     ----------------------------------------------------------------
+      call c_fseek(cunit,fp_pos,0)
+      call c_write_integer(cunit,block_size,2*GlobalNumAtoms)
+!     ----------------------------------------------------------------
+   endif
+!
+!  ===================================================================
+!  Determine the address of the core density data for each atomic site
+!  in the core density file.
+!  ===================================================================
+   do ig = 1, GlobalNumAtoms
+      file_loc(ig) = block_size(1,ig)*integer4_size + block_size(2,ig)*real8_size
+   enddo
+   do ig = 2, GlobalNumAtoms
+      file_loc(ig) = file_loc(ig) + file_loc(ig-1)
+   enddo
+   do ig = GlobalNumAtoms+1, 2, -1
+      file_loc(ig) = file_loc(ig-1) + 1
+   enddo
+   file_loc(1) = 1
+   file_loc = file_loc + 2*GlobalNumAtoms*integer4_size
+!  ===================================================================
+!
+!  ===================================================================
+!  Store integer datat in imsgbuf, real data in fmsgbuf, and write them
+!  to the core density file.
+!  ===================================================================
+   allocate(imsgbuf(imsgbuf_size), fmsgbuf(fmsgbuf_size))
+   do id = 1, LocalNumAtoms
+      ig = getGlobalIndex(id)
+      imsgbuf(1) = ig
+      imsgbuf(2) = Core(id)%NumSpecies
+      imsgbuf(3) = Core(id)%MaxNumc
+      imsgbuf(4) = Core(id)%rsize
+      imsgbuf(5) = Core(id)%jcore
+      imsgbuf(6) = Core(id)%Grid%jinsc
+      isize = 6
+!
+      fmsgbuf(1) = Core(id)%Grid%xstart
+      fmsgbuf(2) = Core(id)%Grid%hin
+      fmsgbuf(3) = Core(id)%Grid%hout
+      fmsgbuf(4) = Core(id)%vol_core
+      fmsgbuf(5) = Core(id)%vol_coreint
+      fmsgbuf(6) = Core(id)%rcore_mt
+      fsize = 6
+!
+!     ----------------------------------------------------------------
+      call dcopy(Core(id)%rsize,Core(id)%r_mesh,1,fmsgbuf(fsize+1),1)
+!     ----------------------------------------------------------------
+      fsize = fsize + Core(id)%rsize
+!
+      do ia = 1, Core(id)%NumSpecies
+         imsgbuf(isize+1) = Core(id)%numc_below(ia)
+         imsgbuf(isize+2) = Core(id)%numc(ia)
+         isize = isize + 2
+         do ic = 1, Core(id)%numc(ia)
+            imsgbuf(isize+1) = Core(id)%nc(ic,ia)
+            imsgbuf(isize+2) = Core(id)%lc(ic,ia)
+            imsgbuf(isize+3) = Core(id)%kc(ic,ia)
+            isize = isize + 3
+         enddo
+!
+         do is = 1, n_spin_pola
+            fmsgbuf(fsize+1) = Core(id)%ecorv(is,ia)
+            fmsgbuf(fsize+2) = Core(id)%esemv(is,ia)
+            fmsgbuf(fsize+3) = Core(id)%core_ke(is,ia)
+            fmsgbuf(fsize+4) = Core(id)%semi_ke(is,ia)
+            fsize = fsize + 4
+         enddo
+         fmsgbuf(fsize+1) = Core(id)%ztotss(ia)
+         fmsgbuf(fsize+2) = Core(id)%zsemss(ia)
+         fmsgbuf(fsize+3) = Core(id)%zcorss(ia)
+         fmsgbuf(fsize+4) = Core(id)%qcpsc_mt(ia)
+         fmsgbuf(fsize+5) = Core(id)%qcpsc_ws(ia)
+         fmsgbuf(fsize+6) = Core(id)%mcpsc_mt(ia)
+         fmsgbuf(fsize+7) = Core(id)%mcpsc_ws(ia)
+         fmsgbuf(fsize+8) = Core(id)%qsemmt(ia)
+         fmsgbuf(fsize+9) = Core(id)%qcormt(ia)
+         fmsgbuf(fsize+10) = Core(id)%qsemws(ia)
+         fmsgbuf(fsize+11) = Core(id)%qcorws(ia)
+         fmsgbuf(fsize+12) = Core(id)%qcorout(ia)
+         fsize = fsize + 12
+         do is = 1, n_spin_pola
+            do ic = 1, Core(id)%numc(ia)
+               fmsgbuf(fsize+1) = Core(id)%ec(ic,is,ia)
+               fsize = fsize + 1
+            enddo
+!           ----------------------------------------------------------
+            call dcopy(Core(id)%rsize,Core(id)%corden(1,is,ia),1,fmsgbuf(fsize+1),1)
+!           ----------------------------------------------------------
+            fsize = fsize + Core(id)%rsize
+!           ----------------------------------------------------------
+            call dcopy(Core(id)%rsize,Core(id)%semden(1,is,ia),1,fmsgbuf(fsize+1),1)
+!           ----------------------------------------------------------
+            fsize = fsize + Core(id)%rsize
+         enddo
+      enddo
+      if (isize > imsgbuf_size) then
+!        -------------------------------------------------------------
+         call ErrorHandler('writeCoreDensity','integer data size > buffer size')
+!        -------------------------------------------------------------
+      else if (fsize > fmsgbuf_size) then
+!        -------------------------------------------------------------
+         call ErrorHandler('writeCoreDensity','Reral data size > buffer size')
+!        -------------------------------------------------------------
+      else if (isize /= block_size(1,ig)) then
+!        -------------------------------------------------------------
+         call ErrorHandler('writeCoreDensity','Inconsistent integer data size')
+!        -------------------------------------------------------------
+      else if (fsize /= block_size(2,ig)) then 
+!        -------------------------------------------------------------
+         call ErrorHandler('writeCoreDensity','Inconsistent real data size')
+!        -------------------------------------------------------------
+      else if (fsize*real8_size+isize*integer4_size /= file_loc(ig+1)-file_loc(ig)) then
+!        -------------------------------------------------------------
+         call ErrorHandler('writeCoreDensity','Inconsistent data location and size')
+!        -------------------------------------------------------------
+      endif
+!
+      if ( isOutputProc() ) then
+!        =============================================================
+!        write out imsgbuf of the present local atom..................
+!        =============================================================
+         fp_pos=file_loc(ig)
+!        -------------------------------------------------------------
+         call c_fseek(cunit,fp_pos,0)
+         call c_write_integer(cunit,imsgbuf,isize)
+!        -------------------------------------------------------------
+         fp_pos = fp_pos + isize*integer4_size
+!        -------------------------------------------------------------
+         call c_fseek(cunit,fp_pos,0)
+         call c_write_double(cunit,fmsgbuf,fsize)
+!        -------------------------------------------------------------
+!
+         num_clients = getNumOutputClients()
+         do i = 1, num_clients
+            proc_client = getOutputClient(i)
+            present_atom = getGlobalIndex(id,proc_client)
+!           ==========================================================
+!           Receive clients data
+!           ----------------------------------------------------------
+            call recvMessage(imsgbuf,block_size(1,present_atom),112233,proc_client)
+            call recvMessage(fmsgbuf,block_size(2,present_atom),112234,proc_client)
+!           ----------------------------------------------------------
+!
+!           ==========================================================
+!           Write clients data
+!           ==========================================================
+            fp_pos=file_loc(present_atom)
+!           ----------------------------------------------------------
+            call c_fseek(cunit,fp_pos,0)
+            call c_write_integer(cunit,imsgbuf,isize)
+!           ----------------------------------------------------------
+            fp_pos = fp_pos + isize*integer4_size
+!           ----------------------------------------------------------
+            call c_fseek(cunit,fp_pos,0)
+            call c_write_double(cunit,fmsgbuf,fsize)
+!           ----------------------------------------------------------
+         enddo
+      else
+!        -------------------------------------------------------------
+         msgid1 = nbsendMessage(imsgbuf,isize,112233,getMyOutputProc())
+         msgid2 = nbsendMessage(fmsgbuf,fsize,112234,getMyOutputProc())
+         call waitMessage(msgid1)
+         call waitMessage(msgid2)
+!        -------------------------------------------------------------
+      endif
+   enddo
+!
+   if( isOutputProc() ) then
+      call c_close(cunit)
+   endif
+!
+   call resetCommunicator()
+!
+   deallocate(imsgbuf, fmsgbuf)
+!
+   end subroutine writeCoreDensity
 !  ===================================================================
 !
 !  *******************************************************************
