@@ -1347,6 +1347,7 @@ contains
    implicit none
 !
    logical :: useIrregularSolution = .true.
+   logical :: isContourInitialized = .false.
 !
    integer (kind=IntKind) :: id, BadFermiEnergy, is, info(3), ns
    integer (kind=IntKind), parameter :: MaxIterations = 20
@@ -1367,15 +1368,23 @@ contains
 !  ===================================================================
 !  Initialize the enegy contour module
 !  ===================================================================
+   isContourInitialized = .false.
    if (isReadEmesh()) then
 !     ----------------------------------------------------------------
       call initContour(getEmeshFileName(), stop_routine, max_print_level)
 !     ----------------------------------------------------------------
-   else
+      isContourInitialized = .true.
+      if (node_print_level >= 0) then
+!        -------------------------------------------------------------
+         call printContour()
+!        -------------------------------------------------------------
+      endif
+   else if (.not.isSingleSiteCluster .or. useIrregularSolution) then
 !     ----------------------------------------------------------------
       call initContour( ContourType, eGridType, NumEs, stop_routine,  &
                         maxval(print_level(1:LocalNumAtoms)), .true. )
 !     ----------------------------------------------------------------
+      isContourInitialized = .true.
 !
 !     ================================================================
 !     set up the enegy contour that ends at (efermi,0) for Gaussian grids
@@ -1385,12 +1394,11 @@ contains
 !     ----------------------------------------------------------------
       call setupContour( ErBottom, efermi, EiBottom, EiTop, Temperature)
 !     ----------------------------------------------------------------
-   endif
-!
-   if (node_print_level >= 0) then
-!     ----------------------------------------------------------------
-      call printContour()
-!     ----------------------------------------------------------------
+      if (node_print_level >= 0) then
+!        -------------------------------------------------------------
+         call printContour()
+!        -------------------------------------------------------------
+      endif
    endif
 !
    do id =  1,LocalNumAtoms
@@ -1408,9 +1416,12 @@ contains
  !    call calSingleScatteringIDOS(LowerContour=.true.)
 !!    ----------------------------------------------------------------
  ! else
-!  -------------------------------------------------------------------
-   call calMultipleScatteringIDOS(useIrregularSolution)
-!  -------------------------------------------------------------------
+   if (.not.isSingleSiteCluster .or. useIrregularSolution) then
+!     ----------------------------------------------------------------
+      call calMultipleScatteringIDOS(useIrregularSolution)
+!     ----------------------------------------------------------------
+   endif
+!
    if ( node_print_level >= 0) then
       write(6,'(/,a)')'The IDOS of the MS term'
       do id =  1,LocalNumAtoms
@@ -1745,9 +1756,12 @@ contains
 !
 !  ===================================================================
 !  end Energy contour modules
-!  -------------------------------------------------------------------
-   call endContour()
-!  -------------------------------------------------------------------
+!  ===================================================================
+   if (isContourInitialized) then
+!     ----------------------------------------------------------------
+      call endContour()
+!     ----------------------------------------------------------------
+   endif
 !
    if (stop_routine == 'calIntegratedDOS') then
       call syncAllPEs()

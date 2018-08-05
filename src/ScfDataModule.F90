@@ -120,9 +120,8 @@ public
    integer (kind=IntKind) :: NumKMeshs
    integer (kind=IntKind) :: kGenScheme
    integer (kind=IntKind), allocatable :: Kdiv(:,:)
-   integer (kind=IntKind) :: ChargeSymmetry = 1
+   integer (kind=IntKind) :: ChargeSymmetry = 0
    integer (kind=IntKind) :: Symmetrize
-   integer (kind=IntKind) :: q_symm
    integer (kind=IntKind) :: Lloyd = 0
    integer (kind=IntKind) :: LloydMode = 1
    integer (kind=IntKind) :: TableID
@@ -202,7 +201,7 @@ contains
    rstatus = getKeyValue(tbl_id,'Other RMS Tol (> 0)',rmstol)
    rstatus = getKeyValue(tbl_id,'Val. Electron Rel (>= 0)',nrelv)
    rstatus = getKeyValue(tbl_id,'Core Electron Rel (>= 0)',nrelc)
-   rstatus = getKeyValue(tbl_id,'Charge Symmetry (>=0)',q_symm)
+   rstatus = getKeyValue(tbl_id,'Charge Symmetry (>=0)',ChargeSymmetry)
    rstatus = getKeyValue(tbl_id,'Single Site Solver (>= 0)',ss_solver_type)
    rstatus = getKeyValue(tbl_id,'SS Integration Method (>=0)',ss_integral_method)
    rstatus = getKeyValue(tbl_id,'SS Solutions Method (>=0)',ss_solution_method)
@@ -1192,7 +1191,7 @@ contains
 !
    logical :: c
 !
-   if ( q_symm == ChargeSymmetry ) then
+   if ( ChargeSymmetry == 1 ) then
       c = .true.
    else
       c = .false.

@@ -52,7 +52,7 @@ subroutine setupLizNeighbor(print_level)
    integer (kind=IntKind), allocatable :: index_mn(:)
 !
    real (kind=RealKind) :: posl(3), posg(3)
-   real (kind=RealKind) :: x0, y0, z0, x, y, z, rcut
+   real (kind=RealKind) :: x0, y0, z0, x, y, z, rcut, rcut_max
    real (kind=RealKind) :: r, r1, r2, r3, bk1, bk2, bk3, p, scaling
    real (kind=RealKind) :: rs(MaxLizShells)
    real (kind=RealKind) :: brav(3,3)
@@ -85,7 +85,8 @@ subroutine setupLizNeighbor(print_level)
 !
       ig = getGlobalIndex(id)
       posl(1:3) = getLocalAtomPosition(id)
-      rcut = LizLmax%rad
+      rcut_max = LizLmax%rad
+      rcut = TEN2m6
       LizAtoms_max = LizLmax%nmax
 !
 !     ================================================================
@@ -93,17 +94,17 @@ subroutine setupLizNeighbor(print_level)
 !     brav(:,2), and brav(:,3) directions.
 !     ================================================================
       p = abs( posl(1)*brav(1,1)+posl(2)*brav(2,1)+posl(3)*brav(3,1) )/r1
-      n1min = -ceiling((rcut+p)/r1)
+      n1min = -ceiling((rcut_max+p)/r1)
       n1max = -n1min               ! floor((LizLmax%rad+p)/r1)
       p = abs( posl(1)*brav(1,2)+posl(2)*brav(2,2)+posl(3)*brav(3,2) )/r2
-      n2min = -ceiling((rcut+p)/r2)
+      n2min = -ceiling((rcut_max+p)/r2)
       n2max = -n2min               ! floor((LizLmax%rad+p)/r2)
       p = abs( posl(1)*brav(1,3)+posl(2)*brav(2,3)+posl(3)*brav(3,3) )/r3
-      n3min = -ceiling((rcut+p)/r3)
+      n3min = -ceiling((rcut_max+p)/r3)
       n3max = -n3min               ! floor((LizLmax%rad+p)/r3)
 !     ================================================================
 !     Check to make sure that there are enough cell shifts (aka repeats)
-!     to catch all of the neighbors closer than rcut
+!     to catch all of the neighbors closer than rcut_max
 !     ================================================================
       vecCount = 0
       vecCount_sav = 0
@@ -125,7 +126,7 @@ subroutine setupLizNeighbor(print_level)
                      y    = y0 + bk2
                      z    = z0 + bk3
                      r = sqrt( x*x + y*y + z*z )
-                     if(r <= rcut+ten2m8) then
+                     if(r <= rcut_max+ten2m8) then
                         vecCount = vecCount+1
                      endif
                   enddo
@@ -209,7 +210,7 @@ subroutine setupLizNeighbor(print_level)
 !                                                 (z+posl(3))/scaling
 !                 endif
 !                 write(6,'(50(''-''))')
-               else if ( r <= rcut+ten2m8 ) then
+               else if ( r <= rcut_max+ten2m8 ) then
                   do js = 1, ns
                      if (abs(r - rs(js)) < TEN2m6) then
                         nas(js) = nas(js)+1
@@ -233,7 +234,7 @@ subroutine setupLizNeighbor(print_level)
          na = 0
          Loop_js: do js = 1,ns
             na = na+nas(indx(js))
-            if ( na <= LizAtoms_max+1) then
+            if ( na <= LizAtoms_max ) then
                rcut = rs(js)
             else
                rcut = rcut+0.001d0

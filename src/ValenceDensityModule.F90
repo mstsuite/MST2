@@ -2038,6 +2038,7 @@ contains
       do jl = 1, jmax_rho
          if ( flags_jl(jl) ==0 ) then
             Density(id)%rho_l(1:NumRs,jl) = CZERO
+            Density(id)%DenCompFlag(jl) = 0
          else if ( flags_jl(jl) == 1 ) then
             do ir = 1,NumRs
                rho_r = real( Density(id)%rho_l(ir,jl), kind=RealKind )
