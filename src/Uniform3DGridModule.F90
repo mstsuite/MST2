@@ -471,7 +471,17 @@ contains
 !            set max_rc=radius+2*step_len. This may need to be re-examined
 !            in the future.
 !     ================================================================
-      max_rc = radius(ia) + 2*max(step_a_len,step_b_len,step_c_len)
+      max_rc = ZERO
+      do k = -1, 1
+         do j = -1, 1
+            do i = -1, 1
+               rv = i*pUG%grid_step_a+j*pUG%grid_step_b+k*pUG%grid_step_c
+               max_rc = max(max_rc,getVecLength(3,rv))
+            enddo
+         enddo
+      enddo
+      max_rc = radius(ia) + max_rc + TEN2m6
+!     max_rc = radius(ia) + 2*max(step_a_len,step_b_len,step_c_len)
 !
 !     ================================================================
 !     Determine the projection of the atom position onto the three cell
