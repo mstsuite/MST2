@@ -734,13 +734,14 @@ contains
 !           ----------------------------------------------------------
          endif
          if ( print_level(id)>=0 ) then
-            write(6,'(a,2(1x,f12.8))') "ChargeDensity:: R_pseudo/R_mt :: input = ", r_ps/r_mesh(jmt), r_ps
+            write(6,'(/,a,2(1x,f12.8))') "ChargeDensity:: Input:  R_pseudo/R_mt, R_pseudo = ", &
+                  r_ps/r_mesh(jmt), r_ps
          endif
          p_CDL%NumRpts_Pseudo = ir
          p_CDL%RcutPseudo = p_CDL%r_mesh(ir)
          if ( print_level(id)>=0 ) then
-            write(6,'(a,2(1x,f12.8))') "ChargeDensity:: R_pseudo/R_mt :: true  = ", &
-                       p_CDL%RcutPseudo/p_CDL%r_mesh(jmt), p_CDL%RcutPseudo
+            write(6,'(a,i5,2(1x,f12.8))')"ChargeDensity:: Actual: ir-pseudo, R_pseudo/R_mt, R_pseudo = ", &
+                     p_CDL%NumRpts_Pseudo, p_CDL%RcutPseudo/p_CDL%r_mesh(jmt), p_CDL%RcutPseudo
          endif
 !
          jmax = p_CDL%jmax
@@ -2287,7 +2288,7 @@ contains
          write(6,'(80(''-''),/)')
       endif
 !
-      if ( print_level(1) >= 1 ) then
+      if ( print_level(1) >= 0 ) then
          call printMultipoleMom()
       endif
 !
@@ -2385,26 +2386,29 @@ contains
       r_mesh => p_CDL%r_mesh(1:NumRs)
 !
       if (rho_type(1:5)=="ValPs") then
-         do ia = 1, p_CDL%NumSpecies
-            do jl = 1,jmax
-               p_CDL%rhoL_ValPseudo(1:NumRs,jl,ia) = p_CDL%rhoL_Valence(1:NumRs,jl,ia)
-            enddo
-         enddo
-         rhol => p_CDL%rhoL_Valence(1:NumRs,1:jmax,1:p_CDL%NumSpecies)
+!        do ia = 1, p_CDL%NumSpecies
+!           do jl = 1,jmax
+!              p_CDL%rhoL_ValPseudo(1:NumRs,jl,ia) = p_CDL%rhoL_Valence(1:NumRs,jl,ia)
+!           enddo
+!        enddo
+         p_CDL%rhoL_ValPseudo = p_CDL%rhoL_Valence
+!        rhol => p_CDL%rhoL_Valence(1:NumRs,1:jmax,1:p_CDL%NumSpecies)
+         rhol => p_CDL%rhoL_Valence
       else
-         do ia = 1, p_CDL%NumSpecies
-            do jl = 1,jmax
-               p_CDL%rhoL_Pseudo(1:NumRs,jl,ia) = p_CDL%rhoL_Total(1:NumRs,jl,ia)
-            enddo
-         enddo
-         rhol => p_CDL%rhoL_Total(1:NumRs,1:jmax,1:p_CDL%NumSpecies)
+!        do ia = 1, p_CDL%NumSpecies
+!           do jl = 1,jmax
+!              p_CDL%rhoL_Pseudo(1:NumRs,jl,ia) = p_CDL%rhoL_Total(1:NumRs,jl,ia)
+!           enddo
+!        enddo
+         p_CDL%rhoL_Pseudo = p_CDL%rhoL_Total
+!        rhol => p_CDL%rhoL_Total(1:NumRs,1:jmax,1:p_CDL%NumSpecies)
+         rhol => p_CDL%rhoL_Total
       endif
 !
       do ir = 1,NumRs
          sqrt_r(ir) = sqrt(r_mesh(ir))
       enddo
 !
-      ir      = 0
       flag_jl => p_CDL%ChargeCompFlag(1:jmax)
 !
 !     get the radius for fitting
@@ -2425,25 +2429,25 @@ contains
                   rhol_c(ir) = real(cfact*rhol(ir,jl,ia),kind=RealKind)
                enddo
 !              -------------------------------------------------------
-               call newder(rhol_r,drhol_r,sqrt_r,NumRs)
+               call newder(rhol_r,drhol_r,sqrt_r(1:),NumRs)
 !              -------------------------------------------------------
                do ir = 1, NumRs
                   drhol_r(ir) = HALF*drhol_r(ir)/sqrt_r(ir)
                enddo
 !              -------------------------------------------------------
-               call newder(drhol_r,ddrhol_r,sqrt_r,NumRs)
+               call newder(drhol_r,ddrhol_r,sqrt_r(1:),NumRs)
 !              -------------------------------------------------------
                do ir = 1, NumRs
                   ddrhol_r(ir) = HALF*ddrhol_r(ir)/sqrt_r(ir)
                enddo
 !              -------------------------------------------------------
-               call newder(rhol_c,drhol_c,sqrt_r,NumRs)
+               call newder(rhol_c,drhol_c,sqrt_r(1:),NumRs)
 !              -------------------------------------------------------
                do ir = 1, NumRs
                   drhol_c(ir) = HALF*drhol_c(ir)/sqrt_r(ir)
                enddo
 !              -------------------------------------------------------
-               call newder(drhol_c,ddrhol_c,sqrt_r,NumRs)
+               call newder(drhol_c,ddrhol_c,sqrt_r(1:),NumRs)
 !              -------------------------------------------------------
                do ir = 1, NumRs
                   ddrhol_c(ir) = HALF*ddrhol_c(ir)/sqrt_r(ir)

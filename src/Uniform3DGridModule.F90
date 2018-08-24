@@ -36,6 +36,10 @@ public ::                      &
       module procedure getGridIndex_box, getGridIndex_local
    end interface getGridIndex
 !
+   interface getGridPosition
+      module procedure getGridPosition_box, getGridPosition_global
+   end interface getGridPosition
+!
 private
    type (UniformGridStruct), pointer :: FFTGrid
    type (UniformGridStruct), pointer :: VisualGrid
@@ -139,10 +143,12 @@ contains
 !
    if (associated(pUG%AtomOnGrid)) then
       deallocate(pUG%AtomOnGrid%AtomBox)
-      deallocate(pUG%AtomOnGrid%GlobalAtomIndex)
+      deallocate(pUG%AtomOnGrid%AtomPosition)
+      deallocate(pUG%AtomOnGrid%NumGridPointsInAtomBox)
+      deallocate(pUG%AtomOnGrid%NumGridPointsInCell)
+      deallocate(pUG%AtomOnGrid%InCellGridPointABIndex)
       if (pUG%AtomOnGrid%NumGridPointsOnCellBound > 0) then
          deallocate(pUG%AtomOnGrid%CBGridPointIndex)
-         deallocate(pUG%AtomOnGrid%NumNeighboringAtoms)
       endif
       if (allocated(pUG%AtomOnGrid%TargetProc)) then
          deallocate(pUG%AtomOnGrid%TargetProc)
@@ -336,7 +342,7 @@ contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine insertAtomsInGrid(gname, NumAtoms, AtomPosition,        &
-                                GlobalIndex, getPointLocationFlag, radius)
+                                getPointLocationFlag, radius)
 !  ===================================================================
 !  This routine identifies the uniform grid points local to the input atoms,
 !  which are local to this processor. However, the identified grid points 
@@ -348,7 +354,7 @@ contains
 !        associated with any local atoms, since atoms and uniform grids 
 !        have independent parallel distribution.
 !  ===================================================================
-   use MathParamModule, only : TEN2m12, TEN2m6, TWO
+   use MathParamModule, only : TEN2m12, TEN2m6, TWO, PI
    use VectorModule, only : getVecLength, getDotProduct, getCrossProduct
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
    use GroupCommModule, only : GlobalCollectInGroup, GlobalMaxInGroup
@@ -358,12 +364,11 @@ contains
    character (len=*), intent(in) :: gname
 !
    integer (kind=IntKind), intent(in) :: NumAtoms
-   integer (kind=IntKind), intent(in) :: GlobalIndex(:)
 !
    real (kind=RealKind), intent(in) :: radius(:)
 !
    integer (kind=IntKind) :: gCounter, ic, jc, kc, GroupID
-   integer (kind=IntKind) :: ia, lp, mp, np, nshift, ig
+   integer (kind=IntKind) :: ia, lp, mp, np, nshift, ig, max_incell_pts
    integer (kind=IntKind) :: icp, jcp, kcp, i, j, k, n, m, ip
    integer (kind=IntKind), allocatable :: gtmp(:), ntmp(:)
    integer (kind=IntKind), allocatable :: data_collect(:,:,:)
@@ -372,8 +377,8 @@ contains
 !
    real (kind=RealKind) :: AtomPosition(3,NumAtoms)
    real (kind=RealKind) :: r(3), rg(3), rv(3)
-   real (kind=RealKind) :: a0(3), b0(3), c0(3), fac, max_rc
-   real (kind=RealKind) ::  a, b, c, step_a_len, step_b_len, step_c_len
+   real (kind=RealKind) :: a0(3), b0(3), c0(3), fac, max_rc, vol, frac
+   real (kind=RealKind) :: a, b, c, step_a_len, step_b_len, step_c_len
 !
    logical :: redundant
 !
@@ -415,8 +420,9 @@ contains
 !  ===================================================================
    allocate(pUG%AtomOnGrid)
    pAOG => pUG%AtomOnGrid
-   allocate(pAOG%AtomBox(2,3,NumAtoms), pAOG%GlobalAtomIndex(NumAtoms))
+   allocate(pAOG%AtomBox(2,3,NumAtoms), pAOG%AtomPosition(3,NumAtoms))
    allocate(pAOG%NumGridPointsInAtomBox(NumAtoms))
+   allocate(pAOG%NumGridPointsInCell(NumAtoms))
    pAOG%NumLocalAtoms = NumAtoms
 !
 !  ===================================================================
@@ -449,10 +455,9 @@ contains
    step_c_len = getVecLength(3,pUG%grid_step_c)
 !  write(6,'(a,d15.8)')'step_c_len*ngc = ',step_c_len*pUG%ngc
 !
-   pAOG%NumGridPointsOnCellBound = 0
-   nullify(p_head, linked_list)
+   max_incell_pts = 0
    do ia = 1, NumAtoms
-      pAOG%GlobalAtomIndex(ia) = GlobalIndex(ia)
+      pAOG%AtomPosition(1:3,ia) = AtomPosition(1:3,ia)
 !     ================================================================
 !     By placing the sphere of radius(ia) at the corner of the cell,
 !     for which the uniform grid points are formed, we obtain the 
@@ -460,8 +465,13 @@ contains
 !     axes of the cell. The intersection, max_rc, is just the radius of 
 !     the sphere and is used to determine the uniform grid points
 !     associated with each atom.
+!
+!     Notes: We used to set max_rc=radius. In one atom per unit cell case
+!            it causes some grid points missing from AtomBox. We now
+!            set max_rc=radius+2*step_len. This may need to be re-examined
+!            in the future.
 !     ================================================================
-      max_rc = radius(ia)
+      max_rc = radius(ia) + 2*max(step_a_len,step_b_len,step_c_len)
 !
 !     ================================================================
 !     Determine the projection of the atom position onto the three cell
@@ -498,11 +508,27 @@ contains
       kc = pAOG%AtomBox(2,3,ia)-pAOG%AtomBox(1,3,ia)+1
       pAOG%NumGridPointsInAtomBox(ia) = ic*jc*kc
 !
+      rv = getCrossProduct(pUG%grid_step_a,pUG%grid_step_b)
+      vol = getDotProduct(3,pUG%grid_step_c,rv,absolute=.true.)*(ic-1)*(jc-1)*(kc-1)
+      frac = pAOG%NumGridPointsInAtomBox(ia)*PI*radius(ia)**3/vol
+!     write(6,'(a,2i8)')'Number of grid points in AtomBox and cell = ', &
+!                       pAOG%NumGridPointsInAtomBox(ia),ceiling(frac)
+      max_incell_pts = max(max_incell_pts,ceiling(frac)) ! A rough estimate of the number of grid points in atomic cell
+   enddo
+!
+   allocate(pAOG%InCellGridPointABIndex(max_incell_pts,NumAtoms))
+!
+   pAOG%NumGridPointsOnCellBound = 0
+   do ia = 1, NumAtoms
+      pAOG%NumGridPointsInCell(ia) = 0
       do ig = 1, pAOG%NumGridPointsInAtomBox(ia)
-         gCounter = getGridIndex(pUG,ia,ig)
-         rg = getGridPosition(pUG,ia,ig)
+         gCounter = getGridIndex(pUG,ia,ig) ! Given the grid index defined in box,
+                                            ! get the corresponding global index.
+         rg = getGridPosition(pUG,ia,ig)    ! Notes on 8/22/18: this function should
+                                            ! return the grid position relative to 
+                                            ! the system origin.
          rv = rg - AtomPosition(1:3,ia)
-         if ( radius(ia) >= sqrt(rv(1)**2 + rv(2)**2 + rv(3)**2) ) then
+         if ( radius(ia) > sqrt(rv(1)**2 + rv(2)**2 + rv(3)**2) + Ten2m6 ) then
 !           ==========================================================
 !           The grid point is inside the "region", but it may be
 !           outside of the atomic cell, if for example the radius of
@@ -516,8 +542,23 @@ contains
 !           LocationFlag = -1: grid point is outside the cell
 !                        =  0: grid point is on the cell surface
 !                        =  1: grid point is inside the cell
+!
+!           Establish a linked list of all grid points which are on atomic
+!           cell boundaries.
 !           ==========================================================
             n = getPointLocationFlag(ia, rv(1), rv(2), rv(3))
+            if (n >= 0) then
+               pAOG%NumGridPointsInCell(ia) = pAOG%NumGridPointsInCell(ia) + 1
+               if (pAOG%NumGridPointsInCell(ia) > max_incell_pts) then
+!                 ----------------------------------------------------
+                  call ErrorHandler('insertAtomsInGrid',              &
+                                    'Number of grid points > max estimated value', &
+                                    pAOG%NumGridPointsInCell(ia),max_incell_pts)
+!                 ----------------------------------------------------
+               else
+                  pAOG%InCellGridPointABIndex(pAOG%NumGridPointsInCell(ia),ia) = ig
+               endif
+            endif
             if (n == 0) then
                pAOG%NumGridPointsOnCellBound = pAOG%NumGridPointsOnCellBound + 1
                if (.not.associated(p_head)) then
@@ -535,12 +576,13 @@ contains
    enddo
 !
 !  ===================================================================
-!  Copy the index data from the linked list to pAOG%CGGridPointIndex
+!  Copy the index data from the linked list to pAOG%CBGridPointIndex
 !  ===================================================================
    n = pAOG%NumGridPointsOnCellBound
    if (n > 0) then
 !     ================================================================
-!     Eliminate the redundant grid points, which are equivalent
+!     Eliminate the redundant grid points on cell boundaries that are 
+!     equivalent, corresponding to the same global grid index.
 !     ================================================================
       allocate(gtmp(n), ntmp(n))
       linked_list => p_head
@@ -558,7 +600,7 @@ contains
             m = m + 1
             gtmp(m) = linked_list%grid_index
             ntmp(m) = 1
-         else
+         else ! For redundant grid points, increment ntmp by 1
             pAOG%NumGridPointsOnCellBound = pAOG%NumGridPointsOnCellBound - 1
             ntmp(k) = ntmp(k) + 1
          endif
@@ -568,6 +610,14 @@ contains
          p_head => linked_list
       enddo
 !
+!     ================================================================
+!     At this point, m = the number of non-redundant grid points on the
+!                        cell boundaries
+!                    gtmp = the global index of each grid point on the
+!                           cell boundaries
+!                    ntmp = the redundancy of each grid point on the
+!                           cell boundaries
+!     ================================================================
       if (m /= pAOG%NumGridPointsOnCellBound) then
          call ErrorHandler('insertAtomsInGrid','m <> NumGridPointOnCellBound', &
                            m, pAOG%NumGridPointsOnCellBound)
@@ -913,6 +963,11 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getGridIndex_box(pUG,ia,ig_in_box) result (grid_index)
 !  ===================================================================
+!
+!  Given the index, ig_in_box, of a uniform grid point in AtomBox of 
+!  atom ia, determine the corresponding global index of the grid point.
+!
+!  *******************************************************************
    implicit none
 !
    type (UniformGridStruct), intent(in) :: pUG
@@ -968,6 +1023,11 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getGridIndex_local(pUG,ig_local) result (grid_index)
 !  ===================================================================
+!
+!  Given the local index, ig_local, of a uniform grid point on local 
+!  processor, determine the corresponding global index of the grid point
+!
+!  *******************************************************************
    implicit none
 !
    type (UniformGridStruct), intent(in) :: pUG
@@ -996,8 +1056,14 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getGridPosition(pUG,ia,ig_in_box) result (pos)
+   function getGridPosition_box(pUG,ia,ig_in_box) result (pos)
 !  ===================================================================
+!
+!  Given the index, ig_in_box, of a uniform grid point in AtomBox of 
+!  atom ia, determine the position of the grid point relative to the
+!  system origin, which sits on the grid point with its global index = 1.
+!
+!  *******************************************************************
    implicit none
 !
    type (UniformGridStruct), intent(in) :: pUG
@@ -1020,7 +1086,36 @@ contains
    kc = ((ig_in_box-ic+pAOG%AtomBox(1,1,ia)-1)/ni-(jc-pAOG%AtomBox(1,2,ia)))/nj+pAOG%AtomBox(1,3,ia)
    pos = pUG%grid_step_a*(ic-1) + pUG%grid_step_b*(jc-1) + pUG%grid_step_c*(kc-1)
 !
-   end function getGridPosition
+   end function getGridPosition_box
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getGridPosition_global(pUG,ig_global) result (pos)
+!  ===================================================================
+!
+!  Given the index, ig_global, of a uniform grid point in unit cell,
+!  determine the position of the grid point relative to the system 
+!  origin, which sits on the grid point with its global index = 1.
+!
+!  *******************************************************************
+   implicit none
+!
+   type (UniformGridStruct), intent(in) :: pUG
+!
+   integer (kind=IntKind), intent(in) :: ig_global
+!
+   integer (kind=IntKind) :: ic, jc, kc
+!
+   real (kind=RealKind) :: pos(3)
+!
+   ic = mod(ig_global-1,pUG%nga)+1
+   jc = mod((ig_global-ic)/pUG%nga,pUG%ngb)+1
+   kc = ((ig_global-ic)/pUG%nga-(jc-1))/pUG%ngb+1
+   pos = pUG%grid_step_a*(ic-1) + pUG%grid_step_b*(jc-1) + pUG%grid_step_c*(kc-1)
+!
+   end function getGridPosition_global
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1333,6 +1428,16 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function isLocalGrid(pUG,ig,id) result(p)
 !  ===================================================================
+!
+!  This function returns true or false value of an inquiry:
+!       where the grid point of global index ig is mapped on the local 
+!       process, as a result of parallization.
+!  The returning value of variable "id" corresponds to the local index
+!  of the grid point if it is indeed local to the current process. 
+!
+!  Note: id is NOT the index of the grid points in AtomBox, rather it is
+!        the local index of the grid point on the local process.
+!  *******************************************************************
    implicit none
 !
    type (UniformGridStruct), intent(in) :: pUG

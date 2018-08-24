@@ -6,7 +6,7 @@ program testIntegration
    use MathParamModule, only : ZERO, CZERO, ONE, CONE, SQRTm1, TWO, THIRD, HALF
    use IntegrationModule, only : calIntegration
 !
-   integer, parameter :: n = 500
+   integer, parameter :: n = 2000
    integer :: i
 !
    real (kind=RealKind) :: h

@@ -59,7 +59,7 @@ program adaptiveSSK
 !
    use AtomModule, only : getStepFuncLmax, setTruncPotLmax, setPotLmax
    use AtomModule, only : getPotLmax, getKKRLmax, getPhiLmax, getRhoLmax
-   use AtomModule, only : getGridData, getLocalEvecOld, getAtomRmtIn
+   use AtomModule, only : getGridData, getLocalEvecOld, getAtomMuffinTinRad
    use AtomModule, only : getLocalNumSpecies, getLocalAtomicNumber
 !
    use SphericalHarmonicsModule, only : initSphericalHarmonics
@@ -268,7 +268,7 @@ program adaptiveSSK
       endif
       rend =  getOutscrSphRadius(i)
       if (isMuffinTinPotential()) then
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getInscrSphRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = rinsc
@@ -282,7 +282,7 @@ program adaptiveSSK
 !        -------------------------------------------------------------
       else if ( isASAPotential() ) then
          rend =  getWignerSeitzRadius(i)
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getWignerSeitzRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = rinsc
@@ -292,7 +292,7 @@ program adaptiveSSK
 !        -------------------------------------------------------------
       else if (isMuffinTinASAPotential()) then
          rend =  getWignerSeitzRadius(i)
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getWignerSeitzRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = rinsc
@@ -308,7 +308,7 @@ program adaptiveSSK
                      getNeighborDistance(i,1),getOutscrSphRadius(i))
 !           ----------------------------------------------------------
          endif
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getInscrSphRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = getInscrSphRadius(i)

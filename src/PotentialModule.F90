@@ -118,7 +118,7 @@ private
    real (kind=RealKind), allocatable :: efermi_in(:,:)
    real (kind=RealKind), target :: vdif(1)
    real (kind=RealKind) :: v0(2)
-   real (kind=RealKind), parameter :: pot_tol = TEN2m7
+   real (kind=RealKind), parameter :: pot_tol = TEN2m6
 !
    integer (kind=IntKind), allocatable :: LdaPlusU_DataAccum(:)
    integer (kind=IntKind), allocatable :: NonSphPot_DataAccum(:)
@@ -2901,12 +2901,15 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine truncatePotential(id,ia)
 !  ===================================================================
+   use MPPModule, only : MyPE, syncAllPEs
 !
    use StepFunctionModule, only : truncate
 !
    use SystemSymmetryModule, only : getSymmetryFlags
 !
    implicit none
+!
+   character (len=240) :: aflag
 !
    integer (kind=IntKind), intent(in) :: id, ia
 !
@@ -2940,12 +2943,29 @@ contains
 !
    do is = 1,n_spin_pola
       pot => Potential(id)%pot_l(1:iend,1:jmax_pot,is,ia)
+      flags_jl => Potential(id)%PotCompFlag
 !
       potl =>Potential(id)%pot_l_trunc(1:iend_diff,1:jmax_trunc,is,ia)
+      potl = CZERO
 !
+!     ================================================================
+!     Print out non-zero potential channels...........................
+!     ================================================================
+      if (MyPE == 0) then
+         ir = 0
+         do jl = 1, jmax_pot
+            if (flags_jl(jl) /= 0) then
+               write(aflag(ir+1:ir+9),'(a,i2,a,i2,a)')'(',lofj(jl),',',mofj(jl),'), '
+               ir = ir + 9
+            endif
+         enddo
+         write(6,'(/,80(''=''))')
+         write(6,'(a)')'Potential non-zero channels:'
+         write(6,'(a)')aflag(1:ir-2)
+      endif
 !     ---------------------------------------------------------------
-      call truncate( id, jmt, iend, r_mesh, pot, jmax_pot, iend_diff, &
-                     potl, jmax_trunc )
+      call truncate( id, jmt, iend, r_mesh, pot, flags_jl, jmax_pot, &
+                     iend_diff, potl, jmax_trunc )
 !     ---------------------------------------------------------------
 !
       flags_jl => Potential(id)%PotCompFlag_trunc
@@ -2958,7 +2978,8 @@ contains
 !              if ( abs(potl(ir,jl)) >= TEN2m6*(TEN**(-2*lofj(jl))) ) then
                if ( abs(potl(ir,jl)) > pot_tol) then
                   flags_jl(jl) = 1
-               else if ( flags_jl(jl) == 0 ) then
+               else 
+                  flags_jl(jl) = 0
                   potl(1:iend_diff,jl) = CZERO
                endif
 !
@@ -2992,7 +3013,7 @@ endif
 !
             enddo
          else
-            flags_jl = getSymmetryFlags(id)
+            flags_jl => getSymmetryFlags(id)
 !
             do jl = 1,jmax_trunc
                if ( flags_jl(jl) == 0 ) then
@@ -3015,6 +3036,22 @@ if(.false.) then
 endif
             enddo
 !
+         endif
+!
+!        =============================================================
+!        Print out non-zero truncated potential channels..............
+!        =============================================================
+         if (MyPE == 0) then
+            ir = 0
+            do jl = 1, jmax_trunc
+               if (flags_jl(jl) /= 0) then
+                  write(aflag(ir+1:ir+9),'(a,i2,a,i2,a,$)')'(',lofj(jl),',',mofj(jl),'), '
+                  ir = ir + 9
+               endif
+            enddo
+            write(6,'(/,a)')'Truncated potential non-zero channels:'
+            write(6,'(a)')aflag(1:ir-2)
+            write(6,'(80(''=''),/)')
          endif
       else
          do jl = 1,jmax_trunc

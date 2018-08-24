@@ -655,7 +655,7 @@ radius(i) = getGridRadius(i)
       call distributeUniformGrid('FFT',grid_start,grid_end)
 !     ----------------------------------------------------------------
       call insertAtomsInGrid('FFT', LocalNumAtoms, LocalAtomPosi,     &
-                             GlobalIndex, getPointLocationFlag, radius)
+                             getPointLocationFlag, radius)
 !     ----------------------------------------------------------------
       if (node_print_level >= 0) then
          call printUniform3DGrid('FFT')
@@ -3081,7 +3081,7 @@ endif
             endif
 #endif
 !        -------------------------------------------------------------
-            call newder(V1_r,dV1_r,sqrt_r,jend)
+            call newder(V1_r,dV1_r,sqrt_r(1:),jend)
 !        -------------------------------------------------------------
             do ir = 1,jend
                dV1_r(ir) = HALF*dV1_r(ir)/sqrt_r(ir)
@@ -3283,6 +3283,9 @@ endif
    do i = 1, ng
       p_den(i) = p_den(i) - pseudo_fft
    enddo
+!  open(unit=111,file='den-2001-new.dat',status='unknown',form='formatted')
+!  write(111,'(5d16.8)')(p_den(i),i=1,ng)
+!  close(unit=111)
 !
    p_fft_c => fft_c
 !  -------------------------------------------------------------------
@@ -3625,7 +3628,7 @@ endif
                E_exc(ir) = E1_c(ir)
             enddo
 !           ----------------------------------------------------------
-            call newder(E1_r,dE1_r,sqrt_r,jend)
+            call newder(E1_r,dE1_r,sqrt_r(1:),jend)
 !           ----------------------------------------------------------
             do ir = 1, jend
                dE1_r(ir) = HALF*dE1_r(ir)/sqrt_r(ir)

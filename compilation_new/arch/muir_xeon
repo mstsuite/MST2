@@ -30,7 +30,8 @@ LD=$(FC)
 #=====================================================================
 #FFLAGS=-I. -assume byterecl -openmp -O3 -axSSE4.2
 #FFLAGS=-I. -assume byterecl -openmp -g -C -traceback -check all -check nopointer -check noshape #-warn all
-FFLAGS=-I. -O3 -CB -CU -traceback -ftrapuv -fpe0 -ftz -fp-stack-check
+# FFLAGS=-I. -O3 -CB -CU -traceback -ftrapuv -fpe0 -ftz -fp-stack-check
+FFLAGS=-I. -O3
 F77FLAGS=$(FFLAGS)
 FPPDEFS=-fpp
 CFLAGS= -O3
@@ -102,11 +103,16 @@ endif
 Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
 #  FFTW_INC = $(MKLROOT)/include/fftw
+#  FFT_FLAG = -DFFTW -I$(FFTW_INC)
+#  ------
    FFTW_INC = /lvol/packages/fftw-3.3.6-pl2/include
    FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/lvol/packages/p3dfft-2.7.5/include
    ADDLIBS += -L/lvol/packages/fftw-3.3.6-pl2/lib -lfftw3_mpi -lfftw3 -L/lvol/packages/p3dfft-2.7.5/lib -lp3dfft
+#  ------
+#  FFTW_INC = /lvol/packages/fftw-3.3.6-pl2/include
 #  FFT_FLAG = -DFFTW -I$(FFTW_INC)
 #  ADDLIBS += -L/lvol/packages/fftw-3.3.6-pl2/lib -lfftw3_mpi -lfftw3
+#  ------
 endif
 
 #=====================================================================

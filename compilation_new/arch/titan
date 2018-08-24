@@ -8,7 +8,7 @@ F77=ftn
 CC=gcc
 CXX=gcc
 PREPROC = $(FC)
-EXEC_NAME = lsms2.0_cpu
+EXEC_NAME = mst2
 
 #=====================================================================
 # Set Acceleration to 0 if Accelerator is not used.
@@ -35,8 +35,8 @@ LD=$(FC)
 #=====================================================================
 #FFLAGS=-I. -assume byterecl -openmp -O3 -axSSE4.2
 #FFLAGS=-I. -assume byterecl -openmp -g -C -traceback -check all -check nopointer -check noshape #-warn all
-FFLAGS=-I. -Mfree -fastsse -fast -mp
-F77FLAGS=-I. -Mfixed -fastsse -fast -mp
+FFLAGS=-I. -Mfree -O3 -mp
+F77FLAGS=-I. -Mfixed -O3 -mp
 FPPDEFS=-Mpreprocess
 CFLAGS= -O3 -DMAX_GPU_THREADS=12 -Warray-bounds -Woverlength-strings
 CPPDEFS=-Mpreprocess
@@ -98,10 +98,11 @@ endif
 #   Use_FFTW     = 1, use the FFTW3 package for Fourier transformation
 #                  0, otherwise
 #=====================================================================
-Use_FFTW = 0
+Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
-   FFTW_INC = 
-   FFT_FLAG = -DFFTW -I$(FFTW_INC)
+   FFTW_INC = /opt/cray/fftw/3.3.4.8/interlagos/include
+   FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/ccs/home/wangy/p3dfft-2.7.6/include
+   ADDLIBS += -L/opt/cray/fftw/3.3.4.8/interlagos/lib -lfftw3_mpi -lfftw3 -L/ccs/home/wangy/p3dfft-2.7.6/lib -lp3dfft
 endif
 
 #=====================================================================
@@ -154,7 +155,6 @@ endif
 #=====================================================================
 ifeq "$(Acceleration)" "0"
   FFLAGS_ACC =
-  ADDLIBS =
 endif
 
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED

@@ -379,25 +379,33 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getUniformIntegration(n,x0,x,info,func,nm) result(fint)
 !  ===================================================================
-   use MathParamModule, only : CZERO, ZERO
+   use MathParamModule, only : CZERO, ZERO, TEN2m8
+!
    use ErrorHandlerModule, only : ErrorHandler
+!
    use IntegrationModule, only : calIntegration
-   use GroupCommModule, only : GlobalSumInGroup
+!
+   use MPPModule, only : setCommunicator, resetCommunicator
+   use MPPModule, only : nbrecvMessage, nbsendMessage, WaitMessage, bcastMessage
+!
+   use GroupCommModule, only : GlobalSumInGroup, GlobalMaxInGroup
+   use GroupCommModule, only : getGroupCommunicator
 !
    implicit none
 !
    integer (kind=IntKind), intent(in) :: n
    integer (kind=IntKind), intent(in) :: info(*)
    integer (kind=IntKind), intent(out) :: nm
-   integer (kind=IntKind) :: i, j, n_loc, imax
+   integer (kind=IntKind) :: i, j, n_loc, m_loc, imax, ns, ms
+   integer (kind=IntKind) :: msgid0, msgid1, msgid2, msgid3, comm
 !
    real (kind=RealKind), intent(in) :: x0, x
-   real (kind=RealKind) :: fint, del, f0
-   real (kind=RealKind) :: x_mesh(n), f_mesh(n), y_mesh(n)
+   real (kind=RealKind) :: fint, del, f0, peak_val
+   real (kind=RealKind) :: x_mesh(n)
+   real (kind=RealKind), allocatable :: f_mesh(:), y_mesh(:)
 !
-!  complex (kind=CmplxKind) :: aa_mesh(n,AuxArraySize)
-   complex (kind=CmplxKind), allocatable :: aa_mesh(:,:)
-   complex (kind=CmplxKind) :: aa_int(n)
+   complex (kind=CmplxKind), allocatable :: aa_mesh(:,:), aa_int(:)
+   complex (kind=CmplxKind), allocatable :: a_buf(:), b_buf(:)
 !
    interface
       function func(info,x,aux,xi) result(y)
@@ -409,7 +417,6 @@ contains
          complex (kind=CmplxKind), intent(out) :: aux(:)
       end function func
    end interface
-!print*,"getUniformIntegration starts"
 !
    if (n < 2) then
 !     ----------------------------------------------------------------
@@ -421,9 +428,6 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
-   allocate( aa_mesh(n,AuxArraySize) )
-   aa_mesh = CZERO; f_mesh = ZERO
-!
    nm = n
    del = (x-x0)/real(n-1,kind=RealKind)
    do i = 1, n
@@ -431,51 +435,153 @@ contains
    enddo
 !
    if (n >= NumPEsInGroup) then
-      n_loc = n/NumPEsInGroup
-   else ! This may happen if number of CPU Cores > n
-      n_loc = 1
+      n_loc = n/NumPEsInGroup ! number of energy points mapped onto the local process
+      ns = MyPEinGroup*n_loc
+   else ! This may happen if number of CPU Cores > n. No parallelization is done
+      n_loc = n
+      ns = 1
    endif
-   do i = MyPEinGroup+1, n_loc*NumPEsInGroup, NumPEsInGroup
-      if (i <= n) then
-         f_mesh(i) = func(info,x_mesh(i),AuxArray)
-         do j = 1, AuxArraySize
-            aa_mesh(i,j) = AuxArray(j)
-         enddo
-      else ! run redundant calculations. The results are not stored
-         f0 = func(info,x_mesh(n),AuxArray)
-      endif
-   enddo
-
- 
-   imax = maxloc(f_mesh,1)
-   peak_pos = x_mesh(imax)
-   if (NumPEsInGroup > 1) then
-!     ----------------------------------------------------------------
-      call GlobalSumInGroup(GroupID,f_mesh,n)
-      call GlobalSumInGroup(GroupID,aa_mesh,n,AuxArraySize)
-!     ----------------------------------------------------------------
+!
+   if (MyPEinGroup == 0) then
+      ms = 0
+   else
+      ms = 1
    endif
-   do i = n_loc*NumPEsInGroup+1, n
-      f_mesh(i) = func(info,x_mesh(i),AuxArray)
+!
+   allocate( f_mesh(n_loc+ms), y_mesh(n_loc+ms) )
+   allocate( aa_mesh(n_loc+ms,AuxArraySize), aa_int(n_loc+ms) )
+   allocate(a_buf(AuxArraySize), b_buf(AuxArraySize))
+   f_mesh = ZERO; y_mesh = ZERO
+   aa_mesh = CZERO; aa_int = CZERO
+!
+   do i = 1, n_loc
+      f_mesh(ms+i) = func(info,x_mesh(ns+i),AuxArray)
       do j = 1, AuxArraySize
-         aa_mesh(i,j) = AuxArray(j)
+         aa_mesh(ms+i,j) = AuxArray(j)
       enddo
    enddo
+   imax = maxloc(f_mesh,1)
+   peak_pos = x_mesh(ns+imax-ms)
+   peak_val = f_mesh(imax)
+!
+   if (n_loc < n) then
+      comm = getGroupCommunicator(GroupID)
+!     ----------------------------------------------------------------
+      call setCommunicator(comm,MyPEinGroup,NumPEsInGroup)
+!     ----------------------------------------------------------------
+      if (MyPEinGroup > 0) then
+!        -------------------------------------------------------------
+         msgid0 = nbrecvMessage(f_mesh(1),10001,MyPEinGroup-1)
+         msgid1 = nbrecvMessage(a_buf,AuxArraySize,10002,MyPEinGroup-1)
+!        -------------------------------------------------------------
+      endif
+      if (MyPEinGroup < NumPesInGroup-1) then
+!        -------------------------------------------------------------
+         msgid2 = nbsendMessage(f_mesh(n_loc+ms),10001,MyPEinGroup+1)
+!        -------------------------------------------------------------
+         do j = 1, AuxArraySize
+            b_buf(j) = aa_mesh(n_loc+ms,j)
+         enddo
+!        -------------------------------------------------------------
+         msgid3 = nbsendMessage(b_buf,AuxArraySize,10002,MyPEinGroup+1)
+!        -------------------------------------------------------------
+      endif
+      if (MyPEinGroup > 0) then
+!        -------------------------------------------------------------
+         call waitMessage(msgid0)
+         call waitMessage(msgid1)
+!        -------------------------------------------------------------
+         do j = 1, AuxArraySize
+            aa_mesh(1,j) = a_buf(j)
+         enddo
+      endif
+      if (MyPEinGroup < NumPEsInGroup-1) then
+!        -------------------------------------------------------------
+         call waitMessage(msgid2)
+         call waitMessage(msgid3)
+!        -------------------------------------------------------------
+      endif
+!     ----------------------------------------------------------------
+      call resetCommunicator()
+!     ----------------------------------------------------------------
+   endif
 !
 !  -------------------------------------------------------------------
-   call calIntegration(0,n,x_mesh,f_mesh,y_mesh)
+   call calIntegration(0,n_loc+ms,x_mesh(ns+1-ms:),f_mesh,y_mesh)
 !  -------------------------------------------------------------------
-   fint = y_mesh(n)
-!print*,"fint=",fint
+   fint = y_mesh(n_loc+ms)
 !
    do j = 1, AuxArraySize
 !     ----------------------------------------------------------------
-      call calIntegration(0,n,x_mesh,aa_mesh(1:n,j),aa_int)
+      call calIntegration(0,n_loc+ms,x_mesh(ns+1-ms:),aa_mesh(:,j),aa_int)
 !     ----------------------------------------------------------------
-      AuxArrayIntegral(j) = aa_int(n)
+      AuxArrayIntegral(j) = aa_int(n_loc+ms)
    enddo
 !
-   deallocate( aa_mesh )
+   if (n_loc < n) then ! In case parallelization is performed
+!     ----------------------------------------------------------------
+      call GlobalSumInGroup(GroupID,fint)
+!     ----------------------------------------------------------------
+      f0 = peak_val
+!     ----------------------------------------------------------------
+      call GlobalMaxInGroup(GroupID,f0)
+!     ----------------------------------------------------------------
+      if (abs(f0-peak_val) > TEN2m8) then
+         peak_pos = ZERO
+      endif
+      peak_val = f0
+!     ----------------------------------------------------------------
+      call GlobalSumInGroup(GroupID,peak_pos)
+!     ----------------------------------------------------------------
+      call GlobalSumInGroup(GroupID,AuxArrayIntegral,AuxArraySize)
+!     ----------------------------------------------------------------
+   endif
+!
+   ns = n_loc*NumPEsInGroup
+   if (ns < n) then
+!     ----------------------------------------------------------------
+      call setCommunicator(comm,MyPEinGroup,NumPEsInGroup)
+!     ----------------------------------------------------------------
+      if (MyPEinGroup == NumPEsInGroup-1) then
+         f_mesh(1) = f_mesh(n_loc+ms)
+         do j = 1, AuxArraySize
+            b_buf(j) = aa_mesh(n_loc+ms,j)
+         enddo
+      endif
+      call bcastMessage(f_mesh(1),NumPEsInGroup-1)
+      call bcastMessage(b_buf,AuxArraySize,NumPEsInGroup-1)
+!     ----------------------------------------------------------------
+      call resetCommunicator()
+!     ----------------------------------------------------------------
+      do j = 1, AuxArraySize
+          aa_mesh(1,j) = b_buf(j)
+      enddo
+      do i = 1, n-ns
+         f_mesh(i+1) = func(info,x_mesh(ns+i),AuxArray)
+         do j = 1, AuxArraySize
+            aa_mesh(i+1,j) = AuxArray(j)
+         enddo
+      enddo
+      imax = maxloc(f_mesh(2:),1)
+      if (peak_val < f_mesh(imax)) then
+         peak_val = f_mesh(imax)
+         peak_pos = x_mesh(ns+imax-1)
+      endif
+!     ----------------------------------------------------------------
+      call calIntegration(0,n-ns+1,x_mesh(ns:),f_mesh,y_mesh)
+!     ----------------------------------------------------------------
+      fint = fint + y_mesh(n-ns+1)
+!
+      do j = 1, AuxArraySize
+!        -------------------------------------------------------------
+         call calIntegration(0,n-ns+1,x_mesh(ns:),aa_mesh(:,j),aa_int)
+!        -------------------------------------------------------------
+         AuxArrayIntegral(j) = AuxArrayIntegral(j) + aa_int(n-ns+1)
+      enddo
+   endif
+!
+   deallocate( aa_mesh, aa_int, f_mesh, y_mesh )
+   deallocate(a_buf, b_buf)
 !
    end function getUniformIntegration
 !  ===================================================================

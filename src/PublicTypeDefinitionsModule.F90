@@ -136,14 +136,16 @@ public
    type AtomOnUniformGridStruct
       integer (kind=IntKind) :: NumLocalAtoms               ! Determined by the parallelization over
                                                             ! atoms
-      integer (kind=IntKind) :: NumGridPointsOnCellBound
+      real (kind=RealKind), allocatable :: AtomPosition(:,:)
       integer (kind=IntKind), allocatable :: AtomBox(:,:,:) ! Stores the starting and ending index
                                                             ! of the uniform grid points associated
                                                             ! with each atom
       integer (kind=IntKind), allocatable :: NumGridPointsInAtomBox(:)
-      integer (kind=IntKind), allocatable :: GlobalAtomIndex(:)
-      integer (kind=IntKind), allocatable :: CBGridPointIndex(:)
-      integer (kind=IntKind), allocatable :: NumNeighboringAtoms(:)
+      integer (kind=IntKind), allocatable :: NumGridPointsInCell(:) ! Number of grid points in atomic cell
+      integer (kind=IntKind), allocatable :: InCellGridPointABIndex(:,:) ! AtomBox index of each grid point in atomic cell
+      integer (kind=IntKind) :: NumGridPointsOnCellBound    ! number of grid points on cell boundary for all local atoms
+      integer (kind=IntKind), allocatable :: CBGridPointIndex(:) ! Global index of each grid point on cell boundary
+      integer (kind=IntKind), allocatable :: NumNeighboringAtoms(:) ! number of associated atoms of each grid point on cell boundary
       integer (kind=IntKind), allocatable :: NumTargetProcs(:)
       integer (kind=IntKind), allocatable :: NumSourceProcs(:)
       integer (kind=IntKind), allocatable :: TargetProc(:,:)

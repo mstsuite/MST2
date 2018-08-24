@@ -187,7 +187,7 @@ private
 !
 !  Working Space
 !
-   real(kind=RealKind), allocatable, target :: ipiv(:)
+   integer (kind=IntKind), allocatable, target :: ipiv(:)
 !
    real(kind=RealKind), allocatable, target :: a_r(:,:), b_r(:,:)
    real(kind=RealKind), allocatable, target :: d_r(:,:), cm_r(:)
@@ -324,17 +324,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine mixValues_r( list_q, first )
+   subroutine mixValues_r( list_q )
 !  ===================================================================
 !
    implicit none
 !
-   integer (kind=IntKind), optional :: first
    type(MixListRealStruct) :: list_q
-!
-   if ( present(first) ) then
-      if  ( first == -1 ) return
-   endif
 !
    iter_count =iter_count+1
 !
@@ -352,17 +347,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine mixValues_c( list_q, first )
+   subroutine mixValues_c( list_q )
 !  ===================================================================
 !
    implicit none
 !
-   integer (kind=IntKind), optional :: first
    type(MixListCmplxStruct) :: list_q
-!
-   if ( present(first) ) then
-      if  ( first == -1 ) return
-   endif
 !
    iter_count =iter_count+1
 !
@@ -1393,8 +1383,8 @@ contains
 !                 dfnorm := |df|
 !           =========================================================
             do k = 1,vlen
-               dfnorm = dfnorm + pdf(k)*conjg(pdf(k))
-               fnorm  = fnorm  + pf(k)*conjg(pf(k))
+               dfnorm = dfnorm + real(pdf(k)*conjg(pdf(k)),kind=RealKind)
+               fnorm  = fnorm  + real(pf(k)*conjg(pf(k)),kind=RealKind)
             enddo
          enddo
 !
@@ -1574,6 +1564,7 @@ contains
 !              ======================================================
 !              use lapack
 !              ======================================================
+               b_c = CZERO
                do i = 1,nn
                   do j = 1,nn
                      b_c(j,i) = a_c(j,i)*pw(j)*pw(i)
@@ -1582,6 +1573,7 @@ contains
                enddo
                if ( .not.allocated(ipiv) ) then
                   allocate( ipiv(NumBroydenIter) )
+                  ipiv = 0
                endif
 !              ------------------------------------------------------
                call zgetrf( nn, nn, b_c, NumBroydenIter,ipiv, info )
@@ -1595,8 +1587,8 @@ contains
                pvect_new(k) = pvold(k) + alpha*pf(k)
             enddo
             do i = 1,nn
-               gmi = zero
-               do j = 1,nn
+               gmi = czero
+               do j = nn, 1, -1
                   gmi = gmi + cm_c(j)*b_c(j,i)*pw(j)
                enddo
                do k = 1,vlen

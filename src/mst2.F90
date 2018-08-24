@@ -141,7 +141,7 @@ program mst2
    use AtomModule, only : getMaxLmax, printAtom, getStepFuncLmax
    use AtomModule, only : getPotLmax, getKKRLmax, getPhiLmax, getRhoLmax
    use AtomModule, only : getTruncPotLmax
-   use AtomModule, only : getGridData, getAtomRmtIn
+   use AtomModule, only : getGridData, getAtomMuffinTinRad
    use AtomModule, only : getLocalAtomName, getLocalAtomicNumber, getLocalNumSpecies
    use AtomModule, only : getLocalAtomNickName, printAtomMomentInfo
 !   use AtomModule, only : setAtomVolMT, setAtomVolVP
@@ -734,7 +734,7 @@ program mst2
    call initAtom(info_id,istop,node_print_level)
 !  -------------------------------------------------------------------
    do i = 1,LocalNumAtoms
-      rmt   = getAtomRmtIn(i)
+      rmt   = getAtomMuffinTinRad(i)
       rinsc = getInscrSphRadius(i)
       if ( rinsc-rmt>Ten2m3 .and. rmt>TEN2m6 ) then
 !        -------------------------------------------------------------
@@ -850,7 +850,7 @@ program mst2
       rend =  getOutscrSphRadius(i)
 !
       if (isMuffinTinPotential() .or. isMuffinTinTestPotential()) then
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getInscrSphRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = rinsc
@@ -880,7 +880,7 @@ program mst2
 !        -------------------------------------------------------------
       else if (isASAPotential() ) then
 !        rend =  getWignerSeitzRadius(i)
-!        rmt = getAtomRmtIn(i)
+!        rmt = getAtomMuffinTinRad(i)
          rinsc = getWignerSeitzRadius(i)
          rmt = rinsc
 !        if ( rmt < 0.010d0 ) then
@@ -892,7 +892,7 @@ program mst2
 !        -------------------------------------------------------------
       else if ( isMuffinTinASAPotential() ) then
          rend =  getWignerSeitzRadius(i)
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getWignerSeitzRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = rinsc
@@ -917,7 +917,7 @@ program mst2
                      getNeighborDistance(i,1),getOutscrSphRadius(i))
 !           ----------------------------------------------------------
          endif
-         rmt = getAtomRmtIn(i)
+         rmt = getAtomMuffinTinRad(i)
          rinsc = getInscrSphRadius(i)
          if ( rmt < 0.010d0 ) then
             rmt = getInscrSphRadius(i)
@@ -958,7 +958,7 @@ program mst2
 !     ----------------------------------------------------------------
       call distributeUniformGrid('Visual')
       call insertAtomsInGrid('Visual', LocalNumAtoms, LocalAtomPosi,  &
-                             GlobalIndex, getPointLocationFlag, radius)
+                             getPointLocationFlag, radius)
 !     ----------------------------------------------------------------
       if (node_print_level > 0) then
          call printUniform3DGrid('Visual')
@@ -1755,10 +1755,7 @@ program mst2
             call setupMixCmplxArrayList( LocalNumAtoms, n_spin_pola,   &
                                     CmplxArrayList, rho_rms, pot_rms )
 !           ----------------------------------------------------------
-            if ( (( isSphericalInputFile() .or. isChargeMixing() ) .and.&
-                 (itstep +iscf)==2) .or. iscf==1) then
-               call mixValues(CmplxArrayList, -3 + itstep +iscf )
-            else
+            if ( .not.( (isSphericalInputFile() .or. isChargeMixing()) .and. iscf==1) ) then
                call mixValues(CmplxArrayList )
             endif
 !           ----------------------------------------------------------

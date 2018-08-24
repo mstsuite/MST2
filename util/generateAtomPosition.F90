@@ -5,7 +5,7 @@
 !
    use MathParamModule, only : ZERO, HALF, ONE, TWO, TEN2m6, TEN2m10
 !
-   use ErrorHandlerModule, only : ErrorHandler
+   use ErrorHandlerModule, only : ErrorHandler, WarningHandler
 !
    use SortModule, only : HeapSort
 !
@@ -32,6 +32,7 @@
    logical :: RandomHost = .true.
    logical :: RandomCluster = .true.
    logical :: file_exist = .true.
+   logical :: done = .true.
 !
 !   integer (kind=IntKind), parameter :: MaxAtomTypes = 20
    integer (kind=IntKind), parameter :: MaxBounds = 50
@@ -130,6 +131,7 @@
    HostBasis(:)  = '   '
    ClusterBasis(:) = '   '
    a0 = ONE
+   call initString('Arbitrary')
 !
 !  ==========================================================================
 !  read input parameters for setting up the big box and the underlying lattice
@@ -143,8 +145,8 @@
       write(6,'(2x,a)')'    2. Body Centered;'
       write(6,'(2x,a)')'    3. Orthorhombic;'
       write(6,'(2x,a)')'    4. Diamond;'
-      write(6,'(2x,a)')'    5. VASP POSCAR Data;'
-      write(6,'(2x,a)')'    0. MST Position Data'
+      write(6,'(2x,a)')'    5. Read Underlying Lattice Data from VASP POSCAR File'
+      write(6,'(2x,a)')'    0. Read Underlying Lattice Data from MST Position File'
       write(6,'(2x,a,$)')'Enter your your choice: '
       read(5,*)lattice
    enddo
@@ -206,7 +208,7 @@
       uconv = uconv*fact
       small_box(1:3,1:3) = small_box(1:3,1:3)*uconv
       read(11,'(a)')text
-      call initString(text)
+      call setString(text)
       text = adjustl(text)
       na = getNumTokens()
       NumHostAtomTypes = na
@@ -231,7 +233,6 @@
          j = j + NumHostAtomsOfType(i)
       enddo
 !     text = adjustl(text)
-      call endString()
       nbasis = 0
       do i = 1,na
          nbasis = nbasis + NumHostAtomsOfType(i)
@@ -242,7 +243,7 @@
       read(11,'(a)')text
       do i = 1,nbasis
          read(11,'(a)')text
-         call initString(text)
+         call setString(text)
          text = adjustl(text)
          na = getNumTokens()
          if (na == 3) then
@@ -250,7 +251,6 @@
          else
             call ErrorHandler('main','Invalid input data',trim(text))
          endif
-         call endString()  
          do j = 1,3
             bv(j,i) = small_box(j,1)*rpos(1)+small_box(j,2)*rpos(2)+small_box(j,3)*rpos(3)
          enddo
@@ -261,13 +261,30 @@
       ios = 1
       do while (ios /= 0)
          if (iconv == 0) then
-            write(6,'(/,2x,a,$)')     &
-            'Lattice Constants a, b, c (in a.u. seperated by space or comma): '
+            if (lattice == 3) then
+               write(6,'(/,2x,a,$)')     &
+               'Lattice Constants a, b, c (in a.u. seperated by space or comma): '
+            else
+               write(6,'(/,2x,a,$)')     &
+               'Lattice Constants a (in a.u.): '
+            endif
          else
-            write(6,'(/,2x,a,$)')     &
-            'Lattice Constants a, b, c (in Angstrom seperated by space or comma): '
+            if (lattice == 3) then
+               write(6,'(/,2x,a,$)')     &
+               'Lattice Constants a, b, c (in Angstrom seperated by space or comma): '
+            else
+               write(6,'(/,2x,a,$)')     &
+               'Lattice Constants a (in Angstrom): '
+            endif
          endif
-         read(5,*,iostat=ios)small_box(1,1),small_box(2,2),small_box(3,3)
+         if (lattice == 3) then
+            read(5,*,iostat=ios)small_box(1,1),small_box(2,2),small_box(3,3)
+         else
+            read(5,*,iostat=ios) a0
+            small_box(1,1) = a0
+            small_box(2,2) = a0
+            small_box(3,3) = a0
+         endif
          if (small_box(1,1) < TEN2m6 .or. small_box(2,2) < TEN2m6 .or. &
              small_box(3,3) < TEN2m6) then
             ios = 1
@@ -326,7 +343,7 @@
          write(6,'(a,i3)')'Undefined input: ',ordered
          rloop = rloop + 1
       else
-         call ErrorHandler('main','Undefined input',ordered)
+         call ErrorHandler('main','Undefined input','Too many tries')
       endif
    enddo
 !
@@ -371,87 +388,108 @@
       call placeAtoms(nbasis,HostBasis)
 !     -----------------------------------------------------------------------
    else if (RandomHost) then
-      write(6,'(/,2x,a,$)')     &
-       'Constituents (atomic name separated by space or comma, e.g., Fe Ni): '
-      read(5,'(a)')text
-      call initString(text)
-      NumHostAtomTypes = getNumTokens()
-      if (NumHostAtomTypes < 1 ) then
-         call ErrorHandler('main','Number of atom types < 1',NumHostAtomTypes)
-      else if (NumHostAtomTypes > MaxAtomTypes) then
-         call ErrorHandler('main','Number of atom types > limit',NumHostAtomTypes,MaxAtomTypes)
-      endif
-      do i = 1, NumHostAtomTypes
-         call readToken(i,Host(i),alen)
-         write(6,'(/,2x,3a,$)')'Content of ',Host(i),' (>= 0 and =< 1): '
-         read(5,*)HostContent(i)
+!     -----------------------------------------------------------------------
+      NumHostAtomTypes = 0
+      do while (NumHostAtomTypes < 1 .or. NumHostAtomTypes > MaxAtomTypes)
+         write(6,'(/,2x,a,$)')     &
+          'Constituents (atomic name separated by space or comma, e.g., Fe Ni): '
+         read(5,'(a)')text
+         call setString(text)
+         NumHostAtomTypes = getNumTokens()
+         if (NumHostAtomTypes < 1 ) then
+            call WarningHandler('main','Number of atom types < 1',NumHostAtomTypes)
+            write(6,'(a)')'Try again ...'
+         else if (NumHostAtomTypes > MaxAtomTypes) then
+            call WarningHandler('main','Number of atom types > limit',NumHostAtomTypes,MaxAtomTypes)
+            write(6,'(a)')'Try again ...'
+         endif
       enddo
-      call endString()
-      write(6,'(a)')' '
+!     -----------------------------------------------------------------------
+      done = .false.
+      do while (.not.done)
+         do i = 1, NumHostAtomTypes
+            call readToken(i,Host(i),alen)
+            write(6,'(/,2x,3a,$)')'Content of ',Host(i),' (>= 0 and =< 1): '
+            read(5,*)HostContent(i)
+         enddo
+         write(6,'(a)')' '
 !
-      bins(1) = ZERO
-      do i = 2, NumHostAtomTypes+1
-         bins(i) = bins(i-1) + HostContent(i-1)
+         bins(1) = ZERO
+         do i = 2, NumHostAtomTypes+1
+            bins(i) = bins(i-1) + HostContent(i-1)
+         enddo
+         if (abs(bins(NumHostAtomTypes+1)-ONE) > TEN2m6) then
+            call WarningHandler('main','The summation of the contents is not 1',bins(NumHostAtomTypes+1))
+            write(6,'(a)')'Try again ...'
+         else
+            done = .true.
+         endif
       enddo
-      if (abs(bins(NumHostAtomTypes+1)-ONE) > TEN2m6) then
-         call ErrorHandler('main','The summation of the contents is not 1',bins(NumHostAtomTypes+1))
-      endif
-
+!     -----------------------------------------------------------------------
 !
       nshell=-1
       if (ordered == 2) then   ! Random host with short range order
-         write(6,'(/,2x,a,$)') 'How many shells will be considered: '
-         read(5,*)nshell
 !        --------------------------------------------------------------------
-         if (nshell < 1 ) then
-            call ErrorHandler('main','Number of shells < 1',nshell)
-         else if (nshell > MaxShells) then
-            call ErrorHandler('main','Number of shells > MaxShells',nshell,MaxShells)
-         endif
-
+         done = .false.
+         do while (.not.done)
+            write(6,'(/,2x,a,$)') 'How many shells will be considered (e.g. 4): '
+            read(5,*)nshell
+            if (nshell < 1 ) then
+               call WarningHandler('main','Number of shells < 1',nshell)
+            else if (nshell > MaxShells) then
+               call WarningHandler('main','Number of shells > MaxShells',nshell,MaxShells)
+            else
+               done = .true.
+            endif
+         enddo
          write(6,'(2x,a,i3)') 'nshell is:', nshell
-
-         write(6,'(/,2x,a,$)') 'For each shell please give the weight of SROs:'
 !        --------------------------------------------------------------------
-         ib=-1
-         read(5,'(a)')text
-         call initString(text)
-         ib = getNumTokens()
-!        -----------------------------------------------------------------
-         if (ib /= nshell) then
-            call ErrorHandler('main','Number of weight of SRO not correct, should be',nshell)
-         endif
-
+         done = .false.
+         do while (.not.done)
+            write(6,'(/,2x,a,$)') 'For each shell please give the weight of SROs (e.g. 1.0, 1.0, 1.0, 1.0): '
+            ib=-1
+            read(5,'(a)')text
+            call setString(text)
+            ib = getNumTokens()
+!
+            if (ib /= nshell) then
+               call WarningHandler('main','Number of weight of SRO not correct, should be',nshell)
+            else
+               done = .true.
+            endif
+         enddo
          do j = 1, nshell
            call readToken(j,anm,alen)
            read(anm,*)weight(j)
          enddo
-         call endString()
-
          write(6,'(a)')' '
          write(6,'(2x,a,5f15.5)') 'The input weight is:',weight(1:nshell)
 
 !        ------------------------------------------------------------------------
-         write(6,'(/,2x,a,$)') 'For each shell please give N*(N-1)/2 SROs:'
+         write(6,'(/,2x,a,$)') 'For each shell please give N*(N-1)/2 SROs, where N is the number of species on the shell:'
          do i = 1, nshell
             ib=-1
-            write(6,'(/,2x,a,i2,a,$)') 'shell',i,':  ' 
-!           -----------------------------------------------------------------
-            read(5,'(a)')text
-            call initString(text)
-            ib = getNumTokens()
-!           -----------------------------------------------------------------
-            if (ib /= NumHostAtomTypes*(NumHostAtomTypes-1)/2) then
-               call ErrorHandler('main','Number of SRO not correct, should be',NumHostAtomTypes*(NumHostAtomTypes-1)/2)
-            endif
+            do while (ib /= NumHostAtomTypes*(NumHostAtomTypes-1)/2)
+               if (NumHostAtomTypes == 2) then
+                  write(6,'(/,2x,a,i2,a,$)') 'shell',i,' (1 number is expected):  ' 
+               else
+                  write(6,'(/,2x,a,i2,a,i2,a,$)') 'shell',i,' (',NumHostAtomTypes,' numbers are expected):  ' 
+               endif
+!              --------------------------------------------------------------
+               read(5,'(a)')text
+               call setString(text)
+               ib = getNumTokens()
+!              --------------------------------------------------------------
+               if (ib /= NumHostAtomTypes*(NumHostAtomTypes-1)/2) then
+                  call WarningHandler('main','Number of SRO not correct, should be',NumHostAtomTypes*(NumHostAtomTypes-1)/2)
+               endif
+            enddo
 
             do j = 1, NumHostAtomTypes*(NumHostAtomTypes-1)/2
               call readToken(j,anm,alen)
               read(anm,*)srop(j,i)
             enddo 
-            call endString()
          enddo
-
 
          write(6,'(/,2x,a)')'the input SROs are: '
          do i=1,nshell
@@ -460,7 +498,6 @@
            enddo
            write(6,'(a)')' '
          enddo 
-
 
          write(6,'(/,2x,a,$)')'Enter the temperature (K) to start annealing: '
          read(5,*)Tmax
@@ -502,7 +539,7 @@
          write(6,'(/,2x,a,$)')'Impurity species (atomic name separated by space or comma, e.g., Fe Ni): '
          read(5,'(a)')text
 !        ------------------------------------------------------------------------------
-         call initString(text)
+         call setString(text)
          NumImpuritySpecies = getNumTokens()
 !        ------------------------------------------------------------------------------
          do ib = 1, NumImpuritySpecies
@@ -524,7 +561,6 @@
             ReplacedHost(ib) = anm(1:2)
          enddo
 !        ------------------------------------------------------------------------------
-         call endString()
          call substituteAtoms(NumImpuritySpecies,Impurity,ImpurityContent,ReplacedHost)
 !        ------------------------------------------------------------------------------
       else if (substitution == 2) then
@@ -753,6 +789,8 @@ endif
 !
    nullify( x_host, y_host, z_host )
    deallocate( AtomZ, IndexN )
+!
+   call endString()
 !
 !  -------------------------------------------------------------------
    call endSample()

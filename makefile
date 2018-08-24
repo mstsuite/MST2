@@ -3,7 +3,7 @@
 #=====================================================================
 # SystemName is the filename found under ./compilation_new/arch
 #=====================================================================
-SystemName = muir_xeon_pgi
+SystemName = muir_xeon
 
 #=====================================================================
 # Paths and internal libraries setup - This unlikely needs to be changed

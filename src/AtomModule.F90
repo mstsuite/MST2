@@ -53,7 +53,9 @@ public :: initAtom,    &
           getRcutPseudo,         &
           getMaxRad,             &
           getAtomCoreRad,        &
-          getAtomRmtIn,          &
+          setAtomCoreRad,        &
+          getAtomMuffinTinRad,   &
+          setAtomMuffinTinRad,   &
           printAtom,             &
           printAtomMomentInfo
 !
@@ -146,9 +148,10 @@ private
       integer (kind=IntKind), allocatable :: AtomicNumber(:)
       integer (kind=IntKind) :: GlobalIndex
       integer (kind=IntKind) :: NumSpecies
+      logical :: Rmt_fixed
       real (kind=RealKind), allocatable :: AtomContent(:)
-      real (kind=RealKind) :: Rmt_max
-      real (kind=RealKind) :: Rcore_max
+      real (kind=RealKind) :: Rmt
+      real (kind=RealKind) :: Rcore
       real (kind=RealKind) :: potScreen
       real (kind=RealKind) :: Rcut_pseudo
       real (kind=RealKind) :: Position(3)
@@ -258,8 +261,8 @@ contains
    integer (kind=IntKind), allocatable :: ind_cutoff_r_s(:)
    integer (kind=IntKind), allocatable :: ind_pseudo_r(:)
    integer (kind=IntKind), allocatable :: ind_potscreen(:)
-   integer (kind=IntKind), allocatable :: ind_rmt_max(:)
-   integer (kind=IntKind), allocatable :: ind_rcr_max(:)
+   integer (kind=IntKind), allocatable :: ind_rmt_desire(:)
+   integer (kind=IntKind), allocatable :: ind_rcr_desire(:)
 !
    real (kind=RealKind), allocatable :: alpha_rho(:)
    real (kind=RealKind), allocatable :: alpha_pot(:)
@@ -269,8 +272,8 @@ contains
    real (kind=RealKind), allocatable :: pseudo_r(:)
    real (kind=RealKind), allocatable :: potScreen(:)
    real (kind=RealKind), allocatable :: cutoff_r_s(:)
-   real (kind=RealKind), allocatable :: rmt_max(:)
-   real (kind=RealKind), allocatable :: rcr_max(:)
+   real (kind=RealKind), allocatable :: rmt_desire(:)
+   real (kind=RealKind), allocatable :: rcr_desire(:)
    real (kind=RealKind) :: Za
 !
    if (.not.Initialized) then
@@ -339,8 +342,8 @@ contains
    allocate(ind_potScreen(GlobalNumAtoms), potScreen(0:GlobalNumAtoms))
    allocate(ind_pseudo_r(GlobalNumAtoms), pseudo_r(0:GlobalNumAtoms))
    allocate(ind_cutoff_r_s(GlobalNumAtoms), cutoff_r_s(0:GlobalNumAtoms))
-   allocate(ind_rmt_max(GlobalNumAtoms), rmt_max(0:GlobalNumAtoms))
-   allocate(ind_rcr_max(GlobalNumAtoms), rcr_max(0:GlobalNumAtoms))
+   allocate(ind_rmt_desire(GlobalNumAtoms), rmt_desire(0:GlobalNumAtoms))
+   allocate(ind_rcr_desire(GlobalNumAtoms), rcr_desire(0:GlobalNumAtoms))
 !  -------------------------------------------------------------------
 !  info_id=getTableIndex(trim(adjustl(info_path))//adjustl(info_table))
 !  rstatus = getKeyValue(info_id,'Atom Index',atom_index,GlobalNumAtoms)
@@ -383,8 +386,8 @@ contains
    rstatus = getKeyValue(info_id,'Default No. Rad Points ndivout',ndivout(0))
    rstatus = getKeyValue(info_id,'Default Integer Factor nmult',nmult(0))
    rstatus = getKeyValue(info_id,'Default Screen Potential',potScreen(0))
-   rstatus = getKeyValue(info_id,'Default Maximum Muffin-tin Radius',rmt_max(0))
-   rstatus = getKeyValue(info_id,'Default Maximum Core Radius',rcr_max(0))
+   rstatus = getKeyValue(info_id,'Desired Muffin-tin Radius',rmt_desire(0))
+   rstatus = getKeyValue(info_id,'Desired Core Radius',rcr_desire(0))
 !  -------------------------------------------------------------------
    rstatus = getKeyIndexValue(info_id,'Potential Input File Name',    &
                               ind_potinname,potinname(1:GlobalNumAtoms),GlobalNumAtoms)
@@ -426,10 +429,10 @@ contains
                               ind_lmax_shell,lmax_shell(1:GlobalNumAtoms),GlobalNumAtoms)
    rstatus = getKeyIndexValue(info_id,'LIZ Cutoff Radius',            &
                               ind_cutoff_r,cutoff_r(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Maximum Muffin-tin Radius',    &
-                              ind_rmt_max,rmt_max(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Maximum Core Radius',          &
-                              ind_rcr_max,rcr_max(1:GlobalNumAtoms),GlobalNumAtoms)
+   rstatus = getKeyIndexValue(info_id,'Desired Muffin-tin Radius',      &
+                              ind_rmt_desire,rmt_desire(1:GlobalNumAtoms),GlobalNumAtoms)
+   rstatus = getKeyIndexValue(info_id,'Desired Core Radius',            &
+                              ind_rcr_desire,rcr_desire(1:GlobalNumAtoms),GlobalNumAtoms)
    rstatus = getKeyIndexValue(info_id,'Screen Potential',             &
                               ind_potScreen,potScreen(1:GlobalNumAtoms),GlobalNumAtoms)
    rstatus = getKeyIndexValue(info_id,'Rcut-Screen',                  &
@@ -603,15 +606,15 @@ contains
 !
       AtomProperty(n)%Position(1:3)=getAtomPosition(ig)
       AtomProperty(n)%potScreen=potScreen(ind_potScreen(ig))
-      if ( rmt_max(ind_rmt_max(ig)) > 0.10d0 ) then
-         AtomProperty(n)%rmt_max=rmt_max(ind_rmt_max(ig))
+      if ( rmt_desire(ind_rmt_desire(ig)) > 0.10d0 ) then
+         AtomProperty(n)%Rmt=rmt_desire(ind_rmt_desire(ig))
       else
-         AtomProperty(n)%rmt_max=ZERO
+         AtomProperty(n)%Rmt=ZERO
       endif
-      if ( rcr_max(ind_rcr_max(ig)) > 0.10d0 ) then
-         AtomProperty(n)%Rcore_max=rcr_max(ind_rcr_max(ig))
+      if ( rcr_desire(ind_rcr_desire(ig)) > 0.10d0 ) then
+         AtomProperty(n)%Rcore=rcr_desire(ind_rcr_desire(ig))
       else
-         AtomProperty(n)%Rcore_max=ZERO
+         AtomProperty(n)%Rcore=ZERO
       endif
       if ( pseudo_r(ind_pseudo_r(ig)) >= 0.5d0 ) then
          AtomProperty(n)%Rcut_pseudo=pseudo_r(ind_pseudo_r(ig))
@@ -703,8 +706,8 @@ contains
    deallocate(ind_cutoff_r, cutoff_r, ind_potScreen, potScreen )
    deallocate(ind_cutoff_r_s, cutoff_r_s)
    deallocate(ind_pseudo_r, pseudo_r)
-   deallocate(ind_rmt_max,rmt_max)
-   deallocate(ind_rcr_max,rcr_max)
+   deallocate(ind_rmt_desire,rmt_desire)
+   deallocate(ind_rcr_desire,rcr_desire)
 !
    end subroutine initAtom
 !  ===================================================================
@@ -1616,18 +1619,35 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getAtomRmtIn(i) result (rmt)
+   function getAtomMuffinTinRad(i) result (rmt)
 !  ===================================================================
    implicit none
    integer (kind=IntKind), intent(in) :: i
    real (kind=RealKind) :: rmt
 !
    if (i<1 .or. i>LocalNumAtoms) then
-      call ErrorHandler('getScreenPotential','Invalid atom index',i)
+      call ErrorHandler('getAtomMuffinTinRad','Invalid atom index',i)
    endif
-   rmt = AtomProperty(i)%rmt_max
+   rmt = AtomProperty(i)%Rmt
 !
-   end function getAtomRmtIn
+   end function getAtomMuffinTinRad
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine setAtomMuffinTinRad(i,rmt)
+!  ===================================================================
+   implicit none
+   integer (kind=IntKind), intent(in) :: i
+   real (kind=RealKind), intent(in) :: rmt
+!
+   if (i<1 .or. i>LocalNumAtoms) then
+      call ErrorHandler('setAtomMuffinTinRad','Invalid atom index',i)
+   endif
+   AtomProperty(i)%Rmt = rmt
+!
+   end subroutine setAtomMuffinTinRad
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1640,11 +1660,28 @@ contains
    real (kind=RealKind) :: rcr
 !
    if (i<1 .or. i>LocalNumAtoms) then
-      call ErrorHandler('getScreenPotential','Invalid atom index',i)
+      call ErrorHandler('getAtomCoreRad','Invalid atom index',i)
    endif
-   rcr = AtomProperty(i)%Rcore_max
+   rcr = AtomProperty(i)%Rcore
 !
    end function getAtomCoreRad
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine setAtomCoreRad(i,rcr)
+!  ===================================================================
+   implicit none
+   integer (kind=IntKind), intent(in) :: i
+   real (kind=RealKind), intent(in) :: rcr
+!
+   if (i<1 .or. i>LocalNumAtoms) then
+      call ErrorHandler('setAtomCoreRad','Invalid atom index',i)
+   endif
+   AtomProperty(i)%Rcore = rcr
+!
+   end subroutine setAtomCoreRad
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1733,8 +1770,12 @@ contains
             GridData(i)%ndivout
       write(6,'(''Ratio of r-mesh steps, hin and hout    : '',i5)')   &
             GridData(i)%nmult
-      write(6,'(''Maximum Rmt         : '',f10.5)') AtomProperty(i)%Rmt_max
-      write(6,'(''Maximum Core Radius : '',f10.5)') AtomProperty(i)%Rcore_max
+      if (AtomProperty(i)%Rmt > 0.000001d0) then
+         write(6,'(''Desired Rmt         : '',f10.5)') AtomProperty(i)%Rmt
+      endif
+      if (AtomProperty(i)%Rcore > 0.000001d0) then
+         write(6,'(''Desired Core Radius : '',f10.5)') AtomProperty(i)%Rcore
+      endif
    enddo
    write(6,'(80(''=''))')
 !

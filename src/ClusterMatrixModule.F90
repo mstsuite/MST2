@@ -207,6 +207,7 @@ contains
    endif
 !
    max_nblck = maxval( nblck )
+   max_nblck = max(max_nblck,2) ! This takes care the case when LIZ=1
    allocate( kblocks(max_nblck,LocalNumAtoms) )
 !
    wsTau00_size = wsTau00_size*n_spin_cant*n_spin_cant
@@ -624,6 +625,7 @@ contains
    subroutine calClusterMatrix(energy,tau_needed)
 !  ===================================================================
    use TimerModule, only : getTime
+use MPPModule, only : MyPE, syncAllPEs
 !
    use SpinRotationModule, only : rotateGtoL
 !
@@ -888,10 +890,22 @@ contains
 !        =============================================================
          BlockMatrix = CZERO
          pBlockMatrix => aliasArray2_c(BlockMatrix,kkrsz_ns,kkrsz_ns)
+!        =============================================================
+!        Note: For inversion algorithm <= 6, the following matrix inverse
+!              routine appears problematic for lmax > 3 in the full-
+!              potential case. The sympotom is: 
+!              Different MPI processes give slightly different results.
+!              It needs to be further checked
+!        =============================================================
+!write(6,'(a,i5,2f9.5,2x,4d16.8)')'BigMatrix =',MyPE,energy,          &
+!      BigMatrix((dsize-1)*dsize-kkrsz_ns-1),BigMatrix(kkrsz_ns*dsize+2)
+!call syncAllPEs()
 !        -------------------------------------------------------------
          call invertMatrixBlock( my_atom, pBlockMatrix, kkrsz_ns, kkrsz_ns,  &
                                  BigMatrix, dsize, dsize )
 !        -------------------------------------------------------------
+!write(6,'(a,i5,2f9.5,2x,4d16.8)')'Block =',MyPE,energy,pBlockMatrix(1,1),pBlockMatrix(3,3)
+!call syncAllPEs()
 !
 !        =============================================================
 !        store [1 - BlockMatrix] in ubmat, which uses wsTau00L as temporary space

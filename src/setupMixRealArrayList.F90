@@ -16,6 +16,7 @@
 !
    use DataServiceCenterModule, only : getDataStorage, RealType, RealMark, &
                                        createDataStorage,               &
+                                       setDataStorage2Value,            &
                                        isDataStorageExisting,           &
                                        deleteDataStorage
 !
@@ -78,9 +79,11 @@
 !
    if (.not.isDataStorageExisting("MixingVectorOld")) then
       call createDataStorage('MixingVectorOld',LocalNumAtoms*MaxSpecies*data_size,RealType)
+      call setDataStorage2Value('MixingVectorOld',ZERO)
    endif
    if (.not.isDataStorageExisting("MixingVectorNew")) then
       call createDataStorage('MixingVectorNew',LocalNumAtoms*MaxSpecies*data_size,RealType)
+      call setDataStorage2Value('MixingVectorNew',ZERO)
    endif
 !
    pStore_old => getDataStorage("MixingVectorOld",data_size, &

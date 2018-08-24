@@ -4,4 +4,4 @@
 ! 
    write(myunit,'("# ",t5,a,t30,": ",a)') "username",trim("ywg")
    write(myunit,'("# ",t5,a,t30,": ",a)') "system name",trim("muir6.psc.edu")
-   write(myunit,'("# ",t5,a,t30,": ",a)') "code compiled",trim("Sunday, July 15 2018 21:47:22")
+   write(myunit,'("# ",t5,a,t30,": ",a)') "code compiled",trim("Thursday, August 23 2018 22:55:37")

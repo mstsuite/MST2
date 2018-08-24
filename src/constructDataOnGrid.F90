@@ -39,7 +39,7 @@
 !
    logical :: isDensityType
 !
-   integer (kind=IntKind) :: gCounter, ig, jmax=0
+   integer (kind=IntKind) :: gCounter, ig, ig_box, jmax=0
    integer (kind=IntKind) :: gid, id, ia, i, GroupID, NumPEsInAGroup, MyPEinAGroup
    integer (kind=IntKind) :: atomsOnPoint, n_mult, n, maxn(3), ng, local_id
    integer (kind=IntKind) :: nSources, nTargets, comm
@@ -106,7 +106,7 @@
    do id = 1, gp%AtomOnGrid%NumLocalAtoms
       p_source => getSourceProc(gp,id,nSources)
       p_target => getTargetProc(gp,id,nTargets)
-      maxn(1) = max(maxn(1),gp%AtomOnGrid%NumGridPointsInAtomBox(id))
+      maxn(1) = max(maxn(1),gp%AtomOnGrid%NumGridPointsInCell(id))
       maxn(2) = max(maxn(2),nSources)
       maxn(3) = max(maxn(3),nTargets)
    enddo
@@ -140,11 +140,16 @@
          recv_msgid2(i)=nbrecvMessage(den_remote(:,i),maxn(1),25000+id,p_source(i))
       enddo
 !
-      ng = gp%AtomOnGrid%NumGridPointsInAtomBox(id)
+      ng = gp%AtomOnGrid%NumGridPointsInCell(id)
       grid_local(1) = id
       grid_local(2) = ng
-      do ig = 1, ng
-         gCounter = getGridIndex(gp,id,ig)
+      LOOP_ig: do ig = 1, ng
+         ig_box = gp%AtomOnGrid%InCellGridPointABIndex(ig,id)
+         den_local(ig) = ZERO
+!        if (gp%AtomOnGrid%ABGridPointFlag(ig_box,id) < 0) then
+!           cycle LOOP_ig
+!        endif
+         gCounter = getGridIndex(gp,id,ig_box)
          grid_local(ig+2) = gCounter
 !
 !        =============================================================
@@ -155,20 +160,19 @@
          if (isOnAtomicCellBoundary(gp,gCounter,n)) then
             n_mult = n
          endif
-         r = getGridPosition(gp,id,ig) - getLocalAtomPosition(id)
+         r = getGridPosition(gp,id,ig_box) - gp%AtomOnGrid%AtomPosition(1:3,id)
 !
-         den_local(ig) = ZERO
          if (isDensityType) then
             if (present(lmax)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,   &
+                              getDataAtPoint(value_type, id, ia, r,           &
                                              jmax_in=jmax, n=n_mult)*getLocalSpeciesContent(id,ia)
                enddo
             else
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,   &
+                              getDataAtPoint(value_type, id, ia, r,           &
                                              n=n_mult)*getLocalSpeciesContent(id,ia)
                enddo
             endif
@@ -176,25 +180,25 @@
             if (present(lmax) .and. present(spin)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,   &
+                              getDataAtPoint(value_type, id, ia, r,           &
                                              jmax_in=jmax, n=spin)*getLocalSpeciesContent(id,ia)
                enddo
             else if (present(lmax)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,   &
+                              getDataAtPoint(value_type, id, ia, r,           &
                                              jmax_in=jmax)*getLocalSpeciesContent(id,ia)
                enddo
             else if (present(spin)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,   &
+                              getDataAtPoint(value_type, id, ia, r,           &
                                              n=spin)*getLocalSpeciesContent(id,ia)
                enddo
             else
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r)*getLocalSpeciesContent(id,ia)
+                             getDataAtPoint(value_type, id, ia, r)*getLocalSpeciesContent(id,ia)
                enddo
             endif
          endif
@@ -210,7 +214,7 @@
          if (isLocalGrid(gp,gCounter,local_id)) then
             denOnGrid(local_id) = denOnGrid(local_id) + den_local(ig)
          endif
-      enddo
+      enddo LOOP_ig
 !
 !     ================================================================
 !     Send the data for the atom box to the MPI processes that the atom

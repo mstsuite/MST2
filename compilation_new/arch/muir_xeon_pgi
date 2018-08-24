@@ -27,10 +27,19 @@ LD=$(FC)
 
 #=====================================================================
 # Compiler flags
+# Warning: For code compiled with "-fast" options, the
+# computational results may differ from the those obtained with the code
+# compiled with "-O3" option. This is caused by lib/IntegrationModule.F90.
+# One may choose to compile each code with "-fast" and compile 
+# lib/IntegrationModule.F90 with "-O3" to keep the results consistent.
+# However, according to the timing of actual mst2 runs, "-fast" 
+# does not show any advantage over "-O3", we will just use "-O3" option. 
 #=====================================================================
 #FFLAGS=-I. -I$(MPI_ROOT)/include -fastsse -Mipa=fast,inline -Mprefetch -Mvect=prefetch -O3 # -fast -fastsse could cause numerical inacuracy
 #FFLAGS=-I. -I$(MPI_ROOT)/include -fast -fastsse -Mprefetch -Mvect=prefetch
-#FFLAGS=-I. -I$(MPI_ROOT)/include -O3 -Mbounds -Mchkptr -Mchkstk -traceback
+# FFLAGS=-I. -I$(MPI_ROOT)/include -O3 -Mbounds -Mchkptr -Mchkstk -traceback
+# FFLAGS=-I. -I$(MPI_ROOT)/include -O3 -Ktrap=divz,ovf,unf,inexact -traceback
+# FFLAGS=-I. -I$(MPI_ROOT)/include -fast -fastsse
 FFLAGS=-I. -I$(MPI_ROOT)/include -O3
 F77FLAGS=$(FFLAGS)
 FPPDEFS=-Mpreprocess

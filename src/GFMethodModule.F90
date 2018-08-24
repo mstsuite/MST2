@@ -382,7 +382,9 @@ contains
 !     -------------------------------------------------------------------
    endif
 !
-   allocate(wk_green(green_size*4), wk_dos((nsize+4)*n_spin_cant*n_spin_cant))
+   allocate(wk_green(green_size*4), wk_dos((nsize+4)*n_spin_cant*n_spin_cant+12))
+   wk_green = CZERO; wk_dos = CZERO
+!
    allocate( LastValue(LocalNumAtoms) )
    allocate( IntegrValue(LocalNumAtoms) )
    allocate( ssLastValue(LocalNumAtoms) )
@@ -851,6 +853,9 @@ contains
    else
      call calIntegratedDOS(efermi)
    endif
+!
+!  -------------------------------------------------------------------
+!  call averageElectroStruct(IntegrValue)
 !  -------------------------------------------------------------------
 !
 !  ===================================================================
@@ -4584,6 +4589,55 @@ contains
    endif
 !
    end subroutine updateValenceDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine averageElectroStruct(eValue)
+!  ===================================================================
+   use GroupCommModule, only : GlobalSumInGroup
+!
+   implicit none
+!
+   integer (kind=IntKind) :: id, n
+!
+   type (ElectroStruct), intent(inout) :: eValue(LocalNumAtoms)
+!
+   complex (kind=CmplxKind) :: cfac
+!
+   cfac = CONE/real(NumPEsInEGroup,kind=RealKind)
+!
+   n = 0
+   do id = 1, LocalNumAtoms
+      wk_dos(n+1:n+4) = eValue(id)%dos(1:4)
+      wk_dos(n+5:n+8) = eValue(id)%dos_mt(1:4)
+      wk_dos(n+9:n+12) = eValue(id)%evalsum(1:4)
+      n = n + 12
+!     ----------------------------------------------------------------
+      call zcopy(eValue(id)%size,eValue(id)%dos_r_jl,1,wk_dos(n+1),1)
+!     ----------------------------------------------------------------
+      n = n + eValue(id)%size
+   enddo
+!
+!  -------------------------------------------------------------------
+   call GlobalSumInGroup(eGID,wk_dos,n)
+!  -------------------------------------------------------------------
+   wk_dos = cfac*wk_dos
+!
+   n = 0
+   do id = 1, LocalNumAtoms
+      eValue(id)%dos(1:4) = wk_dos(n+1:n+4)
+      eValue(id)%dos_mt(1:4) = wk_dos(n+5:n+8)
+      eValue(id)%evalsum(1:4) = wk_dos(n+9:n+12)
+      n = n + 12
+!     ----------------------------------------------------------------
+      call zcopy(eValue(id)%size,wk_dos(n+1),1,eValue(id)%dos_r_jl,1)
+!     ----------------------------------------------------------------
+      n = n + eValue(id)%size
+   enddo
+!
+   end subroutine averageElectroStruct
 !  ===================================================================
 !
 !  *******************************************************************

@@ -165,7 +165,7 @@ contains
                                        isDataStorageExisting, &
                                        RealType, ComplexType, &
                                        RealMark, ComplexMark
-   use AtomModule, only : getAtomCoreRad
+   use AtomModule, only : getAtomCoreRad, setAtomCoreRad
    use PolyhedraModule, only : getVolume
 !
    use GroupCommModule, only : GlobalSumInGroup
@@ -239,12 +239,13 @@ contains
       r_mesh => Core(id)%Grid%r_mesh
       Core(id)%NumSpecies = getNumAlloyElements(ig)
       Core(id)%rsize = last
-      Core(id)%rcore_mt = getAtomCoreRad(id)
       jcore = Core(id)%Grid%jmt
-      if ( Core(id)%rcore_mt < 0.10d0 ) then
+      if ( getAtomCoreRad(id) < 0.10d0 ) then
          Core(id)%rcore_mt = Core(id)%Grid%r_mesh(jcore)
          Core(id)%jcore    = jcore
+         call setAtomCoreRad(id,Core(id)%rcore_mt)
       else
+         Core(id)%rcore_mt = getAtomCoreRad(id)
 !        Find the first point on the radial grid that is smaller
 !        than the input rcore_mt
          jend = Core(id)%Grid%jend

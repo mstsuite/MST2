@@ -206,7 +206,7 @@ public :: initStepFunction,     &
    end interface
 !
    interface truncate
-      module procedure truncate_all, truncate_jl
+      module procedure truncate_all, truncate_jl, truncate_symm
    end interface
 !
    interface testStepFunction
@@ -240,6 +240,7 @@ private
       integer (kind=IntKind) :: NumGaussCosThetas
       integer (kind=IntKind) :: NumCriticalRs
       integer (kind=IntKind) :: np_index(2)
+      integer (kind=IntKind), pointer :: SigmaCompFlag(:)
 !
       real (kind=RealKind) :: rmin
       real (kind=RealKind) :: rmax
@@ -268,6 +269,8 @@ private
    real (kind=RealKind), pointer :: clm(:)
 !
    real (kind=RealKind), allocatable, target :: sqrt_r(:), rr0(:)
+!
+   real (kind=RealKind), parameter :: sigma_tol = TEN2m8
 !
    real (kind=RealKind), allocatable :: rfg(:), res(:)
    complex (kind=CmplxKind), allocatable :: cfg(:), ces(:)
@@ -538,8 +541,11 @@ contains
    n = StepFunction(poly)%NumGaussRs
    allocate( StepFunction(poly)%GaussR(1:n) )
    allocate( StepFunction(poly)%GaussRWeight(1:n) )
+   allocate( StepFunction(poly)%SigmaCompFlag(1:jmax_step) )
    allocate( StepFunction(poly)%sigma_L(1:n,1:jmax_step) )
    allocate( StepFunction(poly)%sigma_LL(1:kmax_half,1:kmax_half,1:n) )
+   StepFunction(poly)%sigma_L = CZERO
+   StepFunction(poly)%sigma_LL = CZERO
 !
 !  ===================================================================
 !  determine np_index and rp_index.
@@ -574,9 +580,7 @@ contains
 !  compute and store the step function for each radial Gaussian 
 !  points and jl component.
 !  ===================================================================
-   nj3 => getNumK3()
-   kj3 => getK3()
-   cgnt => getGauntFactor()
+   StepFunction(poly)%SigmaCompFlag = 0
    current_r = -ONE
    n = 0
    do ic = 2,StepFunction(poly)%NumCriticalRs
@@ -587,29 +591,46 @@ contains
          do jl = jmax_step, 1, -1
             StepFunction(poly)%sigma_L(n,jl) =                        &
                 getStepFunction(poly,jl,rg(ig,ic-1))
-         enddo
-         do kl2 = 1, kmax_half
-            do kl1 = 1, kmax_half
-               ssum = CZERO
-               LoopKl : do j=1,nj3(kl1,kl2)
-                  kl=kj3(j,kl1,kl2)
-                  if ( kl>StepFunction(poly)%kmax_step ) cycle LoopKl
-                  jl = jofk(kl)
-                  m = mofk(kl)
-                  if (m >= 0) then
-                     ssum = ssum +                                    &
-                        cgnt(j,kl1,kl2)*StepFunction(poly)%sigma_L(n,jl)
-                  else
-                     ssum = ssum +                                    &
-                        m1m(m)*cgnt(j,kl1,kl2)*                       &
-                               conjg(StepFunction(poly)%sigma_L(n,jl))
-                  endif
-               enddo LoopKl
-               StepFunction(poly)%sigma_LL(kl1,kl2,n) = ssum
-            enddo
+            if ( abs(StepFunction(poly)%sigma_L(n,jl)) > sigma_tol) then
+               StepFunction(poly)%SigmaCompFlag(jl) = 1
+            endif
          enddo
       enddo
    enddo
+   if ( n /= StepFunction(poly)%NumGaussRs ) then
+      call ErrorHandler('setupStepFunction','n <> StepFunction(poly)%NumGaussRs', &
+                        n,StepFunction(poly)%NumGaussRs)
+   endif
+!
+   do jl = 1, jmax_step
+      if (StepFunction(poly)%SigmaCompFlag(jl) == 0) then
+         StepFunction(poly)%sigma_L(:,jl) = CZERO
+      endif
+   enddo
+!
+   nj3 => getNumK3()
+   kj3 => getK3()
+   cgnt => getGauntFactor()
+   do n = 1, StepFunction(poly)%NumGaussRs
+      do kl2 = 1, kmax_half
+         do kl1 = 1, kmax_half
+            ssum = CZERO
+            LoopKl : do j=1,nj3(kl1,kl2)
+               kl=kj3(j,kl1,kl2)
+               if ( kl>StepFunction(poly)%kmax_step ) cycle LoopKl
+               jl = jofk(kl)
+               m = mofk(kl)
+               if (m >= 0) then
+                  ssum = ssum + cgnt(j,kl1,kl2)*StepFunction(poly)%sigma_L(n,jl)
+               else
+                  ssum = ssum + m1m(m)*cgnt(j,kl1,kl2)*conjg(StepFunction(poly)%sigma_L(n,jl))
+               endif
+            enddo LoopKl
+            StepFunction(poly)%sigma_LL(kl1,kl2,n) = ssum
+         enddo
+      enddo
+   enddo
+!
    nullify( nj3, kj3, cgnt )
    deallocate( rg, wg, ng )
 !
@@ -634,6 +655,7 @@ contains
    endif
 !
    do i = 1, NumPolyhedra
+      deallocate( StepFunction(i)%SigmaCompFlag )
       deallocate( StepFunction(i)%sigma_L )
       deallocate( StepFunction(i)%sigma_LL )
       deallocate( StepFunction(i)%CriticalR )
@@ -1541,7 +1563,7 @@ contains
    if ( present(tol_in) ) then
       tol = tol_in
    else
-      tol = Ten2m8
+      tol = sigma_tol
    endif
 !
    do jl = 1, jmax
@@ -1802,7 +1824,7 @@ contains
    if ( present(tol_in) ) then
       tol = tol_in
    else
-      tol = Ten2m8
+      tol = sigma_tol
    endif
 !
    do jl = 1, jmax
@@ -2066,7 +2088,7 @@ contains
    if ( present(tol_in) ) then
       tol = tol_in
    else
-      tol = Ten2m8
+      tol = sigma_tol
    endif
 !
    if (.not.allocated(fflag)) then
@@ -3323,6 +3345,148 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine truncate_symm(id, mr, nr, r, f, fsymm, jl_f, nrt, ftrnc, jl_ft)
+!  ===================================================================
+   use GauntFactorsModule, only : getK3
+   use GauntFactorsModule, only : getNumK3
+   use GauntFactorsModule, only : getGauntFactor
+!
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind), intent(in) :: mr, nr, nrt
+   integer (kind=IntKind), intent(in) :: jl_f, jl_ft
+   integer (kind=IntKind), intent(in) :: fsymm(jl_f)
+!
+   real (kind=RealKind), target :: r(nr)
+!
+   complex (kind=CmplxKind), intent(in)  :: f(nr,jl_f)
+   complex (kind=CmplxKind), intent(out) :: ftrnc(1:nrt,1:jl_ft)
+!
+   integer (kind=IntKind) :: ir, mrt, izamax
+   integer (kind=IntKind) :: lmax_sigma, jmax_sigma, kmax_sigma
+   integer (kind=IntKind) :: lmax_step, jmax_step, lmax_f, lmax_ft
+   integer (kind=IntKind) :: l, ml, jl, kl, lp, mlp, jlp, klp
+   integer (kind=IntKind) :: mlpp, jlpp, klpp, lpp, j, kmax_f, jmax_f
+   integer (kind=IntKind), pointer :: nj3(:,:), kj3(:,:,:)
+!
+   real (kind=RealKind), pointer :: cgnt(:,:,:)
+!
+   complex (kind=CmplxKind) :: sigma_lpp
+   complex (kind=CmplxKind) :: cfac, cfacp, f_ir
+!
+   complex (kind=CmplxKind), allocatable :: sigma(:,:)
+   complex (kind=CmplxKind), allocatable :: sum_i3(:), sum_kl(:)
+!
+!  mr = nr
+!  LOOP_ir: do ir = nr-1, 1, -1
+!     if ( r(ir) < StepFunction(id)%rmin  - TEN2m8 ) then
+!        mr = ir+1
+!        exit LOOP_ir
+!     endif
+!  enddo LOOP_ir
+!
+   mrt = nr-mr+1
+!
+   if ( mr == nr ) then
+      ftrnc = CZERO ! nothing to truncate
+      return
+   else if (mr > nr) then
+      call ErrorHandler('StepFunction:: truncate:','mr > nr',mr,nr)
+   else if (mrt > nrt) then
+      call WarningHandler('StepFunction:: truncate:','mrt > nrt',mrt,nrt)
+      mrt = nrt
+   endif
+!
+   lmax_f  = lofj(jl_f)
+   lmax_ft = lofj(jl_ft)
+   jmax_f = (lmax_f+1)*(lmax_f+2)/2
+   kmax_f  = (lmax_f+1)*(lmax_f+1)
+   lmax_step = lmax_f+lmax_ft
+   lmax_sigma = min(lmax_step,StepFunction(id)%lmax_step)
+   jmax_step = ((lmax_step+1)*(lmax_step+2))/2
+   jmax_sigma = ((lmax_sigma+1)*(lmax_sigma+2))/2
+   kmax_sigma = (lmax_sigma+1)*(lmax_sigma+1)
+!
+!  if ( abs(StepFunction(id)%rmin-r(mr)) > TEN2m8 ) then
+!     call WarningHandler("StepFunction:: truncate:",                 &
+!                         "rmin doesn't fall on the radial mesh ")
+!  endif
+!
+   allocate( sigma(mrt,jmax_step) )
+   allocate( sum_i3(mrt), sum_kl(mrt))
+!
+   sigma = CZERO
+   do ir = mr,nr
+      sigma(ir-mr+1,1) = getStepFunction(id,1,r(ir))
+      if ( jmax_step>1 .and. jmax_sigma>=2 ) then
+         do jl = 2,jmax_sigma
+            sigma(ir-mr+1,jl) = wylm(jl)
+         enddo
+      endif
+   enddo
+!
+   nj3 => getNumK3()
+   kj3 => getK3()
+   cgnt => getGauntFactor()
+!
+   ftrnc = CZERO
+!
+   LOOP_jl: do jl = 1,jl_ft
+      if ( jl <= min(jmax_f,jmax_sigma) ) then
+         if (fsymm(jl) == 0 .and. StepFunction(id)%SigmaCompFlag(jl) == 0) cycle LOOP_jl
+      else if (jl <= StepFunction(id)%jmax_step) then
+         if (StepFunction(id)%SigmaCompFlag(jl) == 0) cycle LOOP_jl
+      endif
+      l  = lofj(jl)
+      ml = mofj(jl)
+      kl = (l+1)*(l+1) - l + ml
+      sum_kl(1:mrt) = CZERO
+      do klp = 1,kmax_f
+         lp = lofk(klp)
+         mlp = mofk(klp)
+         jlp = jofk(klp)
+         sum_i3(1:mrt) = CZERO
+         Loop_i3: do j=nj3(klp,kl),1,-1
+            klpp = kj3(j,klp,kl)
+            if ( klpp>kmax_sigma ) cycle Loop_i3
+            lpp = lofk(klpp)
+            cfac=cgnt(j,klp,kl)
+            jlpp = jofk(klpp)
+            if (StepFunction(id)%SigmaCompFlag(jlpp) == 0) cycle Loop_i3
+            mlpp = mofk(klpp)
+            cfacp=cfac*m1m(mlpp)
+            do ir = mr,mr+mrt-1
+               if ( mlp>=0 ) then
+                  f_ir = f(ir,jlp)
+               else
+                  f_ir = m1m(mlp)*conjg(f(ir,jlp))
+               endif
+               if ( mlpp>=0 ) then
+                  sigma_lpp = cfac*sigma(ir-mr+1,jlpp)
+               else
+                  sigma_lpp = cfacp*conjg(sigma(ir-mr+1,jlpp))
+               endif
+               sum_i3(ir-mr+1) = sum_i3(ir-mr+1) + f_ir*sigma_lpp
+            enddo
+         enddo Loop_i3
+         do ir = 1,mrt
+            sum_kl(ir) = sum_kl(ir) + sum_i3(ir)
+         enddo
+      enddo
+      do ir = 1,mrt
+         ftrnc(ir,jl) = sum_kl(ir)
+      enddo
+   enddo LOOP_jl
+!
+   deallocate( sigma, sum_i3, sum_kl )
+!
+   end subroutine truncate_symm
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine truncate_all(id, mr, nr, r, f, jl_f, nrt, ftrnc, jl_ft)
 !  ===================================================================
    use GauntFactorsModule, only : getK3
@@ -3340,7 +3504,7 @@ contains
    complex (kind=CmplxKind), intent(in)  :: f(nr,jl_f)
    complex (kind=CmplxKind), intent(out) :: ftrnc(1:nrt,1:jl_ft)
 !
-   integer (kind=IntKind) :: ir, mrt
+   integer (kind=IntKind) :: ir, mrt, izamax
    integer (kind=IntKind) :: lmax_sigma, jmax_sigma, kmax_sigma
    integer (kind=IntKind) :: lmax_step, jmax_step, lmax_f, lmax_ft
    integer (kind=IntKind) :: l, ml, jl, kl, lp, mlp, jlp, klp
@@ -3424,6 +3588,7 @@ contains
             lpp = lofk(klpp)
             cfac=cgnt(j,klp,kl)
             jlpp = jofk(klpp)
+            if (StepFunction(id)%SigmaCompFlag(jlpp) == 0) cycle Loop_i3
             mlpp = mofk(klpp)
             cfacp=cfac*m1m(mlpp)
             do ir = mr,mr+mrt-1
@@ -3727,7 +3892,7 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: poly
-   integer (kind=IntKind) :: j
+   integer (kind=IntKind) :: j, jl
 !
    type (StepFunctionStruct), pointer :: p
 !
@@ -3751,6 +3916,14 @@ contains
    write(6,'(a,i5)')   'Number of Theta  Gaussian Points: ',p%NumGaussCosThetas
    write(6,'(a,f10.5)')   'Inner Bounding Sphere Radius:  ',p%rmin
    write(6,'(a,f10.5)')   'Outer Bounding Sphere Radius:  ',p%rmax
+!
+   write(6,'(/,a)')'Non-zero (l,m) components of the step function'
+   do jl = 1, StepFunction(poly)%jmax_step
+      if ( StepFunction(poly)%SigmaCompFlag(jl) /= 0 ) then
+         write(6,'(5x,a,i2,a,i2,a)')'(',lofj(jl),',',mofj(jl),')'
+      endif
+   enddo
+!
    write(6,'(/,40(''=''))')
    write(6,'(a)')'Critical Radial Point Table'
    write(6,'(40(''=''))')

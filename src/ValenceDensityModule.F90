@@ -1935,6 +1935,8 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine updateValenceDensity(id,dos_r_jl)
 !  ===================================================================
+   use MPPModule, only : MyPE, syncAllPEs
+!
    use SystemSymmetryModule, only : getSymmetryFlags
 !
    implicit none
@@ -1944,7 +1946,7 @@ contains
    logical :: isZERO
 !
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind) :: is, ir, jl, NumRs
+   integer (kind=IntKind) :: is, ir, jl, NumRs, izamax
    integer (kind=IntKind) :: jmax_rho
    integer (kind=IntKind), pointer :: flags_jl(:)
 !
@@ -1993,14 +1995,21 @@ contains
 !           call WarningHandler('updateValenceDensity','Non-zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
 !        endif
          Density(id)%DenCompFlag(jl) = 0
+      else
+         Density(id)%DenCompFlag(jl) = 1
+         if (getSymmetryFlags(id,jl) == 0) then
+            call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+            ir = izamax(NumRs,Density(id)%rho_l(:,jl),1)
+            write(6,'(a,2i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,Density(id)%rho_l(ir,jl)
+            if ( isValSymmOn ) then
+               Density(id)%DenCompFlag(jl) = 0
+            endif
+         endif
+      endif
+      if (Density(id)%DenCompFlag(jl) == 0) then
          do ir = 1, NumRs
             Density(id)%rho_l(ir,jl) = CZERO
          enddo
-      else
-         if (getSymmetryFlags(id,jl) == 0) then
-            call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
-         endif
-         Density(id)%DenCompFlag(jl) = 1
       endif
    enddo
 !
