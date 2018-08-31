@@ -358,6 +358,7 @@ contains
    use VectorModule, only : getVecLength, getDotProduct, getCrossProduct
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
    use GroupCommModule, only : GlobalCollectInGroup, GlobalMaxInGroup
+   use GroupCommModule, only : GlobalSumInGroup
 !
    implicit none
 !
@@ -379,6 +380,7 @@ contains
    real (kind=RealKind) :: r(3), rg(3), rv(3)
    real (kind=RealKind) :: a0(3), b0(3), c0(3), fac, max_rc, vol, frac
    real (kind=RealKind) :: a, b, c, step_a_len, step_b_len, step_c_len
+   real (kind=RealKind) :: bxc, cxa, axb
 !
    logical :: redundant
 !
@@ -416,7 +418,8 @@ contains
 !
 !  ===================================================================
 !  Set up AtomBox, which identifies a box of uniform grid points with
-!  an atom at the center of the box.
+!  an atom at the center of the box. The coordinates of the box is 
+!  relative to the origin of the unit cell.
 !  ===================================================================
    allocate(pUG%AtomOnGrid)
    pAOG => pUG%AtomOnGrid
@@ -440,7 +443,7 @@ contains
 !  write(6,'(a,d15.8)')'c0 legnth = ',getVecLength(3,c0)
 !
 !  ===================================================================
-!  Calculate fac = a0*(b0xc0)
+!  Calculate fac = a0*(b0xc0).
 !  ===================================================================
    rv = getCrossProduct(a0,b0)
    fac = getDotProduct(3,rv,c0,absolute=.true.)
@@ -459,59 +462,68 @@ contains
    do ia = 1, NumAtoms
       pAOG%AtomPosition(1:3,ia) = AtomPosition(1:3,ia)
 !     ================================================================
-!     By placing the sphere of radius(ia) at the corner of the cell,
-!     for which the uniform grid points are formed, we obtain the 
-!     intersection, i.e., the projection, of the sphere onto the three,
-!     axes of the cell. The intersection, max_rc, is just the radius of 
-!     the sphere and is used to determine the uniform grid points
-!     associated with each atom.
-!
-!     Notes: We used to set max_rc=radius. In one atom per unit cell case
-!            it causes some grid points missing from AtomBox. We now
-!            set max_rc=radius+2*step_len. This may need to be re-examined
-!            in the future.
-!     ================================================================
-      max_rc = ZERO
-      do k = -1, 1
-         do j = -1, 1
-            do i = -1, 1
-               rv = i*pUG%grid_step_a+j*pUG%grid_step_b+k*pUG%grid_step_c
-               max_rc = max(max_rc,getVecLength(3,rv))
-            enddo
-         enddo
-      enddo
-      max_rc = radius(ia) + max_rc + TEN2m6
-!     max_rc = radius(ia) + 2*max(step_a_len,step_b_len,step_c_len)
-!
-!     ================================================================
-!     Determine the projection of the atom position onto the three cell
-!     axes. Given any point r=(x,y,z), its projection onto the cell axis
+!     Note: Given any point r=(x,y,z), its projection onto the cell axis
 !     vectors, a0, b0, c0, are given by:
 !         a = r*(b0xc0)/[a0*(b0xc0)]
 !         b = r*(c0xa0)/[a0*(b0xc0)]
 !         c = r*(a0xb0)/[a0*(b0xc0)]
 !     where a0*(b0xc0) = fac.
+!
+!     Determine the projection of the furtherest corner of the atomic 
+!     cell onto the cell axes with the present atom as the origin. 
+!     The strategy is described as follows. 
+!     1. The projection of a point r onto a0, b0, and c0 is given by 
+!            r*(b0xc0)/[a0*(b0xc0)]
+!            r*(c0xa0)/[a0*(b0xc0)]
+!            r*(a0xb0)/[a0*(b0xc0)]
+!        respectively.
+!     2. If r is on a sphere of radius R, the largest projection distance
+!        from the atom center is
+!            R*(b0xc0)**2/[a0*(b0xc0)]
+!            R*(c0xa0)**2/[a0*(b0xc0)]
+!            R*(a0xb0)**2/[a0*(b0xc0)]
+!     3. The projection of the atom position p onto the three axis is given by
+!            a = p*(b0xc0)/[a0*(b0xc0)] 
+!            b = p*(c0xa0)/[a0*(b0xc0)] 
+!            c = p*(a0xb0)/[a0*(b0xc0)] 
+!        respectively
+!     4. The uniform grid points associated with the atom is contained in 
+!        AtomBox as described below:
+!            AtomBox(1:2,1,atom): the index range in a0 dimension
+!            AtomBox(1:2,2,atom): the index range in b0 dimension
+!            AtomBox(1:2,3,atom): the index range in c0 dimension
+!     5. For the index range in each dimension is the number of grid points 
+!        in between
+!            [a-R*(b0xc0)**2/[a0*(b0xc0)], a+R*(b0xc0)**2/[a0*(b0xc0)]]
+!            [b-R*(c0xa0)**2/[a0*(b0xc0)], b+R*(c0xa0)**2/[a0*(b0xc0)]]
+!            [c-R*(a0xb0)**2/[a0*(b0xc0)], c+R*(a0xb0)**2/[a0*(b0xc0)]]
 !     ================================================================
       rv = getCrossProduct(b0,c0)
       a = getDotProduct(3,AtomPosition(:,ia),rv,absolute=.true.)/fac
+      bxc = getVecLength(3,rv)
+      max_rc = radius(ia)*bxc**2/fac
 !     write(6,'(a,3d18.8)')'a,max_rc,step_a_len = ',a,max_rc,step_a_len
       pAOG%AtomBox(1,1,ia) = floor((a-max_rc)/step_a_len)
       pAOG%AtomBox(2,1,ia) = ceiling((a+max_rc)/step_a_len)
-!     write(6,'(a,2i8)')'AtomBox(1:2,1) = ',pAOG%AtomBox(1:2,1,ia)
+!     write(6,'(a,2f15.8,2x,2i8)')'AtomBox(1:2,1) = ',a-max_rc,a+max_rc,pAOG%AtomBox(1:2,1,ia)
 !
       rv = getCrossProduct(c0,a0)
       b = getDotProduct(3,AtomPosition(:,ia),rv,absolute=.true.)/fac
+      cxa = getVecLength(3,rv)
+      max_rc = radius(ia)*cxa**2/fac
 !     write(6,'(a,3d18.8)')'b,max_rc,step_b_len = ',b,max_rc,step_b_len
       pAOG%AtomBox(1,2,ia) = floor((b-max_rc)/step_b_len)
       pAOG%AtomBox(2,2,ia) = ceiling((b+max_rc)/step_b_len)
-!     write(6,'(a,2i8)')'AtomBox(1:2,2) = ',pAOG%AtomBox(1:2,2,ia)
+!     write(6,'(a,2f15.8,2x,2i8)')'AtomBox(1:2,2) = ',b-max_rc,b+max_rc,pAOG%AtomBox(1:2,2,ia)
 !
       rv = getCrossProduct(a0,b0)
       c = getDotProduct(3,AtomPosition(:,ia),rv,absolute=.true.)/fac
+      axb = getVecLength(3,rv)
+      max_rc = radius(ia)*axb**2/fac
 !     write(6,'(a,3d18.8)')'c,max_rc,step_c_len = ',c,max_rc,step_c_len
       pAOG%AtomBox(1,3,ia) = floor((c-max_rc)/step_c_len)
       pAOG%AtomBox(2,3,ia) = ceiling((c+max_rc)/step_c_len)
-!     write(6,'(a,2i8)')'AtomBox(1:2,3) = ',pAOG%AtomBox(1:2,3,ia)
+!     write(6,'(a,2f15.8,2x,2i8)')'AtomBox(1:2,3) = ',c-max_rc,c+max_rc,pAOG%AtomBox(1:2,3,ia)
 !
       ic = pAOG%AtomBox(2,1,ia)-pAOG%AtomBox(1,1,ia)+1
       jc = pAOG%AtomBox(2,2,ia)-pAOG%AtomBox(1,2,ia)+1
@@ -683,6 +695,26 @@ contains
          deallocate(size_collect,data_collect)
       endif
    endif
+!
+!  ===================================================================
+!  Check if the number of uniform grid points in all atomic cells equals
+!  to the number of uniform grid points in unit cell.
+!  The following method for checking the consistency fails in multiple 
+!  atoms case. It needs to be redesigned.
+!  ===================================================================
+!! n = 0
+!! do ia = 1, NumAtoms
+!!    n = n + pAOG%NumGridPointsInCell(ia)
+!! enddo
+!! do i = 1, pAOG%NumGridPointsOnCellBound
+!!    n = n - pAOG%NumNeighboringAtoms(i) + 1
+!! enddo
+!  -------------------------------------------------------------------
+!! call GlobalSumInGroup(aGID,n)
+!  -------------------------------------------------------------------
+!! if (n /= pUG%ng) then
+!!    call ErrorHandler('insertAtomsInGrid','Failed integraty test: n <> ng',n,pUG%ng)
+!! endif
 !
 !  ===================================================================
 !  Determine the relation of each atom box with the MPI tasks, which the
@@ -1002,27 +1034,31 @@ contains
    ic = mod(ig_in_box-1,ni)+pAOG%AtomBox(1,1,ia)
    jc = mod((ig_in_box-ic+pAOG%AtomBox(1,1,ia)-1)/ni,nj)+pAOG%AtomBox(1,2,ia)
    kc = ((ig_in_box-ic+pAOG%AtomBox(1,1,ia)-1)/ni-(jc-pAOG%AtomBox(1,2,ia)))/nj+pAOG%AtomBox(1,3,ia)
-   if (kc < 1) then
-      kcp = kc + pUG%ngc
-   else if (kc > pUG%ngc) then
-      kcp = kc - pUG%ngc
-   else
-      kcp = kc
-   endif
-   if (jc < 1) then
-      jcp = jc + pUG%ngb
-   else if (jc > pUG%ngb) then
-      jcp = jc - pUG%ngb
-   else
-      jcp = jc
-   endif
-   if (ic < 1) then
-      icp = ic + pUG%nga
-   else if (ic > pUG%nga) then
-      icp = ic - pUG%nga
-   else
-      icp = ic
-   endif
+!
+   kcp = kc
+   do while (kcp < 1)
+      kcp = kcp + pUG%ngc
+   enddo
+   do while (kcp > pUG%ngc)
+      kcp = kcp - pUG%ngc
+   enddo
+!
+   jcp = jc
+   do while (jcp < 1)
+      jcp = jcp + pUG%ngb
+   enddo
+   do while (jcp > pUG%ngb)
+      jcp = jcp - pUG%ngb
+   enddo
+!
+   icp = ic
+   do while (icp < 1)
+      icp = icp + pUG%nga
+   enddo
+   do while (icp > pUG%nga)
+      icp = icp - pUG%nga
+   enddo
+!
    grid_index = (kcp-1)*pUG%ngb*pUG%nga+(jcp-1)*pUG%nga+icp
 !
    end function getGridIndex_box
