@@ -2000,7 +2000,7 @@ contains
          if (getSymmetryFlags(id,jl) == 0) then
             call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
             ir = izamax(NumRs,Density(id)%rho_l(:,jl),1)
-            write(6,'(a,2i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,Density(id)%rho_l(ir,jl)
+            write(6,'(a,i5,2x,i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,Density(id)%rho_l(ir,jl)
             if ( isValSymmOn ) then
                Density(id)%DenCompFlag(jl) = 0
             endif

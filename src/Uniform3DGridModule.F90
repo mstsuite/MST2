@@ -370,7 +370,7 @@ contains
 !
    integer (kind=IntKind) :: gCounter, ic, jc, kc, GroupID
    integer (kind=IntKind) :: ia, lp, mp, np, nshift, ig, max_incell_pts
-   integer (kind=IntKind) :: icp, jcp, kcp, i, j, k, n, m, ip
+   integer (kind=IntKind) :: icp, jcp, kcp, i, j, k, n, m, ip, nc
    integer (kind=IntKind), allocatable :: gtmp(:), ntmp(:)
    integer (kind=IntKind), allocatable :: data_collect(:,:,:)
    integer (kind=IntKind), allocatable :: size_collect(:)
@@ -896,82 +896,60 @@ contains
    integer (kind=IntKind) :: x0, x1, y0, y1, z0, z1
    integer (kind=IntKind) :: i, j, j0, k, n
 !
+   integer (kind=IntKind), parameter :: shift = 1
+   integer (kind=IntKind) :: num_shifts_1d = 2*shift+1
+   integer (kind=IntKind) :: num_shifts_2d = (2*shift+1)**2
+   integer (kind=IntKind) :: num_shifts_3d = (2*shift+1)**3
+!
    logical :: t
 !
    t = .false.
 !
-   LOOP_n: do n = 1, 27
-      i = mod(n,3)-1
-      j = mod((n-i-1)/3+1,3)-1
-      j0 = mod((n-i-1)/3,3)
-      k = mod((n-j0*3-i-1)/9+1,3)-1
+   LOOP_n: do n = 1, num_shifts_3d
+      i = mod(n,num_shifts_1d)-1
+      j = mod((n-i-1)/num_shifts_1d+1,num_shifts_1d)-1
+      j0 = mod((n-i-1)/num_shifts_1d,num_shifts_1d)
+      k = mod((n-j0*num_shifts_1d-i-1)/num_shifts_2d+1,num_shifts_1d)-1
 !
       x0 = Grid(1)+i*nga; x1 = Grid(2)+i*nga
       y0 = Grid(3)+j*ngb; y1 = Grid(4)+j*ngb
       z0 = Grid(5)+k*ngc; z1 = Grid(6)+k*ngc
 !     ================================================================
-!     Check if a corner of Grid-box is inside AtomBox
+!     Check if there are overlap between Grid box and AtomBox along 
+!     a, b, c dimensions
 !     ================================================================
-      if (isInBox(x0,y0,z0,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y0,z0,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y1,z0,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y1,z0,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y0,z1,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y0,z1,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y1,z1,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y1,z1,AtomBox)) then
-         t = .true.
-         exit LOOP_n
-      endif
-!
-      x0 = AtomBox(1)+i*nga; x1 = AtomBox(2)+i*nga
-      y0 = AtomBox(3)+j*ngb; y1 = AtomBox(4)+j*ngb
-      z0 = AtomBox(5)+k*ngc; z1 = AtomBox(6)+k*ngc
-!     ================================================================
-!     Check if a corner of AtomBox is inside Grid
-!     ================================================================
-      if (isInBox(x0,y0,z0,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y0,z0,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y1,z0,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y1,z0,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y0,z1,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y0,z1,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x0,y1,z1,Grid)) then
-         t = .true.
-         exit LOOP_n
-      else if (isInBox(x1,y1,z1,Grid)) then
+      if (isOverlapIn1D(x0,x1,AtomBox(1),AtomBox(2)) .and.            &
+          isOverlapIn1D(y0,y1,AtomBox(3),AtomBox(4)) .and.            &
+          isOverlapIn1D(z0,z1,AtomBox(5),AtomBox(6))) then
          t = .true.
          exit LOOP_n
       endif
    enddo LOOP_n
 !
    end function isOverlap
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isOverlapIn1D(a0,a1,b0,b1) result (t)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: a0, a1, b0, b1
+!
+   logical :: t
+!
+   t = .false.
+!
+   if ((a0 <= b0 .and. b0 <= a1) .or.                                 &
+       (a0 <= b1 .and. b1 <= a1) .or.                                 &
+       (b0 <= a0 .and. a0 <= b1) .or.                                 &
+       (b0 <= a1 .and. a1 <= b1)) then
+      t = .true.
+   endif
+!
+   end function isOverlapIn1D
 !  ===================================================================
 !
 !  *******************************************************************

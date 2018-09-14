@@ -216,7 +216,7 @@ contains
 !
    implicit none
 !
-   integer (kind=IntKind) :: ni, nr, ir, jmax, jl, l, sf
+   integer (kind=IntKind) :: ni, nr, ir, jmax, jl, l, sf, izamax
    integer (kind=IntKind), pointer :: pSymmFlags(:)
 !
    real (kind=RealKind) :: sr, si
@@ -268,8 +268,8 @@ contains
       if ( print_level(ni) >= 0 ) then
          write(6,'(/,a,/)')"calSymmetryFlags::   Flags, StepFunction"
          write(6,*)"  l   m flag          Re[stepf]                  Im[stepf]        "
-         ir = max(1,nr-1)
          do jl = 1, jmax
+            ir = izamax(nr,stepf(1:nr,jl),1)
             write(6,'(3i4,2(1x,d23.14))') lofj(jl), mofj(jl), pSymmFlags(jl), stepf(ir,jl)
          enddo
          write(6,'(60(''-''),/)')

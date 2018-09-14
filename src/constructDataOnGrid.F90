@@ -144,11 +144,11 @@
       grid_local(1) = id
       grid_local(2) = ng
       LOOP_ig: do ig = 1, ng
+!        =============================================================
+!        ig_box is the grid index in AtomBox
+!        =============================================================
          ig_box = gp%AtomOnGrid%InCellGridPointABIndex(ig,id)
          den_local(ig) = ZERO
-!        if (gp%AtomOnGrid%ABGridPointFlag(ig_box,id) < 0) then
-!           cycle LOOP_ig
-!        endif
          gCounter = getGridIndex(gp,id,ig_box)
          grid_local(ig+2) = gCounter
 !

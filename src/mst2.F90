@@ -1048,7 +1048,7 @@ program mst2
    deallocate( ngr, ngt )
 !
    do i=1,LocalNumAtoms
-      if (atom_print_level(i) >= 1) then
+      if (atom_print_level(i) >= 0) then
 !        -------------------------------------------------------------
          call printStepFunction(i)
 !        -------------------------------------------------------------

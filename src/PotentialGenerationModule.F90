@@ -3212,16 +3212,23 @@ endif
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine calFFTPseudoPot()
 !  ===================================================================
+!use MPPModule, only : NumPEs, MyPE
    use MPPModule, only : GlobalSum, setCommunicator, resetCommunicator
+!use Uniform3DGridModule, only : getUniform3DGrid, getGridIndex, getGridPosition
    use Uniform3DGridModule, only : getNumGridPoints
    use ParallelFFTModule, only : performTransformR2C, allocateFunctionSpace
    use ParallelFFTModule, only : getParaFFTCommunicator
+!use ParallelFFTModule, only : getGridPointCoord
    use ChargeDensityModule, only : isChargeComponentZero, getRhoLmax, &
                                    getChargeDensityAtPoint
    use InterpolationModule, only : FitInterp
    use MathParamModule, only : SQRT2
 !
+!use PublicTypeDefinitionsModule, only : UniformGridStruct
+!
    implicit none
+!
+!character (len=4) :: ac
 !
    integer (kind=IntKind) :: id, lmax, jmax, ir, nr, jl, jmin
    integer (kind=IntKind) :: lmax_rho, jmax_rho
@@ -3237,6 +3244,8 @@ endif
    complex (kind=CmplxKind), pointer :: p_fft_c(:)
 !
    real (kind=RealKind) :: t0, t1, t2
+!
+!type (UniformGridStruct), pointer :: gp
 !
 #ifdef TIMING
    t0 = getTime()
@@ -3283,9 +3292,16 @@ endif
    do i = 1, ng
       p_den(i) = p_den(i) - pseudo_fft
    enddo
-!  open(unit=111,file='den-2001-new.dat',status='unknown',form='formatted')
-!  write(111,'(5d16.8)')(p_den(i),i=1,ng)
-!  close(unit=111)
+!gp => getUniform3DGrid('FFT')
+!write(ac,'(i4)')1000+NumPEs*100+MyPE
+!ac(1:1) = 'p'
+!open(unit=111,file='den-'//ac//'.dat',status='unknown',form='formatted')
+!do i = 1, ng
+!j = getGridIndex(gp,i)
+!write(111,'(i8,2x,3f15.8,2x,3f15.8,2x,d16.8)')j,getGridPosition(gp,j),getGridPointCoord('R',i),p_den(i)
+!enddo
+!close(unit=111)
+!nullify(gp)
 !
    p_fft_c => fft_c
 !  -------------------------------------------------------------------
