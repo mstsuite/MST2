@@ -3212,7 +3212,7 @@ endif
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine calFFTPseudoPot()
 !  ===================================================================
-!use MPPModule, only : NumPEs, MyPE
+   use MPPModule, only : NumPEs, MyPE
    use MPPModule, only : GlobalSum, setCommunicator, resetCommunicator
 !use Uniform3DGridModule, only : getUniform3DGrid, getGridIndex, getGridPosition
    use Uniform3DGridModule, only : getNumGridPoints
@@ -3283,12 +3283,13 @@ endif
    endif
 !  The following buf(1) should be the total number of FFT grids.
    pseudo_fft = buf(2)/buf(1)
-#ifdef DEBUG
-   write(6,'(a,d16.8)') "Sum of pseudo charge density on uniform grid =",pseudo_fft
-#endif
-   pseudo_fft = ZERO ! In priciple, pseudo_fft should be zero since the pseudo charge
-                     ! is neutral. Here I set it to zero -ywg
 !
+   if ( maxval(print_level) >= 0 ) then
+      write(6,'(a,d16.8)') "Sum of pseudo charge density on uniform grid =",pseudo_fft
+   endif
+!
+!  pseudo_fft = ZERO ! In priciple, pseudo_fft should be zero since the pseudo charge
+!                    ! is neutral. Here I set it to zero -ywg
    do i = 1, ng
       p_den(i) = p_den(i) - pseudo_fft
    enddo

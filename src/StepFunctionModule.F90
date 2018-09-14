@@ -270,7 +270,7 @@ private
 !
    real (kind=RealKind), allocatable, target :: sqrt_r(:), rr0(:)
 !
-   real (kind=RealKind), parameter :: sigma_tol = TEN2m8
+   real (kind=RealKind), parameter :: sigma_tol = TEN2m6
 !
    real (kind=RealKind), allocatable :: rfg(:), res(:)
    complex (kind=CmplxKind), allocatable :: cfg(:), ces(:)

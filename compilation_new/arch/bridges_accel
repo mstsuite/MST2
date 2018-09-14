@@ -19,7 +19,7 @@ ARCHV_LSMS = xiar
 ARCHV_OPT = -r
 
 XLC_I = 0
-Acceleration = 0
+Acceleration = 1
 
 #=====================================================================
 # Linker

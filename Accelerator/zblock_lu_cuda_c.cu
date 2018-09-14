@@ -1,7 +1,8 @@
 #include "DeviceStorage.hpp"
 #include <stdio.h>
 #include <stdlib.h>
-#include "complex.h"
+// #include "complex.h"
+#include <complex>
 #include "cuda_runtime.h"
 #include "cublas_v2.h"
 //ywg #include "cblas.h"
@@ -43,8 +44,9 @@ void handle_cublas_error ( cublasStatus_t cs, char *errmsg )
 
 
 //TODO call directly from calculateTauMatrix (don't route through fortran)
-extern "C"
-void zblock_lu_cuda_c_ ( double complex *a, int *lda, int *blk_sz, int *nblk, int *ipvt, int *mp, int *idcol, int *k)
+extern "C" 
+void zblock_lu_cuda_c_ ( std::complex<double> *a, int *lda, int *blk_sz, int *nblk, int *ipvt, int *mp, int *idcol, int *k)
+// void zblock_lu_cuda_c_ ( double complex *a, int *lda, int *blk_sz, int *nblk, int *ipvt, int *mp, int *idcol, int *k)
   //===================================================================================================================
 /*
   Performs a partial inversion of the a matrix to return the inverse of the upper diagonal
@@ -111,8 +113,10 @@ void zblock_lu_cuda_c_ ( double complex *a, int *lda, int *blk_sz, int *nblk, in
   static cuDoubleComplex *vdevWork[MAX_THREADS];
   static cuDoubleComplex *vdevInv[MAX_THREADS];
   static cuDoubleComplex *vdevA2[MAX_THREADS];
-  static double complex *vdevHostDiag[MAX_THREADS];
-  static double complex *vwork[MAX_THREADS];
+  static std::complex<double> *vdevHostDiag[MAX_THREADS];
+//static double complex *vdevHostDiag[MAX_THREADS];
+  static std::complex<double> *vwork[MAX_THREADS];
+//static double complex *vwork[MAX_THREADS];
   static int *vhostIPVT[MAX_THREADS];
   static int lwork;
   if ( ! initialized[threadId] ) {
@@ -131,11 +135,13 @@ void zblock_lu_cuda_c_ ( double complex *a, int *lda, int *blk_sz, int *nblk, in
   
 
     int LDA= *lda;
-    ce = cudaMallocHost ( &vwork[threadId], lwork *sizeof(double complex));
+    ce = cudaMallocHost ( &vwork[threadId], lwork *sizeof(std::complex<double>));
+//  ce = cudaMallocHost ( &vwork[threadId], lwork *sizeof(double complex));
     handle_cuda_error (ce, "cudaMallocHost vwork");
     ce = cudaMalloc ( &vdevA2[threadId], max_blk_sz * LDA *sizeof(cuDoubleComplex));
     handle_cuda_error (ce, "cudaMalloc devA2");
-    ce = cudaMallocHost ( &vdevHostDiag[threadId], max_blk_sz * max_blk_sz *sizeof(double complex));
+    ce = cudaMallocHost ( &vdevHostDiag[threadId], max_blk_sz * max_blk_sz *sizeof(std::complex<double>));
+//  ce = cudaMallocHost ( &vdevHostDiag[threadId], max_blk_sz * max_blk_sz *sizeof(double complex));
     handle_cuda_error (ce, "cudaMallocHost vdevHostDiag");
     ce = cudaMallocHost((void**)&vhostIPVT[threadId], max_blk_sz*sizeof(int));
     handle_cuda_error (ce, "cudaMallocHost vhostIPVT");
@@ -155,7 +161,8 @@ void zblock_lu_cuda_c_ ( double complex *a, int *lda, int *blk_sz, int *nblk, in
   cuDoubleComplex *devInv = vdevInv[threadId];
   cuDoubleComplex *devA=(cuDoubleComplex*)get_dev_m_();
   cuDoubleComplex *devA2 = vdevA2[threadId];
-  double complex *work = vwork[threadId];
+  std::complex<double> *work = vwork[threadId];
+//double complex *work = vwork[threadId];
   cublasHandle_t cublasHandle = get_cublas_handle_();
   int *hostIPVT=vhostIPVT[threadId];
   Complex *hostAdiag = (Complex*)vdevHostDiag[threadId];
