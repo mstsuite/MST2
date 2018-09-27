@@ -1,0 +1,11 @@
+System Description            : Nb, fco structure                               
+Number of Atoms in Unit Cell  : 4                                               
+Number of Atomic Species      : 1                                               
+Number of Atoms in Each Type  : 4(Nb)                                           
+Energy Offset                 : -7502                                           
+=======================================================================================
+    Iter     Energy      3PV     Efermi   Rms_rho    Rms_pot   Mix  Alg  Alpha 
+---------------------------------------------------------------------------------------
+**       1  -0.945152   0.30342  0.79829  0.291E-03  0.579E-07  pot  B   0.1000
+         2  -0.945152   0.30342  0.79829  0.681E-10  0.133E-06  pot  B   0.1000
+         3  -0.945152   0.30342  0.79829  0.182E-10  0.544E-07  pot  B   0.1000

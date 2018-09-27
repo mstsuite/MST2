@@ -1,8 +1,8 @@
 ================================================================================
                   * * *              * * *              * * *
 ================+===============================================================
-Default Potential Input File Name  ::  V_mt_v
-Default Potential Input File Form  ::  0
+Default Potential Input File Name  ::  V_fp_v
+Default Potential Input File Form  ::  1
    = 0: ASCII Format       ----------
    = 1: XDR Format         ----------
    = 2: HDF Format         ----------

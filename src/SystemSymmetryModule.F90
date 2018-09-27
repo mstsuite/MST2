@@ -190,7 +190,7 @@ contains
       call calTruncSymmetryFlags()  ! Using truncation function to determine the symmetry
    endif
 !
-   if ( print_level(1) > 0 ) then
+   if ( print_level(1) >= 1 ) then
       write(6,'(/,a,/)')"calSymmetryFlags::   Flags"
       do ni = 1, NumLocalSites
          jmax = size(SymmFlags(ni)%flags)

@@ -167,6 +167,8 @@ private
    real (kind=RealKind), allocatable, target :: space_integrated_mspdos_mt(:,:,:)
    complex (kind=CmplxKind), allocatable, target :: gfws_comp(:)
    complex (kind=CmplxKind), allocatable, target :: dosws_comp(:)
+!
+   logical :: isGreenSymmOn = .false.
 !   
 contains
 !
@@ -182,6 +184,7 @@ contains
    use GauntFactorsModule, only : getK3, getNumK3, getGauntFactor
 !
    use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA, isEmbeddedCluster
+   use ScfDataModule, only : isChargeSymm
 !
    use ClusterMatrixModule, only : initClusterMatrix
 !
@@ -310,6 +313,8 @@ contains
    Energy = -10.0d0
    MSGF_Form = 0
    MSDOS_Form = 0
+!
+   isGreenSymmOn = isChargeSymm()
 !
    end subroutine initMSSolver
 !  ===================================================================
@@ -497,6 +502,7 @@ contains
    Initialized = .false.
    isRealSpace = .false.
    Energy = CZERO
+   isGreenSymmOn = .false.
 !
    end subroutine endMSSolver
 !  ===================================================================
@@ -640,6 +646,8 @@ contains
    use MPPModule, only : MyPE, syncAllPEs
    use GroupCommModule, only : GlobalSumInGroup
 !
+   use SystemSymmetryModule, only : getSymmetryFlags
+!
    use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
    use SSSolverModule, only : getSolutionFlags, getOmegaHatMatrix
    use SSSolverModule, only : solveSingleScattering
@@ -660,6 +668,7 @@ contains
 !
    integer (kind=IntKind) :: n, info, id, js1, js2, ns, kmaxk, kmaxp, kmaxg, irmax
    integer (kind=IntKind) :: klg, kl1, kl2, klp1, klp2, ir, kl2c, m2, np
+   integer (kind=IntKind), pointer :: green_flags(:)
 !
    complex (kind=CmplxKind), pointer :: tfac(:,:), gfs(:,:)
    complex (kind=CmplxKind), pointer :: PhiLr_right(:,:,:), PhiLr_left(:,:,:), kau00(:,:,:)
@@ -939,6 +948,19 @@ contains
                   enddo
                enddo
             endif
+!
+!     ================================================================
+!     Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
+!     ================================================================
+      if (isGreenSymmOn) then
+         green_flags => getSymmetryFlags(id)
+         do klg = 1, kmaxg
+            if (green_flags(jofk(klg)) == 0) then
+               gf(:,klg) = CZERO
+            endif
+         enddo
+      endif
+!     ================================================================
          enddo ! do js1
       enddo ! do js2
    enddo ! do id
@@ -959,6 +981,8 @@ contains
 !
    use MPPModule, only : MyPE, syncAllPEs
    use GroupCommModule, only : GlobalSumInGroup
+!
+   use SystemSymmetryModule, only : getSymmetryFlags
 !
    use StepFunctionModule, only : getVolumeIntegration
 !
@@ -984,6 +1008,7 @@ contains
    integer (kind=IntKind) :: id, ns, kmaxk, kmaxp, kmaxg, jmaxg, irmax, jmax_green_max
    integer (kind=IntKind) :: n, info, js1, js2, jlg, lg, mg, js
    integer (kind=IntKind) :: klg, klgc, kl, klp1, klp2, ir, klc, m, np
+   integer (kind=IntKind), pointer :: dos_flags(:)
 !
    real (kind=RealKind) :: dos_buf(kmax_phi_max,2)
 !
@@ -1156,8 +1181,24 @@ contains
                      dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
                   enddo
                enddo
+!
+!              =======================================================
+!              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!              =======================================================
+               if (isGreenSymmOn) then
+                  dos_flags => getSymmetryFlags(id)
+                  do jlg = 1, jmaxg
+                     if (dos_flags(jlg) == 0) then
+                        dos_r_jl(:,jlg) = CZERO
+                     endif
+                  enddo
+               endif
+!              =======================================================
+!
+!              -------------------------------------------------------
                dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
                                                      jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+!              -------------------------------------------------------
             enddo ! kl
 !
             if (NumPEsInGroup > 1) then
@@ -1196,8 +1237,24 @@ contains
                      dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
                   enddo
                enddo
+!
+!              =======================================================
+!              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!              =======================================================
+               if (isGreenSymmOn) then
+                  dos_flags => getSymmetryFlags(id)
+                  do jlg = 1, jmaxg
+                     if (dos_flags(jlg) == 0) then
+                        dos_r_jl(:,jlg) = CZERO
+                     endif
+                  enddo
+               endif
+!              =======================================================
+!
+!              -------------------------------------------------------
                dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
                                                      jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+!              -------------------------------------------------------
             enddo
 !
             ns = max(js,is)

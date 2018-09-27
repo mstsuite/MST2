@@ -2915,7 +2915,7 @@ contains
 !
    integer (kind=IntKind) :: jmax_pot, lmax_pot, kmax_pot
    integer (kind=IntKind) :: jmax_trunc, lmax_trunc, jmax_min
-   integer (kind=IntKind) :: ir, iend, jmt, iend_diff, is, jl
+   integer (kind=IntKind) :: ir, iend, jmt, iend_diff, is, jl, i, n
    integer (kind=IntKind) :: izamax, ModifiedTruncation
    integer (kind=IntKind), pointer :: flags_jl(:)
 !
@@ -2961,7 +2961,15 @@ contains
          enddo
          write(6,'(/,80(''=''))')
          write(6,'(a)')'Potential non-zero channels:'
-         write(6,'(a)')aflag(1:ir-2)
+         n = ceiling((ir-2)/90.0)
+         do i = 1, n
+            if (i*90 <= ir-2) then
+               write(6,'(a)')aflag((i-1)*90+1:i*90)
+            else
+               write(6,'(a)')aflag((i-1)*90+1:ir-2)
+            endif
+!           write(6,'(a)')aflag(1:ir-2)
+         enddo
       endif
 !     ---------------------------------------------------------------
       call truncate( id, jmt, iend, r_mesh, pot, flags_jl, jmax_pot, &
@@ -3050,7 +3058,15 @@ endif
                endif
             enddo
             write(6,'(/,a)')'Truncated potential non-zero channels:'
-            write(6,'(a)')aflag(1:ir-2)
+            n = ceiling((ir-2)/90.0)
+            do i = 1, n
+               if (i*90 <= ir-2) then
+                  write(6,'(a)')aflag((i-1)*90+1:i*90)
+               else
+                  write(6,'(a)')aflag((i-1)*90+1:ir-2)
+               endif
+            enddo
+!           write(6,'(a)')aflag(1:ir-2)
             write(6,'(80(''=''),/)')
          endif
       else

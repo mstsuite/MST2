@@ -23,11 +23,11 @@ Note: Lmax-T matrix  - controls the KKR size
       Lmax-Charge    - expansion of the charge density (0<=Lmax-Pot<=2*Lmax-T).
       Lmax-Step Func - step function expansion used to converge 
                        the volume integration method of single site solver (0<= Lmax-Step < Infinity).
-Default Lmax-T matrix     :: 6
-Default Lmax-Wave Func    :: 6
-Default Lmax-Potential    :: 12
-Default Lmax-Trunc Pot    :: 14
-Default Lmax-Charge Den   :: 12
+Default Lmax-T matrix     :: 4
+Default Lmax-Wave Func    :: 4
+Default Lmax-Potential    :: 8
+Default Lmax-Trunc Pot    :: 12
+Default Lmax-Charge Den   :: 8
 Default Lmax-Step Func    :: 16
 Note: The neighbors number represents the maximum number of neighbors of a site. It can be less than the specified
       number if the neighbors on the next shell adds up over its maximum set.

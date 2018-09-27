@@ -228,7 +228,7 @@ SS Real Axis Int. Points   ::  1000
                          Algorithms-related Parameters  
 ===========================+====================================================
 T-matrix inversion (>= 0)  ::  2
-M-matrix inversion (>= 0)  ::  2
+M-matrix inversion (>= 0)  ::  10
      0. LU method          ---------
      1.                    ---------
      2. LU Optimum         ---------

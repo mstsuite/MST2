@@ -985,7 +985,8 @@ contains
             i = ig-fstart(1)+1
             idk = idk + 1
             idm = 2*i+(j-1)*2*fsize(1)+(k-1)*fsize(2)*2*fsize(1)
-            c_ip(idk) = cmplx(r(idm-1), -r(idm), kind=CmplxKind)
+!           c_ip(idk) = cmplx(r(idm-1), -r(idm), kind=CmplxKind)
+            c_ip(idk) = cmplx(r(idm-1), r(idm), kind=CmplxKind)  ! 09/26/18
          enddo
 !
 !        =============================================================
@@ -997,7 +998,8 @@ contains
             i = ig-fstart(1)+1
             idk = idk + 1
             idm = 2*i+(j-1)*2*fsize(1)+(k-1)*fsize(2)*2*fsize(1)
-            c_ip(idk) = cmplx(r(idm-1), r(idm), kind=CmplxKind)
+!           c_ip(idk) = cmplx(r(idm-1), r(idm), kind=CmplxKind)
+            c_ip(idk) = cmplx(r(idm-1), -r(idm), kind=CmplxKind)  ! 09/26/18
          enddo
       enddo
    enddo

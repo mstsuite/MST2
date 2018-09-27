@@ -109,7 +109,7 @@ Additional Electrons       ::  0.0
 ================================================================================
                            Sistem Symmetry Parameters
 ===========================+====================================================
-Charge Symmetry (>=0)      :: 0
+Charge Symmetry (>=0)      :: 1
      0. No symmetry imposed
      1. Symmetry impossed from spherical scattering calculation
 ================================================================================

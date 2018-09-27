@@ -2184,7 +2184,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function returnSingleSiteDOS(info,e,aux,rfac) result(dos)
+   function returnSingleSiteDOS(info,e,aux,rfac,redundant) result(dos)
 !  ===================================================================
 !
 !  This function returns single site DOS for a given energy on the real 
@@ -2207,6 +2207,9 @@ contains
    real (kind=RealKind), intent(in) :: e
    real (kind=RealKind), intent(in), optional :: rfac
 !
+   logical, intent(in), optional :: redundant
+   logical :: red
+!
    integer (kind=IntKind), intent(in) :: info(*)
    integer (kind=IntKind) :: jmax_dos, kmax_phi, iend, n, kl, jl, ir
    integer (kind=IntKind) :: is, id, print_dos
@@ -2228,6 +2231,12 @@ contains
       rmul = rfac
    else
       rmul = ONE
+   endif
+!
+   if (present(redundant)) then
+      red = redundant
+   else
+      red = .false.
    endif
 !
    energy = adjustEnergy(is,e)
@@ -2259,20 +2268,24 @@ contains
    enddo
 !
    if (print_dos > 0) then
-      msgbuf = ZERO
-      msgbuf(1,MyPEinEGroup+1) = real(energy)
-      msgbuf(2,MyPEinEGroup+1) = dos
-      msgbuf(3,MyPEinEGroup+1) = dos_mt
-      msgbuf(4,MyPEinEGroup+1) = dos_out
-      msgbuf(5,MyPEinEGroup+1) = tps
-!     ----------------------------------------------------------------
-      call GlobalSumInGroup(eGID,msgbuf,5,NumPEsInEGroup)
-!     ----------------------------------------------------------------
-      if ( node_print_level >= 0) then
-         do n = 1, NumPEsInEGroup
-!           write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')real(energy),dos,dos_mt,dos_out,tps
-            write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')msgbuf(1:5,n)
-         enddo
+      if (.not.red) then
+         msgbuf = ZERO
+         msgbuf(1,MyPEinEGroup+1) = real(energy)
+         msgbuf(2,MyPEinEGroup+1) = dos
+         msgbuf(3,MyPEinEGroup+1) = dos_mt
+         msgbuf(4,MyPEinEGroup+1) = dos_out
+         msgbuf(5,MyPEinEGroup+1) = tps
+!        -------------------------------------------------------------
+         call GlobalSumInGroup(eGID,msgbuf,5,NumPEsInEGroup)
+!        -------------------------------------------------------------
+         if ( node_print_level >= 0) then
+            do n = 1, NumPEsInEGroup
+!              write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')real(energy),dos,dos_mt,dos_out,tps
+               write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')msgbuf(1:5,n)
+            enddo
+         endif
+      else if ( node_print_level >= 0) then
+         write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')real(energy),dos,dos_mt,dos_out,tps
       endif
    endif
 !
@@ -3005,7 +3018,8 @@ contains
 !           ----------------------------------------------------------
             if ( node_print_level >= 0) then
                write(6,'(/,2(a,i2))')'is = ',is,', id = ',id
-               write(6,'(a,f11.8,a)')'In the real energy interval:  [0.001,',etop,']'
+               write(6,'(a,f11.8,a)')'Integration over the real energy interval:  [0.001,',etop,']'
+               write(6,'(a,i5)')'The number of processors employed for parallelizing the DOS calculation: ',NumPEsInEGroup
                write(6,'(a)')   '=========================================================================================='
                write(6,'(4x,a)')'Energy    Single_Site_DOS_ws   Single_Site_DOS_mt    DOS_Outside     Total_Phase_Shift'
                write(6,'(a)')   '------------------------------------------------------------------------------------------'
@@ -4654,7 +4668,7 @@ contains
 !
    character (len=17) :: sname='calDensity'
 !
-   integer (kind=IntKind) :: id
+   integer (kind=IntKind) :: id, ir
 !
    real (kind=RealKind), intent(in):: efermi
    real (kind=RealKind) :: dos(4)
@@ -5468,7 +5482,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function returnRelSingleSiteDOS(info,e,aux,rfac) result(dos)
+   function returnRelSingleSiteDOS(info,e,aux,rfac,redundant) result(dos)
 !  ===================================================================
 !
 !  This function returns single site DOS for a given energy on the real 
@@ -5491,6 +5505,9 @@ contains
    real (kind=RealKind), intent(in) :: e
    real (kind=RealKind), intent(in), optional :: rfac
 !
+   logical, intent(in), optional :: redundant
+   logical :: red
+!
    integer (kind=IntKind), intent(in) :: info(*)
    integer (kind=IntKind) :: jmax_dos, kmax_phi, iend, n, kl, jl, ir, n0
    integer (kind=IntKind) :: is, id, print_dos
@@ -5512,6 +5529,12 @@ contains
       rmul = rfac
    else
       rmul = ONE
+   endif
+!
+   if (present(redundant)) then
+      red = redundant
+   else
+      red = .false.
    endif
 !
 !   energy = adjustEnergy(is,e)
@@ -5587,8 +5610,8 @@ contains
 !
    dos=dos1
    end function returnRelSingleSiteDOS
-!
 !  ===================================================================
+!
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function returnRelSingleSiteDOS_pole(info,e,aux,rfac) result(dos)
 !  ===================================================================

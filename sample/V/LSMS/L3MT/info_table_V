@@ -1,7 +1,8 @@
 ================================================================================
                   * * *              * * *              * * *
 ================+===============================================================
-Default Potential Input File Name  ::  V_ss.pot
+# Default Potential Input File Name  ::  V_ss.pot
+Default Potential Input File Name  ::  V_mt_v
 Default Potential Input File Form  ::  0
    = 0: ASCII Format       ----------
    = 1: XDR Format         ----------

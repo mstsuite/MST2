@@ -131,7 +131,8 @@ private
    integer (kind=IntKind) :: SpinIndex
    integer (kind=IntKind) :: LocalAtomID
 !
-   real (kind=RealKind), parameter :: rho_tol = TEN2m6
+!  real (kind=RealKind), parameter :: rho_tol = TEN2m6
+   real (kind=RealKind), parameter :: rho_tol = TEN2m4  ! This is changed back from 10^-6 to 10^-4 on 09-23-18
    real (kind=RealKind) :: FermiEnergy
    real (kind=RealKind) :: BandEnergy
    real (kind=RealKind) :: qvaltws

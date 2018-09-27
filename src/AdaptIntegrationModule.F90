@@ -304,13 +304,14 @@ contains
    complex (kind=CmplxKind) :: aa_int(AdaptMeshSize)
 !
    interface
-      function func(info,x,aux,xi) result(y)
+      function func(info,x,aux,xi,redundant) result(y)
          use KindParamModule, only : IntKind, RealKind, CmplxKind
          integer (kind=IntKind), intent(in) :: info(*)
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
          complex (kind=CmplxKind), intent(out) :: aux(:)
+         logical, intent(in), optional :: redundant
       end function func
    end interface
 !
@@ -379,6 +380,11 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getUniformIntegration(n,x0,x,info,func,nm) result(fint)
 !  ===================================================================
+!  Note: For using different number of processors, the integration
+!        mesh can potentially be different, thus the result could be 
+!        slightly different. Increasing the number of uniform energy
+!        grid points will in general help reducing the difference.
+!  ===================================================================
    use MathParamModule, only : CZERO, ZERO, TEN2m8
 !
    use ErrorHandlerModule, only : ErrorHandler
@@ -408,13 +414,14 @@ contains
    complex (kind=CmplxKind), allocatable :: a_buf(:), b_buf(:)
 !
    interface
-      function func(info,x,aux,xi) result(y)
+      function func(info,x,aux,xi,redundant) result(y)
          use KindParamModule, only : IntKind, RealKind, CmplxKind
          integer (kind=IntKind), intent(in) :: info(*)
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
          complex (kind=CmplxKind), intent(out) :: aux(:)
+         logical, intent(in), optional :: redundant
       end function func
    end interface
 !
@@ -557,7 +564,7 @@ contains
           aa_mesh(1,j) = b_buf(j)
       enddo
       do i = 1, n-ns
-         f_mesh(i+1) = func(info,x_mesh(ns+i),AuxArray)
+         f_mesh(i+1) = func(info,x_mesh(ns+i),AuxArray,redundant=.true.)
          do j = 1, AuxArraySize
             aa_mesh(i+1,j) = AuxArray(j)
          enddo
@@ -601,7 +608,7 @@ contains
 !  ===================================================================
 !  Use Boole's rule, also known as Bode's rule, to perform the integration
 !  Note: For using different number of processors, the integration
-!        mesh could be different, thus the result could be diffferent
+!        mesh could be different, thus the result could be different
 !  ===================================================================
    use MathParamModule, only : CZERO, ZERO, TWO, SEVEN
    use ErrorHandlerModule, only : ErrorHandler
@@ -619,13 +626,14 @@ contains
    real (kind=RealKind), allocatable :: peak_dos(:,:)
 !
    interface
-      function func(info,x,aux,xi) result(y)
+      function func(info,x,aux,xi,redundant) result(y)
          use KindParamModule, only : IntKind, RealKind, CmplxKind
          integer (kind=IntKind), intent(in) :: info(*)
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
          complex (kind=CmplxKind), intent(out) :: aux(:)
+         logical, intent(in), optional :: redundant
       end function func
    end interface
 !
@@ -755,13 +763,14 @@ contains
    complex (kind=CmplxKind) :: aa_int(n)
 !
    interface
-      function func(info,x,aux,xi) result(y)
+      function func(info,x,aux,xi,redundant) result(y)
          use KindParamModule, only : IntKind, RealKind, CmplxKind
          integer (kind=IntKind), intent(in) :: info(*)
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
          complex (kind=CmplxKind), intent(out) :: aux(:)
+         logical, intent(in), optional :: redundant
       end function func
    end interface
 !
@@ -817,7 +826,7 @@ contains
 !     ----------------------------------------------------------------
    endif
    do i = n_loc*NumPEsInGroup+1, n
-      f_mesh(i) = func(info,x_mesh(i),AuxArray)
+      f_mesh(i) = func(info,x_mesh(i),AuxArray,redundant=.true.)
       do j = 1, AuxArraySize
          aa_mesh(i,j) = AuxArray(j)
       enddo

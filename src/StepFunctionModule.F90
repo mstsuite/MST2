@@ -270,7 +270,7 @@ private
 !
    real (kind=RealKind), allocatable, target :: sqrt_r(:), rr0(:)
 !
-   real (kind=RealKind), parameter :: sigma_tol = TEN2m6
+   real (kind=RealKind), parameter :: sigma_tol = TEN2m8
 !
    real (kind=RealKind), allocatable :: rfg(:), res(:)
    complex (kind=CmplxKind), allocatable :: cfg(:), ces(:)
@@ -3918,11 +3918,23 @@ contains
    write(6,'(a,f10.5)')   'Outer Bounding Sphere Radius:  ',p%rmax
 !
    write(6,'(/,a)')'Non-zero (l,m) components of the step function'
+   j = 0
    do jl = 1, StepFunction(poly)%jmax_step
       if ( StepFunction(poly)%SigmaCompFlag(jl) /= 0 ) then
-         write(6,'(5x,a,i2,a,i2,a)')'(',lofj(jl),',',mofj(jl),')'
+         if (j == 0) then 
+            write(6,'(a,i2,a,i2,a,$)')'(',lofj(jl),',',mofj(jl),')'
+            j = 7
+         else if (j < 88) then
+            write(6,'(a,i2,a,i2,a,$)')', (',lofj(jl),',',mofj(jl),')'
+            j = j + 9
+         else
+            write(6,'(a)')','
+            write(6,'(a,i2,a,i2,a,$)')'(',lofj(jl),',',mofj(jl),')'
+            j = 7
+         endif
       endif
    enddo
+   write(6,'(a)')' '
 !
    write(6,'(/,40(''=''))')
    write(6,'(a)')'Critical Radial Point Table'

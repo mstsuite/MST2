@@ -2,8 +2,8 @@
                   * * *              * * *              * * *
 ================+===============================================================
 # Default Potential Input File Name  ::  Nb_ss.pot
-Default Potential Input File Name  ::  Nb_mt_v
-Default Potential Input File Form  ::  0
+Default Potential Input File Name  ::  Nb_fp_v
+Default Potential Input File Form  ::  1
    = 0: ASCII Format       ----------
    = 1: XDR Format         ----------
    = 2: HDF Format         ----------
@@ -27,7 +27,7 @@ Note: Lmax-T matrix  - controls the KKR size
 Default Lmax-T matrix     :: 3
 Default Lmax-Wave Func    :: 3
 Default Lmax-Potential    :: 6
-Default Lmax-Trunc Pot    :: 8
+Default Lmax-Trunc Pot    :: 10
 Default Lmax-Charge Den   :: 6
 Default Lmax-Step Func    :: 14
 Note: The neighbors number represents the maximum number of neighbors of a site. It can be less than the specified
@@ -42,7 +42,7 @@ Default Mom  Mix Param.   :: 0.1000
 Default Evec Mix Param.   :: 0.0000
 Default Maximum Core Radius       :: 0.0d0
 Default Maximum Muffin-tin Radius :: 0.0d0
-Default No. Rad Points ndivin  :: 1001
+Default No. Rad Points ndivin  :: 2001
    = 0: Not specified ---------------
    > 0: Speciflied. Note:  0  < r(j)=exp(j*hin) <= rmt, j=1,2,...,ndivin
 Default No. Rad Points ndivout ::  0

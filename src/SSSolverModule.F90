@@ -296,6 +296,8 @@ private
 !
    integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, kGID
 !
+   logical :: isDosSymmOn = .false.
+!
 contains
 !
    include '../lib/arrayTools.F90'
@@ -322,6 +324,7 @@ contains
    use ScfDataModule, only : getSingleSiteSolverType, getSingleSiteSolverMethod
    use ScfDataModule, only : getLmaxPotSolver
    use ScfDataModule, only : getLmaxSolution
+   use ScfDataModule, only : isChargeSymm
 !
    use GauntFactorsModule, only : getK3
    use GauntFactorsModule, only : getNumK3
@@ -330,8 +333,6 @@ contains
 !
    use StepFunctionModule, only : getNumGaussRs
    use StepFunctionModule, only : getRadialStepFunction
-!
-   use SystemSymmetryModule, only : getSymmetryFlags
 !
    use SurfElementsModule, only : getNumDiffSurfR
 !
@@ -914,6 +915,8 @@ contains
       enddo
    enddo
 !
+   isDosSymmOn = isChargeSymm()
+!
    end subroutine initSSSolver
 !  ===================================================================
 !
@@ -1056,6 +1059,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    energy = CZERO
    PotShift = CZERO
+   isDosSymmOn = .false.
    Initialized = .false.
 !
    end subroutine endSSSolver
@@ -6319,6 +6323,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine computeGF0(spin,site)
 !  ===================================================================
+   use SystemSymmetryModule, only : getSymmetryFlags
+!
    implicit none
 !
    integer (kind=IntKind), intent(in), optional :: spin, site
@@ -6327,6 +6333,7 @@ use MPPModule, only : MyPE, syncAllPEs
    integer (kind=IntKind) :: kl2pc, kl2c, ma, m2, m2p, kl, klp, m, mp
    integer (kind=IntKind) :: sz, loc1, loc2, nr, km, ia, js
    integer (kind=IntKind) :: kmax_green_loc, kmax_kkr_loc, kmax_phi_loc
+   integer (kind=IntKind), pointer :: green_flags(:)
 !
    complex (kind=CmplxKind) :: cmat, cfac
    complex (kind=CmplxKind), pointer :: green(:,:)
@@ -6455,6 +6462,19 @@ use MPPModule, only : MyPE, syncAllPEs
       endif
       cfac = -SQRTm1*kappa
       green = cfac*green
+!
+!     ================================================================
+!     Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
+!     ================================================================
+      if (isDosSymmOn) then
+         green_flags => getSymmetryFlags(id)
+         do klg = 1, kmax_green_loc
+            if (green_flags(jofk(klg)) == 0) then
+               green(:,klg) = CZERO
+            endif
+         enddo
+      endif
+!     ================================================================
    enddo
 !
    nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat, green, p_tmp )
@@ -6608,6 +6628,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    use RadialGridModule, only : getGrid
 !
+   use SystemSymmetryModule, only : getSymmetryFlags
+!
    implicit none
 !
    logical, intent(in), optional :: add_highl_fec   ! Add high L contribution by free electron
@@ -6617,6 +6639,7 @@ use MPPModule, only : MyPE, syncAllPEs
    integer (kind=IntKind) :: ir, jl, kl, klc, l, m, kl1, kl1p, kl2, kl2c, kl2p, kl2pc, m1, m2, m2p, ma, i, l2
    integer (kind=IntKind) :: js, ia, nr, lm, jm, sz, loc1, loc2
    integer (kind=IntKind) :: lmax_dos, jmax_dos, kmax_kkr_loc, kmax_phi_loc, np
+   integer (kind=IntKind), pointer :: dos_flags(:)
 !
    complex (kind=CmplxKind), pointer :: dos(:,:), p_tmp(:,:), sjm(:,:)
 !
@@ -6828,6 +6851,19 @@ use MPPModule, only : MyPE, syncAllPEs
             enddo
          endif
       endif
+!
+!     ================================================================
+!     Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!     ================================================================
+      if (isDosSymmOn) then
+         dos_flags => getSymmetryFlags(id)
+         do jl = 1, jmax_dos
+            if (dos_flags(jl) == 0) then
+               dos(:,jl) = CZERO
+            endif
+         enddo
+      endif
+!     ================================================================
    enddo
 !
    nullify( wfr_reg, dos, OmegaHat_mat, Omega_mat, green, p_tmp )
@@ -6840,6 +6876,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine computePDOS(spin,site)
 !  ===================================================================
+   use SystemSymmetryModule, only : getSymmetryFlags
+!
    use StepFunctionModule, only : getVolumeIntegration
 !
    use RadialGridModule, only : getGrid
@@ -6852,6 +6890,7 @@ use MPPModule, only : MyPE, syncAllPEs
    integer (kind=IntKind) :: js, ia, nr, lm, jm, sz, loc1, loc2, m1
    integer (kind=IntKind) :: lmax_dos, jmax_dos
    integer (kind=IntKind) :: kmax_kkr_loc, kmax_phi_loc
+   integer (kind=IntKind), pointer :: dos_flags(:)
 !
    real (kind=RealKind) :: dos_cell, dos_mt
 !
@@ -7014,6 +7053,21 @@ use MPPModule, only : MyPE, syncAllPEs
          call ErrorHandler('computePDOS','Not implemented for non-real energy yet')
       endif
       pdos = cfac*pdos
+!
+!     ================================================================
+!     Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!     ================================================================
+      if (isDosSymmOn) then
+         dos_flags => getSymmetryFlags(id)
+         do kl = 1, kmax_kkr_loc
+            do jl = 1, jmax_dos
+               if (dos_flags(jl) == 0) then
+                  pdos(:,jl,kl) = CZERO
+               endif
+            enddo
+         enddo
+      endif
+!     ================================================================
 !
       space_integrated_dos_cell(ic,is,id) = ZERO
       space_integrated_dos_mt(ic,is,id) = ZERO

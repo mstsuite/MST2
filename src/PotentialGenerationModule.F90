@@ -3214,16 +3214,16 @@ endif
 !  ===================================================================
    use MPPModule, only : NumPEs, MyPE
    use MPPModule, only : GlobalSum, setCommunicator, resetCommunicator
-!use Uniform3DGridModule, only : getUniform3DGrid, getGridIndex, getGridPosition
    use Uniform3DGridModule, only : getNumGridPoints
    use ParallelFFTModule, only : performTransformR2C, allocateFunctionSpace
    use ParallelFFTModule, only : getParaFFTCommunicator
-!use ParallelFFTModule, only : getGridPointCoord
    use ChargeDensityModule, only : isChargeComponentZero, getRhoLmax, &
                                    getChargeDensityAtPoint
    use InterpolationModule, only : FitInterp
    use MathParamModule, only : SQRT2
 !
+!use Uniform3DGridModule, only : getUniform3DGrid, getGridIndex, getGridPosition
+!use ParallelFFTModule, only : getGridPointCoord
 !use PublicTypeDefinitionsModule, only : UniformGridStruct
 !
    implicit none
@@ -3288,7 +3288,7 @@ endif
       write(6,'(a,d16.8)') "Sum of pseudo charge density on uniform grid =",pseudo_fft
    endif
 !
-!  pseudo_fft = ZERO ! In priciple, pseudo_fft should be zero since the pseudo charge
+   pseudo_fft = ZERO ! In priciple, pseudo_fft should be zero since the pseudo charge
 !                    ! is neutral. Here I set it to zero -ywg
    do i = 1, ng
       p_den(i) = p_den(i) - pseudo_fft
@@ -3301,13 +3301,24 @@ endif
 !j = getGridIndex(gp,i)
 !write(111,'(i8,2x,3f15.8,2x,3f15.8,2x,d16.8)')j,getGridPosition(gp,j),getGridPointCoord('R',i),p_den(i)
 !enddo
-!close(unit=111)
+!do i = 14, 15
+!j = getGridIndex(gp,i)
+!write(6,'(i8,2x,3f15.8,2x,3f15.8,2x,d16.8)')j,getGridPosition(gp,j),getGridPointCoord('R',i),p_den(i)
+!enddo
+! open(unit=111,file='den-2001-new.dat',status='unknown',form='formatted')
+! write(111,'(5d16.8)')(p_den(i),i=1,ng)
+! close(unit=111)
 !nullify(gp)
 !
    p_fft_c => fft_c
 !  -------------------------------------------------------------------
    call performTransformR2C(p_den,p_fft_c)
 !  -------------------------------------------------------------------
+!open(unit=112,file='kden-new.dat',status='unknown',form='formatted')
+!do k = 1, numk_local
+!write(112,'(i5,2x,3f15.8,2x,2d15.8)')k,getGridPointCoord('K',k),p_fft_c(k)
+!enddo
+!close(112)
 !
 #ifdef TIMING
    t2 = getTime()
@@ -3352,7 +3363,6 @@ endif
 !     ----------------------------------------------------------------
       call calRadialProjection(nr,r_mesh,iparam(:,id),v_interp(:,id),v_jl)
 !     ----------------------------------------------------------------
-!
       do jl = 1,jmax
          if ( isChargeComponentZero(id,jl) .and. jl<=jmax_rho ) then
             v_jl(1:nr,jl) = CZERO
@@ -3430,7 +3440,8 @@ endif
 !     ----------------------------------------------------------------
    endif
 !
-   cfact = -SQRTm1
+!  cfact = -SQRTm1
+   cfact =  SQRTm1    ! 09/26/2018
 !
    comm = getParaFFTCommunicator(MyProc=p,NumProcs=n)
    if (comm > 0) then ! For serial FFT, comm = -1.
@@ -3451,7 +3462,8 @@ endif
       do idk =idk0+1, numk_local
          kvec = getGridPointCoord('K',idk)
          kv2 = kvec(1)**2+kvec(2)**2+kvec(3)**2
-         expikR  = exp( -SQRTm1*(kvec(1)*posi(1) + kvec(2)*posi(2) + kvec(3)*posi(3)) )
+!        expikR  = exp( -SQRTm1*(kvec(1)*posi(1) + kvec(2)*posi(2) + kvec(3)*posi(3)) )
+         expikR  = exp(  SQRTm1*(kvec(1)*posi(1) + kvec(2)*posi(2) + kvec(3)*posi(3)) ) ! 09/26/2018
          dfp_p(:,ig) = dfp_p(:,ig) + real(cfact*expikR*p_fft_c(idk),kind=RealKind)*kvec/kv2
       enddo
    enddo
@@ -3469,8 +3481,9 @@ endif
 !
 !  ===================================================================
 !  dfp is the gradient of V:
-!  dfp(1:3) = -4pi*e^2*sum_K [theta_K/K^2 * i*K * e^{iK*posi}]
-!           = 4pi*e^2 * sum_K [ Im[theta_K*e^{iK*posi}] * K /K^2 ]
+!  dfp(1:3) = 4pi*e^2*sum_K [theta_K/K^2 * i*K * e^{iK*posi}]
+!           =-4pi*e^2 * sum_K [ Im[theta_K*e^{iK*posi}] * K /K^2 ]
+!           = 4pi*e^2 * sum_K [ Re[i*theta_K*e^{iK*posi}] * K /K^2 ]
 !  ===================================================================
 !  dfp = TWO*PI4*dfp/real(ng,kind=RealKind)
    dfp = TWO*PI4*dfp  ! The parallel FFT transformation already includes
