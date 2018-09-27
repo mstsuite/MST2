@@ -148,7 +148,7 @@ program adaptiveSSK
    type (GridStruct), pointer :: Grid
 !
    interface
-      function computeSingleSiteDOS(info,e,aux,rfac) result(dos)
+      function computeSingleSiteDOS(info,e,aux,rfac,redundant) result(dos)
          use KindParamModule, only : intKind, realKind, CmplxKind
          implicit none
          integer (kind=IntKind), intent(in) :: info(*)
@@ -156,6 +156,7 @@ program adaptiveSSK
          real (kind=RealKind), intent(in), optional :: rfac
          complex (kind=CmplxKind), intent(out) :: aux(:)
          real (kind=RealKind) :: dos
+         logical, intent(in), optional :: redundant
       end function computeSingleSiteDOS
    end interface
 !
@@ -515,7 +516,7 @@ end program adaptiveSSK
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function computeSingleSiteDOS(info,e,aux,rfac) result(dos)
+   function computeSingleSiteDOS(info,e,aux,rfac,redundant) result(dos)
 !  ===================================================================
 !  
 !  This function returns single site DOS for a given energy on the real
@@ -540,6 +541,9 @@ end program adaptiveSSK
    real (kind=RealKind), intent(in) :: e
    real (kind=RealKind), intent(in), optional :: rfac
    complex (kind=CmplxKind), intent(out) :: aux(:)
+!
+   logical, intent(in), optional :: redundant
+   logical :: red
 !  
    integer (kind=IntKind) :: is, id
    integer (kind=IntKind) :: jmax_dos, iend, n, jl, ir
@@ -564,6 +568,12 @@ end program adaptiveSSK
          real (kind=RealKind) :: tps
       end function computeSingleSitePS
    end interface
+!
+   if (present(redundant)) then
+      red = redundant
+   else
+      red = .false.
+   endif
 !  
    is = info(1)
    id = info(2)
@@ -608,7 +618,7 @@ end program adaptiveSSK
 !  -------------------------------------------------------------------
    call GlobalSumInGroup(eGID,msgbuf,5,NumPEsInEGroup)
 !  -------------------------------------------------------------------
-   if ( node_print_level >= 0) then
+   if ( node_print_level >= 0 .and. .not.red) then
       do n = 1, NumPEsInEGroup
          write(6,'(f12.8,3x,d15.8,2x,3(4x,d15.8))')msgbuf(1:5,n)
       enddo
