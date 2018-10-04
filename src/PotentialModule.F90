@@ -118,7 +118,7 @@ private
    real (kind=RealKind), allocatable :: efermi_in(:,:)
    real (kind=RealKind), target :: vdif(1)
    real (kind=RealKind) :: v0(2)
-   real (kind=RealKind), parameter :: pot_tol = TEN2m6
+   real (kind=RealKind), parameter :: pot_tol = TEN2m7
 !
    integer (kind=IntKind), allocatable :: LdaPlusU_DataAccum(:)
    integer (kind=IntKind), allocatable :: NonSphPot_DataAccum(:)
@@ -3021,7 +3021,11 @@ endif
 !
             enddo
          else
-            flags_jl => getSymmetryFlags(id)
+!           ==========================================================
+!           The following statement overwrites PotCompFlag_trunc with
+!           symmetry flags of the system
+!           ==========================================================
+            flags_jl = getSymmetryFlags(id)
 !
             do jl = 1,jmax_trunc
                if ( flags_jl(jl) == 0 ) then

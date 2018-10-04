@@ -1,8 +1,8 @@
 ================================================================================
                   * * *              * * *              * * *
 ================+===============================================================
-Default Potential Input File Name  ::  Cu_mt_v
-Default Potential Input File Form  ::  0
+Default Potential Input File Name  ::  Cu_fp_v
+Default Potential Input File Form  ::  1
    = 0: ASCII Format       ----------
    = 1: XDR Format         ----------
    = 2: HDF Format         ----------
@@ -41,7 +41,7 @@ Default Mom  Mix Param.   :: 0.1000
 Default Evec Mix Param.   :: 0.0000
 Default Maximum Core Radius       :: 0.0d0
 Default Maximum Muffin-tin Radius :: 0.0d0
-Default No. Rad Points ndivin  :: 1001
+Default No. Rad Points ndivin  :: 2001
    = 0: Not specified ---------------
    > 0: Speciflied. Note:  0  < r(j)=exp(j*hin) <= rmt, j=1,2,...,ndivin
 Default No. Rad Points ndivout ::  0

@@ -110,19 +110,14 @@ Single Site Solver (>= 0)  ::  2
      1. Spherical Dirac       --------
      2. Full Schrodinger      --------
      3. Full Dirac            --------
-SS Integration Method (>=0) :: 1
-
-Note:: This parameter sets the method to compute the scattering matrixes once 
-       the single scatterer solutions are found. Default = 0.
-     0. integration over the surface of Voronoi polyhedra
-     1. volume integration of truncated potential(default)
-     2. Bounding sphere method
-SS Solutions Method (>=0)   ::  1
+Single Site Solution Method (>=-1) :: 2
 Note:: This parameter defines how the site potential is used in
        the iterative coupled integral solver. The solver always enforces
        a truncated potential if the irregular solutions are used. Default = 0.
-     0. Iterative Solver over untruncated potential  --------
-     1. Iterative Solver over truncated potential    --------
+    -1. Untruncated potential in solver, surface integration
+     0. Untruncated potential in solver, Untruncated potential in volume integration
+     1. Untruncated potential in solver, Truncated potential in volume integration
+     2. Truncated potential in solver   --------
 Irregular Solutions (>=0)   ::  0
      0. Solver does not use the IrrSolulions (default) --------
      1. Solver does use the IrrSolulions               --------
@@ -210,7 +205,7 @@ Iterate Fermi energy       ::  1
 SS Real Axis Int. Method   ::  0
      0. Uniform
      1. Adaptive
-SS Real Axis Int. Points   ::  250
+SS Real Axis Int. Points   ::  400
 ================================================================================
                   * * *              * * *              * * *
 ================================================================================
@@ -267,7 +262,7 @@ Scheme to Generate K (>=0) ::  0
        2. Direction        ---------
 No. K Meshs in IBZ (> 0)   ::  1
      Note: This is not the number of k-points. This is the number of sets of k-points.
-Kx, Ky, Kz Division (> 0)  ::  8   8   8
+Kx, Ky, Kz Division (> 0)  ::  16  16  16
 Symmetrize BZ Integration  ::  1
      0. No                 ---------
      1. Yes                ---------                             

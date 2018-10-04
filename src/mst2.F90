@@ -1595,9 +1595,12 @@ program mst2
               (max_rms(7) <= rmstol .and. itstep>1 &
                .and. n_spin_cant==2)) then
             if (node_print_level >= 0) then
-               write(6,'(/,a)')'Convergence is reached!!!'
-               write(6,'(/,80(''=''))')
-               write(6,'(a)')                                         &
+               write(6,'(//,80(''=''))')
+               write(6,'(a,78x,a)')'#','#'
+               write(6,'(a,24x,a,24x,a)')'#','SCF Convergence is reached !!!','#'
+               write(6,'(a,78x,a)')'#','#'
+               write(6,'(80(''=''))')
+               write(6,'(//,a)')                                         &
 '     Iteration   RMS of Rho      RMS of Pot        Diff Ef        Diff Etot      Diff Evec'
                write(6,'(80(''-''))')
                write(6,'(5x,i5,6(4x,f12.8))')iscf,max(max_rms(1),max_rms(2)), &

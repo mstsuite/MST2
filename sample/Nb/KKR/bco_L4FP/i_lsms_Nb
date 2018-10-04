@@ -234,7 +234,7 @@ Time Step                  ::  1.000
 Mixing quantity type       ::  1
      0. Charge mixing      ---------
      1. Potential mixing   ---------
-Mixing algorithm           ::  2
+Mixing algorithm           ::  0
      0. Simple Mixing      ---------
      1. D.G.A. Mixing      ---------
      2. Broyden Mixing     ---------

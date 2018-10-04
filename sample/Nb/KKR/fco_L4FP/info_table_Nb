@@ -1,8 +1,8 @@
 ================================================================================
                   * * *              * * *              * * *
 ================+===============================================================
-Default Potential Input File Name  ::  Nb_fp_v
-Default Potential Input File Form  ::  1
+Default Potential Input File Name  ::  Nb_mt_v
+Default Potential Input File Form  ::  0
    = 0: ASCII Format       ----------
    = 1: XDR Format         ----------
    = 2: HDF Format         ----------
@@ -26,7 +26,7 @@ Note: Lmax-T matrix  - controls the KKR size
 Default Lmax-T matrix     :: 4
 Default Lmax-Wave Func    :: 4
 Default Lmax-Potential    :: 8
-Default Lmax-Trunc Pot    :: 10 
+Default Lmax-Trunc Pot    :: 10
 Default Lmax-Charge Den   :: 8
 Default Lmax-Step Func    :: 14
 Note: The neighbors number represents the maximum number of neighbors of a site. It can be less than the specified

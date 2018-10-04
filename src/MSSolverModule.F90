@@ -168,7 +168,7 @@ private
    complex (kind=CmplxKind), allocatable, target :: gfws_comp(:)
    complex (kind=CmplxKind), allocatable, target :: dosws_comp(:)
 !
-   logical :: isGreenSymmOn = .false.
+   logical :: isDosSymmOn = .false.
 !   
 contains
 !
@@ -314,7 +314,7 @@ contains
    MSGF_Form = 0
    MSDOS_Form = 0
 !
-   isGreenSymmOn = isChargeSymm()
+   isDosSymmOn = isChargeSymm()
 !
    end subroutine initMSSolver
 !  ===================================================================
@@ -502,7 +502,7 @@ contains
    Initialized = .false.
    isRealSpace = .false.
    Energy = CZERO
-   isGreenSymmOn = .false.
+   isDosSymmOn = .false.
 !
    end subroutine endMSSolver
 !  ===================================================================
@@ -949,18 +949,18 @@ contains
                enddo
             endif
 !
-!     ================================================================
-!     Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
-!     ================================================================
-      if (isGreenSymmOn) then
-         green_flags => getSymmetryFlags(id)
-         do klg = 1, kmaxg
-            if (green_flags(jofk(klg)) == 0) then
-               gf(:,klg) = CZERO
+!           ==========================================================
+!           Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
+!           ==========================================================
+            if (isDosSymmOn) then
+               green_flags => getSymmetryFlags(id)
+               do klg = 1, kmaxg
+                  if (green_flags(jofk(klg)) == 0) then
+                     gf(:,klg) = CZERO
+                  endif
+               enddo
             endif
-         enddo
-      endif
-!     ================================================================
+!           ==========================================================
          enddo ! do js1
       enddo ! do js2
    enddo ! do id
@@ -1185,7 +1185,7 @@ contains
 !              =======================================================
 !              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
 !              =======================================================
-               if (isGreenSymmOn) then
+               if (isDosSymmOn) then
                   dos_flags => getSymmetryFlags(id)
                   do jlg = 1, jmaxg
                      if (dos_flags(jlg) == 0) then
@@ -1241,7 +1241,7 @@ contains
 !              =======================================================
 !              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
 !              =======================================================
-               if (isGreenSymmOn) then
+               if (isDosSymmOn) then
                   dos_flags => getSymmetryFlags(id)
                   do jlg = 1, jmaxg
                      if (dos_flags(jlg) == 0) then

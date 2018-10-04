@@ -36,7 +36,7 @@ No. Gauss Pts. along r     ::  80
 No. Gauss Pts. along theta ::  60
 Valence Band Bottom Est.   :: -0.5
 Temperature Parameter (K)  ::  0.000
-Uniform Grid Parameters    ::  64   64   64
+Uniform Grid Parameters    :: 64   64   64
     > 0: Three intergers used to define the grid numbers along three
          Bravais lattice vector directions
 Note: Uniform grid is used to generate the new potential,
@@ -192,7 +192,7 @@ Energy Grid Type (>= 0)    ::  1
      0. Equal Interval     ---------
      1. Gaussian Points    ---------
      2. Log Interval       ---------
-No. Energy Grids           ::  30 
+No. Energy Grids           ::  40 
 No. Extra Energy Points    ::  5
 Offset Energy Point        ::  0 
 Real Axis Bottom, erbot    ::  -0.40
@@ -234,7 +234,7 @@ Time Step                  ::  1.000
 Mixing quantity type       ::  1
      0. Charge mixing      ---------
      1. Potential mixing   ---------
-Mixing algorithm           ::  2
+Mixing algorithm           ::  0
      0. Simple Mixing      ---------
      1. D.G.A. Mixing      ---------
      2. Broyden Mixing     ---------
