@@ -75,8 +75,7 @@ program mst2
    use ScfDataModule, only : SingleSiteEContour, RealAxisSS
    use ScfDataModule, only : inputpath, Temperature
    use ScfDataModule, only : isNonRelativisticCore
-   use ScfDataModule, only : isNonRelativisticValence
-   use ScfDataModule, only : isScalarRelativisticValence
+   use ScfDataModule, only : isRelativisticValence
    use ScfDataModule, only : EvBottom, ErTop, ErBottom, EiTop, EiBottom
    use ScfDataModule, only : NumEs, ContourType, eGridType
    use ScfDataModule, only : isReadEmesh, getEmeshFileName
@@ -1167,7 +1166,7 @@ program mst2
 !     ================================================================
 !     initialize IBZ rotation matrix module
 !     ----------------------------------------------------------------
-      call initIBZRotation(.not.isNonRelativisticValence(),getLatticeType(), &
+      call initIBZRotation(isRelativisticValence(),getLatticeType(),  &
                            lmax_kkr_max,Symmetrize)
       call computeRotationMatrix()
 !     ----------------------------------------------------------------
@@ -1890,7 +1889,7 @@ program mst2
          endif
 !
          if ( ScfConverged .or. nscf == 1 ) then
-            if ( isNonRelativisticValence() ) then
+            if ( .not.isRelativisticValence() ) then
 !              changed by xianglin because calPartialDOS has not been implemented for REL
 !              -------------------------------------------------------
                call calPartialDOS(getFermiEnergy())

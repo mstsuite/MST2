@@ -7,6 +7,7 @@ public :: initScfData,                 &
           isNonRelativisticCore,       &
           isNonRelativisticValence,    &
           isScalarRelativisticValence, &
+          isRelativisticValence,       &
           getPotentialTypeParam,       &
           getSingleSiteSolverType,     &
           setSingleSiteSolverType,     &
@@ -496,6 +497,26 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isRelativisticValence() result(rv)
+!  ===================================================================
+   implicit none
+!
+   logical rv
+!
+   if (nrelv == 0 .or. nrelv == 1) then
+      rv = .false.
+   else if (nrelv == 2) then
+      rv = .true.
+   else
+      call ErrorHandler('isRelativisticValence','invalid nrelv',nrelv)
+   endif
+!
+   end function isRelativisticValence
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine printScfData(fu_in)
 !  ===================================================================
    use PublicParamDefinitionsModule, only : MuffinTin, ASA, MuffinTinASA, &
@@ -804,11 +825,20 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function isEfIterateOn() result (isEfIterOn)
+   function isEfIterateOn(pin) result (isEfIterOn)
 !  ===================================================================
    implicit none
 !
+   logical, intent(out), optional :: pin
    logical :: isEfIterOn
+!
+   if (present(pin)) then
+      if (iterateEf == 2) then ! pin the Ef to a fixed value
+         pin = .true.
+      else
+         pin = .false.
+      endif
+   endif
 !
    if (iterateEf == 1 ) then
       isEfIterOn = .false.
