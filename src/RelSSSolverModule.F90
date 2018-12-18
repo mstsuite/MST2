@@ -566,7 +566,8 @@ include '../lib/arrayTools.F90'
    pflag => getPotComponentFlag(ia)
    num_vl_new = 0
    if ( SIZE(pflag) .ne. (lpot+1)*(lpot+2)/2 ) then
-      call ErrorHandler ("SingleDiracScattering", "length of pflag .ne. (lpot+1)*(lpot+2)/2")
+      call ErrorHandler ("SingleDiracScattering", "length of pflag .ne. (lpot+1)*(lpot+2)/2",&
+                         SIZE(pflag),(lpot+1)*(lpot+2)/2)
    endif
 !
    do kl = 1, (lpot+1)**2

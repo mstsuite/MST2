@@ -145,7 +145,7 @@ private
    integer (kind=IntKind) :: MaxSpecies
    integer (kind=IntKind) :: n_spin_pola
    integer (kind=IntKind) :: n_spin_cant
-   integer (kind=IntKind) :: jmax_max, lmax_max, NumRpts_max
+   integer (kind=IntKind) :: jmax_max, lmax_max, NumRPts_max
    integer (kind=IntKind) :: jmax_glb
    integer (kind=IntKind), allocatable :: print_level(:)
 !
@@ -409,7 +409,7 @@ contains
 !
    allocate( ChargeDensityList(LocalNumAtoms) )
 !
-   NumRpts_max = 0
+   NumRPts_max = 0
    do id = 1,LocalNumAtoms
 !
       Grid => getGrid(id)
@@ -418,10 +418,10 @@ contains
       p_CDL%G_ID = gindex(id)
       p_CDL%lmax = lmax_rho(id)
       p_CDL%jmax = ((lmax_rho(id)+1)*(lmax_rho(id)+2))/2
-      p_CDL%NumRpts = Grid%jend  !May28_2014 getNumRmesh(id)
+      p_CDL%NumRPts = Grid%jend  !May28_2014 getNumRmesh(id)
       p_CDL%jend    = Grid%jend
       p_CDL%r_mesh => getRmesh(id)
-      nr = p_CDL%NumRpts
+      nr = p_CDL%NumRPts
 !
       p_CDL%NumSpecies = getLocalNumSpecies(id)
 !
@@ -468,7 +468,7 @@ contains
       allocate( p_CDL%ChargeCompFlag(1:p_CDL%jmax) )
       nullify( p_CDL%multipole_mom )
 !
-      NumRpts_max = max(NumRpts_max,nr)
+      NumRPts_max = max(NumRPts_max,nr)
 !
    enddo
 !
@@ -716,7 +716,7 @@ contains
 !
       do id = 1,LocalNumAtoms
          p_CDL => ChargeDensityList(id)
-         nr = p_CDL%NumRpts
+         nr = p_CDL%NumRPts
          r_ps = getRcutPseudo(id)
          Grid => getGrid(id)
          jmt  = Grid%jmt
@@ -737,11 +737,11 @@ contains
             write(6,'(/,a,2(1x,f12.8))') "ChargeDensity:: Input:  R_pseudo/R_mt, R_pseudo = ", &
                   r_ps/r_mesh(jmt), r_ps
          endif
-         p_CDL%NumRpts_Pseudo = ir
+         p_CDL%NumRPts_Pseudo = ir
          p_CDL%RcutPseudo = p_CDL%r_mesh(ir)
          if ( print_level(id)>=0 ) then
             write(6,'(a,i5,2(1x,f12.8))')"ChargeDensity:: Actual: ir-pseudo, R_pseudo/R_mt, R_pseudo = ", &
-                     p_CDL%NumRpts_Pseudo, p_CDL%RcutPseudo/p_CDL%r_mesh(jmt), p_CDL%RcutPseudo
+                     p_CDL%NumRPts_Pseudo, p_CDL%RcutPseudo/p_CDL%r_mesh(jmt), p_CDL%RcutPseudo
          endif
 !
          jmax = p_CDL%jmax
@@ -819,8 +819,8 @@ contains
 !
    nullify(p_CDL)
 !
-   allocate( sqrt_r(0:NumRpts_max), den_in(0:NumRpts_max), den_out(0:NumRpts_max) )
-   allocate( den_r(0:NumRpts_max),den_r1(0:NumRpts_max) )
+   allocate( sqrt_r(0:NumRPts_max), den_in(0:NumRPts_max), den_out(0:NumRPts_max) )
+   allocate( den_r(0:NumRPts_max),den_r1(0:NumRPts_max) )
 !  -------------------------------------------------------------------
    call initIntegerFactors(lmax_max)
 !  -------------------------------------------------------------------
@@ -1101,7 +1101,7 @@ contains
       jmax = p_CDL%jmax
    endif
 !
-   nr = p_CDL%NumRpts
+   nr = p_CDL%NumRPts
    r = sqrt(posi(1)*posi(1)+posi(2)*posi(2)+posi(3)*posi(3))
    if ( r > p_CDL%r_mesh(nr)+TEN2m8 ) then
       rho = ZERO
@@ -1115,7 +1115,7 @@ contains
    call calYlm(posi,p_CDL%lmax,ylm)
 !  -------------------------------------------------------------------
 !
-   iend = p_CDL%NumRpts
+   iend = p_CDL%NumRPts
 !  -------------------------------------------------------------------
    call hunt(iend,p_CDL%r_mesh(1:iend),r,ir)
 !  -------------------------------------------------------------------
@@ -1484,7 +1484,7 @@ contains
       jmax = p_CDL%jmax
    endif
 !
-   nr = p_CDL%NumRpts
+   nr = p_CDL%NumRPts
    r = sqrt(posi(1)*posi(1)+posi(2)*posi(2)+posi(3)*posi(3))
    if (r > p_CDL%r_mesh(nr)+TEN2m6 ) then
       mom = ZERO
@@ -1498,7 +1498,7 @@ contains
    call calYlm(posi,p_CDL%lmax,ylm)
 !  -------------------------------------------------------------------
 !
-   iend = p_CDL%NumRpts
+   iend = p_CDL%NumRPts
 !  -------------------------------------------------------------------
    call hunt(iend,p_CDL%r_mesh(1:iend),r,ir)
 !  -------------------------------------------------------------------
@@ -1738,7 +1738,7 @@ contains
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
    real (kind=RealKind) :: evec(3), mvec(3)
-   real (kind=RealKind) :: corr, qint(2), volume, rho_r,rho_i, q_tmp, q_tmp_mt, qlost
+   real (kind=RealKind) :: corr, qint(2), volume, rho_r,rho_i, q_tmp, q_tmp_mt, qlost, omega_vp, omega_mt
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: rho0(:), mom0(:)
    real (kind=RealKind), pointer :: rho2p_r(:), rho2_r(:,:), rho3_r(:,:,:)
@@ -1776,19 +1776,26 @@ contains
 !  ===========================================
 !  Construct the Total Denity(Spherical) first
 !  ===========================================
+   if ( maxval(print_level) >= 0 ) then
+      write(6,'(/,16x,a  )')'****************************************'
+      write(6,'(  16x,a  )')'*  Output from constructChargeDensity  *'
+      write(6,'(  16x,a  )')'*    in Module ChargeDensityModule     *'
+      write(6,'(  16x,a,/)')'****************************************'
+      call FlushFile(6)
+   endif
 !
-!  write(6,*) "Construct Total Density"
-!  call FlushFile(6)
    cfact = -SQRTm1
    volume = getSystemVolume()
    qint  = ZERO
    qlost = ZERO
+   omega_vp = ZERO
+   omega_mt = ZERO
    do id = 1,LocalNumAtoms
       Grid => getGrid(id)
       jmt = Grid%jmt
       jend = Grid%jend
       p_CDL => ChargeDensityList(id)
-      nr = p_CDL%NumRpts
+      nr = p_CDL%NumRPts
       nr_ps = p_CDL%NumRPts_Pseudo
       ns = 2*n_spin_cant-1
       jmax = p_CDL%jmax
@@ -1820,12 +1827,12 @@ contains
          rho0(1:nr+1) = ZERO
          rho0(1:nr) = rho0(1:nr) + rho2p_r(1:nr)
 !
-         if ( print_level(id) >= 0 .and. isSphericalCharge ) then
+         if ( print_level(id) >= 0 ) then
             q_tmp = getVolumeIntegration( id, jend, r_mesh, 0,           &
                                           rho2p_r(1:nr), q_tmp_mt )
-            write(6,*) "Charge Density :: Valence Charge in MT-Sphere  = ",  &
+            write(6,'(a,f20.14)') "Charge Density :: Spherical Valence Charge in MT-Sphere  = ",  &
                        q_tmp_mt
-            write(6,*) "Charge Density :: Valence Charge in VP         = ",  &
+            write(6,'(a,f20.14)') "Charge Density :: Spherical Valence Charge in VP         = ",  &
                        q_tmp
          endif
 !
@@ -1862,15 +1869,15 @@ contains
 !
             call calIntegration(nr+1,sqrt_r(0:nr),den_r(0:nr),den_r1(0:nr),3)
 !
-            write(6,'(/,80(''-''))')
-            write(6,*) "Charge Density :: DeepCore Charge in MT-Sphere = ", &
+            write(6,'(/)')
+            write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in MT-Sphere = ", &
                                           den_r1(jmt)*PI8
-            write(6,*) "Charge Density :: DeepCore Charge in WS-Sphere = ", &
+            write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in WS-Sphere = ", &
                                           den_r1(jend)*PI8
-            write(6,*) "Charge Density :: DeepCore Charge in EX-Sphere = ", &
+            write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in EX-Sphere = ", &
                                           den_r1(nr)*PI8
-            write(6,*) "Charge Density :: DeepCore Charge in MT        = ",  q_tmp_mt
-            write(6,*) "Charge Density :: DeepCore Charge in VP        = ",  q_tmp
+            write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in MT        = ",  q_tmp_mt
+            write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in VP        = ",  q_tmp
          endif
 !
          rho2_r => p_CDL%rho_SemiCore(1:nr,1:n_spin_pola,ia)
@@ -1902,11 +1909,11 @@ contains
 !
             call calIntegration(nr+1,sqrt_r(0:nr),den_r(0:nr),den_r1(0:nr),3)
 !
-            write(6,*) "Charge Density :: SemiCore Charge in MT-Sphere = ", den_r1(jmt)*PI8
-            write(6,*) "Charge Density :: SemiCore Charge in WS-Sphere = ", den_r1(jend)*PI8
-            write(6,*) "Charge Density :: SemiCore Charge in EX-Sphere = ", den_r1(nr)*PI8
-            write(6,*) "Charge Density :: SemiCore Charge in MT        = ", q_tmp_mt
-            write(6,*) "Charge Density :: SemiCore Charge in VP        = ", q_tmp
+            write(6,'(a,f20.14)') "Charge Density :: SemiCore Charge in MT-Sphere = ", den_r1(jmt)*PI8
+            write(6,'(a,f20.14)') "Charge Density :: SemiCore Charge in WS-Sphere = ", den_r1(jend)*PI8
+            write(6,'(a,f20.14)') "Charge Density :: SemiCore Charge in EX-Sphere = ", den_r1(nr)*PI8
+            write(6,'(a,f20.14)') "Charge Density :: SemiCore Charge in MT        = ", q_tmp_mt
+            write(6,'(a,f20.14)') "Charge Density :: SemiCore Charge in VP        = ", q_tmp
 !
          endif
 !
@@ -2000,7 +2007,7 @@ contains
             enddo
          endif
 !
-         if ( print_level(id) >= 0 .and. isSphericalCharge ) then
+         if ( print_level(id) >= 0 ) then
 !
             den_r(0) = CZERO
             do ir = 1,nr
@@ -2009,9 +2016,9 @@ contains
 !
             call calIntegration(nr+1,sqrt_r(0:nr),den_r(0:nr),den_r1(0:nr),3)
 !
-            write(6,*) "Charge Density :: Total Charge in MT-Sphere    = ", &
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in MT-Sphere    = ", &
                                           den_r1(jmt)*PI8
-            write(6,*) "Charge Density :: Total Charge in WS-Sphere    = ", &
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in WS-Sphere    = ", &
                                           den_r1(jend)*PI8
             den_r(0)    = ZERO
             do ir = 1,nr
@@ -2019,8 +2026,8 @@ contains
             enddo
             q_tmp = getVolumeIntegration( id, jend, r_mesh(1:jend), 0,      &
                                              den_r(1:jend) )
-            write(6,*) "Charge Density :: Total Charge in VP           = ", q_tmp
-            write(6,'(80(''-''),/)')
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in VP           = ", q_tmp
+            write(6,'(/)')
          endif
 !
          if ( .not.isSphericalCharge ) then
@@ -2104,9 +2111,9 @@ contains
                q_tmp = getVolumeIntegration( id, nr, r_mesh(1:nr), kmax, jmax,  &
                                            0, p_CDL%rhoL_Valence(1:nr,1:jmax,ia),   &
                                            q_tmp_mt)
-               write(6,*) "Charge Density :: Valence Charge in MT-Sphere  = ", &
+               write(6,'(a,f20.14)') "Charge Density :: Valence Charge in MT-Sphere  = ", &
                                                  q_tmp_mt
-               write(6,*) "Charge Density :: Valence Charge in VP         = ", &
+               write(6,'(a,f20.14)') "Charge Density :: Valence Charge in VP         = ", &
                                                  q_tmp
             endif
 !
@@ -2166,16 +2173,43 @@ contains
             endif
 !
             q_tmp = getVolumeIntegration( id, nr, r_mesh, kmax, jmax,   &
-                                            0, p_CDL%rhoL_Total(1:nr,1:jmax,ia), &
-                                            q_tmp_mt )
-            qlost = qlost+(getLocalAtomicNumber(ia) - q_tmp_mt)
+                                            0, p_CDL%rhoL_Total(1:nr,1:jmax,ia), q_tmp_mt )
+            qlost = qlost+(getLocalAtomicNumber(ia) - q_tmp)
+            if (print_level(id) >= 0) then
+               write(6,'(a,f18.14)')'Checking -- Missing charge in atomic cell      = ',qlost
+            endif
+!qlost = qlost+(getLocalAtomicNumber(ia) - q_tmp_mt)
+!if (print_level(id) >= 0) then
+!   write(6,'(a,f18.14)')'Checking --- Interstitial charge  = ',qlost
+!endif
+!
+!           ==========================================================
+!           Use getVolumeIntegration to calculate the volume will help
+!           offsetting the numerical error in the determination of
+!           interstitial charge density.
+!           ==========================================================
+            den_r = ONE
+            omega_vp = omega_vp + getVolumeIntegration( id, nr, r_mesh, 0, den_r(1:nr), q_tmp_mt )
+            omega_mt = omega_mt + q_tmp_mt
+!           ==========================================================
          endif
 !
       enddo
    enddo
    call GlobalSumInGroup(GroupID,qlost)
-   qlost = qlost/(Y0*getSystemVolume())
-   qlost = ZERO
+!  ===================================================================
+!  Determine the missing charge density, which is to be added to the
+!  interstitial region. -Yang Wang @ 12/17/2018.
+!
+!  Using (omega_vp-omega_mt) instead of getTotalInterstitialVolume()
+!  helps reducing the numerical error caused by truncation scheme in 
+!  the volume integration.
+!  ===================================================================
+   qlost = qlost/(omega_vp-omega_mt)
+   if (maxval(print_level) >= 0) then
+      write(6,'(a,f18.14)')'Checking -- Missing density in interstial area = ',qlost
+   endif
+!! qlost = ZERO
 !
    if (isASAPotential()) then
       rhoint = qint(1)/getSystemVolume()
@@ -2199,20 +2233,29 @@ contains
 !
    if ( .not.isSphericalCharge ) then
       do id = 1,LocalNumAtoms
+         Grid => getGrid(id)
+         jmt = Grid%jmt
          do ia = 1, p_CDL%NumSpecies
             p_CDL => ChargeDensityList(id)
-            nr = p_CDL%NumRpts
+            nr = p_CDL%NumRPts
             rho0 => p_CDL%rhoSph_Total(1:nr+1,ia)
-            p_CDL%rhoL_Total(1:nr,1,ia) = p_CDL%rhoL_Total(1:nr,1,ia) + &
-                                          qlost
-            rho0(1:nr) = rho0(1:nr) + Y0*qlost
+!===
+!This is for testing on 12/13/2018
+!Needs to be deleted.
+!p_CDL%rhoL_Total(1:jmt,1,ia) = p_CDL%rhoL_Total(1:jmt,1,ia) - qlost/Y0
+!p_CDL%rhoL_Total(jmt+1:,1,ia) = qlost/Y0
+!rho0(1:jmt)=rho0(1:jmt)-qlost
+!rho0(jmt+1:)=qlost
+!===
+            p_CDL%rhoL_Total(jmt+1:nr,1,ia) = p_CDL%rhoL_Total(jmt+1:nr,1,ia) + qlost/Y0
+            rho0(jmt+1:nr) = rho0(jmt+1:nr) + qlost
             q_tmp = getVolumeIntegration( id, nr, r_mesh, kmax, jmax,   &
                                             0, p_CDL%rhoL_Total(1:nr,1:jmax,ia), &
                                             q_tmp_mt )
             if (print_level(id) >= 0) then
-               write(6,*) "Charge Density :: Total Charge in MT-Sphere    = ", &
+               write(6,'(a,f20.14)') "Charge Density :: Total Charge in MT-Sphere    = ", &
                                                  q_tmp_mt
-               write(6,*) "Charge Density :: Total Charge in VP           = ", &
+               write(6,'(a,f20.14)') "Charge Density :: Total Charge in VP           = ", &
                                                  q_tmp
             endif
             rho0(nr+1) = q_tmp_mt
@@ -2224,6 +2267,12 @@ contains
       if (.not.isMTFP) then
          call calPseudoDensity("Total")
       endif
+!===
+!This is for testing on 12/13/2018
+!Needs to be deleted.
+!p_CDL%rhoSph_Pseudo = ZERO
+!p_CDL%rhoL_Pseudo = CZERO
+!===
 !
 !     ========================================
 !     Construct the Tilda Denity
@@ -2236,36 +2285,48 @@ contains
 !Yang rhoint = qint(1)
       do id = 1,LocalNumAtoms
          p_CDL => ChargeDensityList(id)
-         nr = p_CDL%NumRpts
-         nr_ps = p_CDL%NumRpts_Pseudo
+         nr = p_CDL%NumRPts
+         nr_ps = p_CDL%NumRPts_Pseudo
          jmax = p_CDL%jmax
          flag_jl => p_CDL%ChargeCompFlag(1:jmax)
 !
          do ia = 1, p_CDL%NumSpecies
             p_CDL%rhoSph_Tilda(1:nr,ia) = ZERO
             p_CDL%rhoL_Tilda(1:nr,1:jmax,ia) = ZERO
+!           =========================================================
+!           Notes on 11/22/2018 -Yang
+!           The original code in the following lines calculates 
+!           rhoL_Tilda and rhoSph_Tilda up to nr.
+!           This appears to be a bug. I replaced nr with nr_ps.
+!           =========================================================
             if (isMTFP) then
-               p_CDL%rhoSph_Tilda(1:nr,ia) = p_CDL%rhoSph_Total(1:nr,ia)
-!
-               p_CDL%rhoL_Tilda(1:nr,1,ia) = p_CDL%rhoL_Total(1:nr,1,ia)
+               p_CDL%rhoSph_Tilda(1:nr_ps,ia) = p_CDL%rhoSph_Total(1:nr_ps,ia)
+               p_CDL%rhoL_Tilda(1:nr_ps,1,ia) = p_CDL%rhoL_Total(1:nr_ps,1,ia)
                do jl = 2,jmax
                   if ( flag_jl(jl) /= 0 ) then
-                     p_CDL%rhoL_Tilda(1:nr,jl,ia) = p_CDL%rhoL_Total(1:nr,jl,ia)
+                     p_CDL%rhoL_Tilda(1:nr_ps,jl,ia) = p_CDL%rhoL_Total(1:nr_ps,jl,ia)
                   endif
                enddo
             else
-               p_CDL%rhoSph_Tilda(1:nr,ia) = p_CDL%rhoSph_Total(1:nr,ia)  -       &
-                                             p_CDL%rhoSph_Pseudo(1:nr,ia)
+               p_CDL%rhoSph_Tilda(1:nr_ps,ia) = p_CDL%rhoSph_Total(1:nr_ps,ia)  -       &
+                                                p_CDL%rhoSph_Pseudo(1:nr_ps,ia)
 !
-               p_CDL%rhoL_Tilda(1:nr,1,ia) = p_CDL%rhoL_Total(1:nr,1,ia) -        &
-                                             p_CDL%rhoL_Pseudo(1:nr,1,ia)
+               p_CDL%rhoL_Tilda(1:nr_ps,1,ia) = p_CDL%rhoL_Total(1:nr_ps,1,ia) -        &
+                                                p_CDL%rhoL_Pseudo(1:nr_ps,1,ia)
+!===
+!This is for testing on 12/13/2018
+!Needs to be deleted.
+!p_CDL%rhoL_Tilda(1:nr_ps,1,ia) = p_CDL%rhoL_Tilda(1:nr_ps,1,ia) - qlost/Y0
+!p_CDL%rhoSph_Tilda(1:nr_ps,ia)=p_CDL%rhoSph_Tilda(1:nr_ps,ia)-qlost
+!===
                do jl = 2,jmax
                   if ( flag_jl(jl) /= 0 ) then
-                     p_CDL%rhoL_Tilda(1:nr,jl,ia) = p_CDL%rhoL_Total(1:nr,jl,ia)- &
-                                                    p_CDL%rhoL_Pseudo(1:nr,jl,ia)
+                     p_CDL%rhoL_Tilda(1:nr_ps,jl,ia) = p_CDL%rhoL_Total(1:nr_ps,jl,ia)- &
+                                                       p_CDL%rhoL_Pseudo(1:nr_ps,jl,ia)
                   endif
                enddo
             endif
+!           =========================================================
          enddo
       enddo
 !
@@ -2281,9 +2342,9 @@ contains
       endif
 !
       if ( print_level(1) >= 0 ) then
-         write(6,*) "Charge Density :: Neutralizing Charge density  =",  &
+         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge density  =",  &
                     rho0_neutral
-         write(6,*) "Charge Density :: Neutralizing Charge Per Atom =",  &
+         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge Per Atom =",  &
                     rho0_neutral*volume/GlobalNumAtoms
          write(6,'(80(''-''),/)')
       endif
@@ -2305,9 +2366,9 @@ contains
             id_glb = getGlobalIndex(id)
             do ia = 1, p_CDL%NumSpecies
                do ir = 1, p_CDL%NumRPts_Pseudo
-                  p_CDL%rhoL_Tilda(ir,1,ia) = p_CDL%rhoL_Tilda(ir,1,ia) - rho0_neutral/Y0
+                  p_CDL%rhoL_Tilda(ir,1,ia) = p_CDL%rhoL_Tilda(ir,1,ia) + rho0_neutral/Y0
                enddo
-               p_CDL%multipole_mom(1,ia) = p_CDL%multipole_mom(1,ia) -   &
+               p_CDL%multipole_mom(1,ia) = p_CDL%multipole_mom(1,ia) +   &
                                            rho0_neutral/Y0*PI4*THIRD*p_CDL%RcutPseudo**3
                p_MultipoleMom(id_glb) = p_MultipoleMom(id_glb) +  &
                                         p_CDL%multipole_mom(1,ia)*getLocalSpeciesContent(id,ia)
@@ -2320,13 +2381,19 @@ contains
          do id = 1,LocalNumAtoms
             p_CDL => ChargeDensityList(id)
             jmax = p_CDL%jmax
-            nr = p_CDL%NumRpts
+            nr = p_CDL%NumRPts
             do ia = 1, p_CDL%NumSpecies
                p_CDL%rhoSph_Pseudo(1:nr,ia) = p_CDL%rhoSph_Pseudo(1:nr,ia) - rho0_neutral
                p_CDL%rhoL_Pseudo(1:nr,1,ia) = p_CDL%rhoL_Pseudo(1:nr,1,ia) - rho0_neutral/Y0
             enddo
          enddo
       endif
+!===
+!This is for testing on 12/13/2018
+!Needs to be deleted.
+!p_CDL%rhoSph_Pseudo = ZERO
+!p_CDL%rhoL_Pseudo = CZERO
+!===
 !
    endif
 !
@@ -2369,17 +2436,17 @@ contains
    cfact = -SQRTm1
 !
    allocate( ir0(jmax_max) )
-   allocate( rhol_r(NumRpts_max), rhol_c(NumRpts_max) )
+   allocate( rhol_r(NumRPts_max), rhol_c(NumRPts_max) )
    allocate( ac(jmax_max), bc(jmax_max), cc(jmax_max), dc(jmax_max) )
-   allocate( drhol_r(NumRpts_max), ddrhol_r(NumRpts_max) )
-   allocate( drhol_c(NumRpts_max), ddrhol_c(NumRpts_max) )
+   allocate( drhol_r(NumRPts_max), ddrhol_r(NumRPts_max) )
+   allocate( drhol_c(NumRPts_max), ddrhol_c(NumRPts_max) )
 !
    do id = 1, LocalNumAtoms
       p_CDL => ChargeDensityList(id)
-      NumRs = p_CDL%NumRpts
+      NumRs = p_CDL%NumRPts
       jmax = p_CDL%jmax
-      if (jmax>jmax_max .or. jmax<0 .or. NumRs>NumRpts_max .or. NumRs<0 ) then
-         write(6,*) jmax_max,NumRpts_max
+      if (jmax>jmax_max .or. jmax<0 .or. NumRs>NumRPts_max .or. NumRs<0 ) then
+         write(6,*) jmax_max,NumRPts_max
          call ErrorHandler("calPseudoDensity","Wrong jmax, NumRs", jmax,NumRs)
       endif
       p_CDL%rhoL_Pseudo = CZERO
@@ -2563,7 +2630,7 @@ contains
 !
    implicit none
 !
-   integer (kind=IntKind) :: nr, nr_ps, id, ia, ir, id_glb, pe 
+   integer (kind=IntKind) :: nr, nr_ps, id, ia, ir, id_glb, pe, jmt
    integer (kind=IntKind) :: jl, l, jmax
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
@@ -2576,12 +2643,15 @@ contains
    complex (kind=CmplxKind), pointer :: densityTilda_l(:,:)
 !
    type (ChargeDensityStruct), pointer :: p_CDL
+   type (GridStruct), pointer :: Grid
 !
    rho0_neutral = ZERO
 !  ======================
 !  Loop over local atoms
 !  ======================
    do id = 1, LocalNumAtoms
+      Grid => getGrid(id)
+      jmt = Grid%jmt
       p_CDL => ChargeDensityList(id)
       jmax   =  p_CDL%jmax
       nr     =  p_CDL%NumRPts
@@ -2623,12 +2693,18 @@ contains
 !
          rho0_neutral = rho0_neutral + (Z -real(p_mm(1),kind=RealKind)*Y0)*getLocalSpeciesContent(id,ia)
       enddo
+      if (print_level(id) >= 0) then
+         write(6,'(a,3i5,2x,f20.14)')'id,jmt,nr_ps, net charge: ',id,jmt,nr_ps,rho0_neutral
+      endif
    enddo
 !
    call GlobalSumInGroup(GroupID,rho0_neutral)
 !
    rho0_neutral = rho0_neutral + getAdditionalElectrons()
    rho0_neutral = rho0_neutral/getSystemVolume()
+   if (maxval(print_level) >= 0) then
+      write(6,'(a,f20.14)')'Neutralizing density: ',rho0_neutral
+   endif
 !
    MultipoleMom = CZERO
    do id = 1,LocalNumAtoms
@@ -2669,7 +2745,7 @@ contains
       call ErrorHandler("getVPCharge",'Invalid atom index',id)
    endif
 !
-   nr = ChargeDensityList(id)%NumRpts
+   nr = ChargeDensityList(id)%NumRPts
    if ( dtype=='Old' ) then
       chg = ChargeDensityList(id)%rhoSph_TotalOld(nr+1,ia)
    else if ( dtype=="New" ) then
@@ -2700,7 +2776,7 @@ contains
       call ErrorHandler("getVPMomSize",'Invalid spin parameter',n_spin_pola)
    endif
 !
-   nr = ChargeDensityList(id)%NumRpts
+   nr = ChargeDensityList(id)%NumRPts
    if ( dtype=='Old' ) then
       mom = ChargeDensityList(id)%momSph_TotalOld(nr+1,ia)
    else if ( dtype=="New" ) then
@@ -2727,7 +2803,7 @@ contains
       call ErrorHandler("setVPCharge",'Invalid atom index',id)
    endif
 !
-   nr = ChargeDensityList(id)%NumRpts
+   nr = ChargeDensityList(id)%NumRPts
    ChargeDensityList(id)%rhoSph_Total(nr+1,ia) = chg
 !
    end subroutine setVPCharge
@@ -2752,7 +2828,7 @@ contains
       call ErrorHandler("setVPMomSize",'Invalid spin parameter',n_spin_pola)
    endif
 !
-   nr = ChargeDensityList(id)%NumRpts
+   nr = ChargeDensityList(id)%NumRPts
    ChargeDensityList(id)%momSph_Total(nr+1,ia) = mom
 !
    end subroutine setVPMomSize
@@ -2797,7 +2873,7 @@ contains
    if ( isSphericalCharge ) then
       do id = 1, LocalNumAtoms
          p_CDL=>ChargeDensityList(id)
-         nr = p_CDL%NumRpts+1
+         nr = p_CDL%NumRPts+1
 !
          do ia = 1, p_CDL%NumSpecies
             old_SphRho => p_CDL%rhoSph_TotalOld(1:nr,ia)
@@ -2817,7 +2893,7 @@ contains
    else
       do id = 1, LocalNumAtoms
          p_CDL=>ChargeDensityList(id)
-         nr = p_CDL%NumRpts
+         nr = p_CDL%NumRPts
 !
 !        Set the l components
 !
@@ -2915,7 +2991,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getPseudoNumRpts(id)                            result(nr)
+   function getPseudoNumRPts(id)                            result(nr)
 !  ===================================================================
    implicit none
 !
@@ -2925,7 +3001,7 @@ contains
 !
    nr = ChargeDensityList(id)%NumRPts_Pseudo
 !
-   end function getPseudoNumRpts
+   end function getPseudoNumRPts
 !  ===================================================================
 !
 !  *******************************************************************
@@ -2953,7 +3029,7 @@ contains
 !
    integer (kind=IntKind), intent(in) :: id, ia
 !
-   integer (kind=IntKind) :: ir, ml, ll, jl, lmax, jmax, nRpts, im1_r0l
+   integer (kind=IntKind) :: ir, ml, ll, jl, lmax, jmax, nRPts, im1_r0l
    integer (kind=IntKind), allocatable :: i_r0l(:)
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
@@ -2972,10 +3048,10 @@ contains
       return
    endif
 !
-   nRpts  =  ChargeDensityList(id)%NumRpts
+   nRPts  =  ChargeDensityList(id)%NumRPts
    r0_max =  ChargeDensityList(id)%RcutPseudo
-   r_mesh => ChargeDensityList(id)%r_mesh(1:nRpts)
-   rho_l  => ChargeDensityList(id)%rhoL_Valence(1:nRpts,1:jmax,ia)
+   r_mesh => ChargeDensityList(id)%r_mesh(1:nRPts)
+   rho_l  => ChargeDensityList(id)%rhoL_Valence(1:nRPts,1:jmax,ia)
    flag_jl => ChargeDensityList(id)%ChargeCompFlag(1:jmax)
 !
    if ( lmax==0 ) then
@@ -2983,7 +3059,7 @@ contains
    endif
 !
    allocate( i_r0l(1:lmax) )
-   allocate( rho_tmp(1:nRpts) )
+   allocate( rho_tmp(1:nRPts) )
 !
    do ll = 1,lmax
 !     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -2992,13 +3068,13 @@ contains
 !     +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       r0l = a*(b**ll)
 !     ----------------------------------------------------------------
-      call hunt(nRpts,r_mesh(1:nRpts),r0l,ir)
+      call hunt(nRPts,r_mesh(1:nRPts),r0l,ir)
 !     ----------------------------------------------------------------
       if ( r_mesh(ir) <= r0_max ) then
          i_r0l(ll) = ir
          im1_r0l = ir-1
       else
-         i_r0l(ll) = ChargeDensityList(id)%NumRpts_Pseudo
+         i_r0l(ll) = ChargeDensityList(id)%NumRPts_Pseudo
          im1_r0l = i_r0l(ll)-1
       endif
 !      print *,"l =",ll,"R0l =", r_mesh(i_r0l(ll))
@@ -3008,11 +3084,11 @@ contains
          if ( flag_jl(jl) == 0 ) then
             cycle LOOP_ML
          endif
-         do ir = 1,nRpts
+         do ir = 1,nRPts
             rho_tmp(ir) = rho_l(ir,jl)/(r_mesh(ir)**ll)
          enddo
-         call LeastSqFitInterp( 10, r_mesh(i_r0l(ll):nRpts),          &
-                                rho_tmp(i_r0l(ll):nRpts), im1_r0l,    &
+         call LeastSqFitInterp( 10, r_mesh(i_r0l(ll):nRPts),          &
+                                rho_tmp(i_r0l(ll):nRPts), im1_r0l,    &
                                 r_mesh(1:im1_r0l), rho_tmp(1:im1_r0l) )
          do ir = 1,im1_r0l
             rho_l(ir,jl) = rho_tmp(ir)*(r_mesh(ir)**ll)

@@ -1457,6 +1457,8 @@ contains
 !
    character (len=13), parameter ::  sname='calCoreStates'
 !
+   integer (kind=IntKind), parameter :: formula = 0
+!
    integer (kind=IntKind) :: id, ia
    integer (kind=IntKind) :: is, ig, i, j, ir
    integer (kind=IntKind) :: nr, nws, nend, last, last2, nmult, jmt, jend_plus_n
@@ -1608,6 +1610,13 @@ contains
 !              -------------------------------------------------------
 !
 !              =======================================================
+!              The following two lines were added by Yang on 11/23/2018
+!              =======================================================
+               Core(id)%semden(last2+1:,is,ia)=ZERO
+               Core(id)%corden(last2+1:,is,ia)=ZERO
+!              =======================================================
+!
+!              =======================================================
 !              adjust bottom of cotour: above highest semi-core state
 !              =======================================================
                etopcor=max(Core(id)%ec(Core(id)%numc_below(ia),is,ia),etopcor)
@@ -1665,18 +1674,34 @@ contains
 !              -------------------------------------------------------
                call calIntegration(last2+1,sqrt_r(0:last2),wrk2(0:last2),wrk1(0:last2),3)
 !              -------------------------------------------------------
+!write(6,'(a,2d15.8)')'Semi core energy and int[rho*v] =',Core(id)%esemv(is,ia),wrk1(last2)*PI8
                Core(id)%semi_ke(is,ia)=Core(id)%esemv(is,ia)-wrk1(last2)*PI8
 !
-               wrk2(0)=ZERO
-               do j = 1, last2
-                  wrk2(j)=Core(id)%corden(j,is,ia)*vp(j)
-               enddo
-!              -------------------------------------------------------
-               call FitInterp( 4, sqrt_r(1:4), wrk2(1:4), ZERO, wrk2(0), dps )
-!              -------------------------------------------------------
-               call calIntegration(last2+1,sqrt_r(0:last2),wrk2(0:last2),wrk1(0:last2),3)
-!              -------------------------------------------------------
-               Core(id)%core_ke(is,ia)=Core(id)%ecorv(is,ia)-wrk1(last2)*PI8
+               if (formula == 0) then
+                  wrk2(0)=ZERO
+                  do j = 1, last2
+                     wrk2(j)=Core(id)%corden(j,is,ia)*vp(j)
+                  enddo
+!                 ----------------------------------------------------
+                  call FitInterp( 4, sqrt_r(1:4), wrk2(1:4), ZERO, wrk2(0), dps )
+!                 ----------------------------------------------------
+                  call calIntegration(last2+1,sqrt_r(0:last2),wrk2(0:last2),wrk1(0:last2),3)
+!                 ----------------------------------------------------
+!write(6,'(a,2d15.8)')'Deep core energy and int[rho*v] =',Core(id)%ecorv(is,ia),wrk1(last2)*PI8
+                  Core(id)%core_ke(is,ia)=Core(id)%ecorv(is,ia)-wrk1(last2)*PI8
+               else
+!                 ---------------------------------------------------
+                  call newder(vp(1:jmt),wrk1(1:jmt),sqrt_r(1:jmt),jmt)
+!                 ---------------------------------------------------
+                  do j = 1, jmt
+                     wrk2(j)=Core(id)%r_mesh(j)*core(id)%corden(j,is,ia)*(HALF*sqrt_r(j)*wrk1(j)-vp(j))
+                  enddo
+!                 ---------------------------------------------------
+                  call FitInterp(4,sqrt_r(1:4),wrk2(1:4),ZERO,wrk2(0),dps)
+                  call calIntegration(jmt+1,sqrt_r(0:jmt),wrk2(0:jmt),wrk1(0:jmt),1)
+!                 ---------------------------------------------------
+                  Core(id)%core_ke(is,ia)=wrk1(jmt)*PI4
+               endif
             enddo
             Core(id)%mcpsc_mt(ia)= msemmt+mcormt
             Core(id)%mcpsc_ws(ia)= msemws+mcorws

@@ -46,7 +46,7 @@ private
       integer (kind=IntKind) :: ifit_XC
       integer (kind=IntKind) :: NumFlagJl
       real (kind=RealKind) :: Madelung_Shift
-      real (kind=RealKind) :: VcoulombR0
+      real (kind=RealKind) :: VcoulombR0(3)
 !
       type (GridStruct), pointer :: Grid
 !
@@ -108,7 +108,7 @@ private
    real (kind=RealKind), allocatable :: MadelungShiftTable(:)
    real (kind=RealKind) :: rhoint_sav, MadelungSum
    real (kind=RealKind), target :: vdif(1)
-   real (kind=RealKind) :: v0(2), vc_r0(3)
+   real (kind=RealKind) :: v0(2)
    real (kind=RealKind) :: v_shift(2)
    real (kind=RealKind) :: MuffinTinZeroCoulumb
    real (kind=RealKind) :: MuffinTinZeroExchCorr(2)
@@ -473,7 +473,10 @@ contains
          endif
       endif
 !
-      call setAngularData(60,40,lmax_max,npola,jend_max)
+!ywg 11/114/18
+!ywg  call setAngularData(60,40,lmax_max,npola,jend_max)
+  call setAngularData(80,50,lmax_max,npola,jend_max)
+!......
       allocate( indrl_fit(jmax_max,npola) )
       allocate( pXC_r(jmax_max,npola),pXC_rphi(jmax_max,npola) )
       allocate( eXC_r(jmax_max,npola),eXC_rphi(jmax_max,npola) )
@@ -853,7 +856,7 @@ radius(i) = getGridRadius(i)
 !
    integer (kind=IntKind), intent(in) :: id
 !
-   real (kind=RealKind) :: vc_0
+   real (kind=RealKind) :: vc_0(3)
 !
    vc_0 = Potential(id)%VcoulombR0
 !
@@ -1685,6 +1688,7 @@ endif
             enddo
          enddo
       enddo
+      v_shift = V0_inter
 !
 #ifdef POT_DEBUG
       call GlobalSumInGroup(GroupID,vol_int,6)
@@ -2605,7 +2609,7 @@ endif
    subroutine calIntraPot()
 !  ===================================================================
 !
-   use MathParamModule, only : CZERO, ZERO, PI4, TWO
+   use MathParamModule, only : CZERO, ZERO, PI4, TWO, Y0inv
    use ErrorHandlerModule, only : ErrorHandler
 
 
@@ -2712,8 +2716,8 @@ endif
                                     rho_tmp_i(0:nRpts_ps), V2_i(0:nRpts_ps), 3-2*l)
             else
                do ir = 1,nRpts_ps
-                  rho_tmp_r(ir) = rho_tmp_r(ir)*(r_mesh(ir)**(1-l))
-                  rho_tmp_i(ir) = rho_tmp_i(ir)*(r_mesh(ir)**(1-l))
+                  rho_tmp_r(ir) = rho_tmp_r(ir)/(r_mesh(ir)**(l-1))
+                  rho_tmp_i(ir) = rho_tmp_i(ir)/(r_mesh(ir)**(l-1))
                enddo
                call calIntegration( nRpts_ps+1, sqrt_r(0:nRpts_ps),       &
                                     rho_tmp_r(0:nRpts_ps), V2_r(0:nRpts_ps), 1 )
@@ -2726,35 +2730,37 @@ endif
 !
             if ( l == 0 ) then
                do ir = 1, nRpts_ps
-                  potl(ir) = cmplx( FOUR*PI4*(V1_r(ir)/r_mesh(ir) + V2R0_r - &
-                                    V2_r(ir)), ZERO,kind=CmplxKind )
+                  potl(ir) = cmplx( (FOUR*PI4*V1_r(ir)-TWO*Zi*Y0inv)/r_mesh(ir) +  &
+                                    FOUR*PI4*(V2R0_r-V2_r(ir)), ZERO,kind=CmplxKind )
                enddo
                do ir = nRpts_ps+1, nRpts
-                  potl(ir) = cmplx( FOUR*PI4*V1_r(ir)/r_mesh(ir),        &
-                                    ZERO,kind=CmplxKind )
+                  potl(ir) = cmplx( (FOUR*PI4*V1_r(ir)-TWO*Zi*Y0inv)/r_mesh(ir),ZERO,kind=CmplxKind )
                enddo
-               Potential(id)%VcoulombR0 = Potential(id)%VcoulombR0 + FOUR*PI4*V2R0_r*Y0
-               vc_r0(1) = FOUR*PI4*V2R0_r*Y0
+!              =======================================================
+!              Note: VcoulombR0 will be added to the total energy
+!                    calculation in the rho*v_coul term.
+!              =======================================================
+               Potential(id)%VcoulombR0(1) = FOUR*PI4*V2R0_r*Y0
             else if ( m == 0 ) then
                do ir = 1, nRpts_ps
-                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                  &
-                                    ( V1_r(ir)/(r_mesh(ir)**(l+1)) +     &
-                                    (V2R0_r-V2_r(ir))*(r_mesh(ir)**l)),  &
+                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                     &
+                                    ( V1_r(ir)/(r_mesh(ir)**(l+1)) +        &
+                                      (V2R0_r-V2_r(ir))*(r_mesh(ir)**l) ),  &
                                     ZERO,kind=CmplxKind)
                enddo
                do ir = nRpts_ps+1, nRpts
-                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                  &
-                                    ( V1_r(ir)/(r_mesh(ir)**(l+1))),     &
+                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                     &
+                                    ( V1_r(ir)/(r_mesh(ir)**(l+1))),        &
                                     ZERO,kind=CmplxKind)
                enddo
             else
                do ir = 1,nRpts_ps
-                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                  &
-                                    ( V1_r(ir)/(r_mesh(ir)**(l+1)) +     &
-                                       (V2R0_r-V2_r(ir))*(r_mesh(ir)**l)),  &
-                                    (FOUR*PI4/(2*l+1))*                  &
-                                    ( V1_i(ir)/(r_mesh(ir)**(l+1)) +     &
-                                    (V2R0_i-V2_i(ir))*(r_mesh(ir)**l)),  &
+                  potl(ir) = cmplx( (FOUR*PI4/(2*l+1))*                     &
+                                    ( V1_r(ir)/(r_mesh(ir)**(l+1)) +        &
+                                      (V2R0_r-V2_r(ir))*(r_mesh(ir)**l)),   &
+                                    (FOUR*PI4/(2*l+1))*                     &
+                                    ( V1_i(ir)/(r_mesh(ir)**(l+1)) +        &
+                                      (V2R0_i-V2_i(ir))*(r_mesh(ir)**l)),   &
                                     kind=CmplxKind)
                enddo
                do ir = nRpts_ps+1,nRpts
@@ -2791,7 +2797,8 @@ endif
                                    isChargeComponentZero,             &
                                    getNeutralChargeDensity,           &
                                    getPseudoNumRPts
-   use PolyhedraModule, only : getVolume
+   use ChargeDistributionModule, only : getInterstitialElectronDensity
+   use PolyhedraModule, only : getVolume, getInscrSphVolume, getInscrSphRadius
    use StepFunctionModule, only : getVolumeIntegration
    use InterpolationModule, only : FitInterp
 !
@@ -2800,9 +2807,9 @@ endif
    integer (kind=IntKind) :: jl_pot, jmax_pot, kl_pot, m_pot, l_pot
    integer (kind=IntKind) :: kl_rho, kmax_rho, m_rho, l_rho, jl_rho
    integer (kind=IntKind) :: mdif, lsum,  jmax_rho
-   integer (kind=IntKind) :: local_id, id, kl, ir, n_RPts
+   integer (kind=IntKind) :: local_id, id, kl, ir, n_RPts, jmt
 !
-   real (kind=RealKind)   :: Zi, Zj, a0, rho_neutral, rho_nj
+   real (kind=RealKind)   :: Zi, Zj, a0, rho_neutral, rho_nj, alpha_mad
    real (kind=RealKind), target :: dlf_0(1:1)
    real (kind=RealKind), pointer :: dlf(:), r_mesh(:), mad(:)
 #ifdef TIMING
@@ -2829,6 +2836,7 @@ endif
 !
       jmax_pot = Potential(local_id)%jmax
       n_Rpts = Potential(local_id)%jend
+      jmt = Potential(local_id)%jmt
       v_tilt => Potential(local_id)%potL_Madelung
       v_tilt = CZERO
       Zi = getLocalAtomicNumber(local_id)
@@ -2836,7 +2844,7 @@ endif
 !
       if ( jmax_pot==1 .and. lmax_rho_max==0 ) then
          mad => getMadelungMatrix(local_id)
-         dlm_0 (1:GlobalNumAtoms,1) = cmplx(mad,ZERO,kind=RealKind)
+         dlm_0(1:GlobalNumAtoms,1) = cmplx(mad,ZERO,kind=RealKind)
          a0 = ONE
          dlm => dlm_0
          dlf_0(1) = ONE
@@ -2867,6 +2875,26 @@ endif
 !
             ql => getMultipoleMoment(jl_rho)
 !
+            if (maxval(print_level) >= 1) then
+               do id = 1,GlobalNumAtoms
+                  if (l_rho == 0) then
+                     write(6,'(a,i4,a,2f18.14)')'id = ',id,', Q0*Y0-Zi, Q0*Y0        = ',  &
+           real(ql(id),kind=RealKind)*Y0-getAtomicNumber(id), real(ql(id),kind=RealKind)*Y0
+                     write(6,'(11x,a,2f18.14)')             'rho0, rho_neutral      = ',  &
+                          getInterstitialElectronDensity(),rho_neutral*Y0      
+                     write(6,'(11x,a,f18.14)')              'Zi-Q0*Y0+rho0*Omega_mt = ',  &
+           getAtomicNumber(id)-real(ql(id),kind=RealKind)*Y0+getInterstitialElectronDensity()*getInscrSphVolume(id)
+                  endif
+                  if (m_rho < 0) then
+                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',id,local_id, &
+                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',dlf(kl_rho)*m1m(m_rho)*dlm(id,kl)/a0**lsum
+                  else
+                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',id,local_id, &
+                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',dlf(kl_rho)*dlm(id,kl)/a0**lsum
+                  endif
+               enddo
+            endif
+!
             sumat  = czero
             if ( m_rho<0 ) then
                do id = 1,GlobalNumAtoms
@@ -2892,13 +2920,10 @@ endif
             do ir = 1,n_RPts
                v_tilt(ir,jl_pot) = v_tilt(ir,jl_pot)  +               &
                      cmplx( real( (TWO*sumjl -                        &
-                                PI4*THIRD*rho_neutral*r_mesh(ir)**2)- &
-                                TWO*Zi/(Y0*r_mesh(ir)),               &
+                                PI4*THIRD*rho_neutral*r_mesh(ir)**2), &
                                 kind=RealKind), ZERO,kind=CmplxKind)
             enddo
-            Potential(local_id)%VcoulombR0 =                          &
-                        Potential(local_id)%VcoulombR0 + TWO*sumjl*Y0
-            vc_r0(2) = TWO*sumjl*Y0
+            Potential(local_id)%VcoulombR0(2) = TWO*sumjl*Y0
          else if ( m_pot == 0 ) then
             do ir = 1,n_RPts
                v_tilt(ir,jl_pot) = v_tilt(ir,jl_pot) +                &
@@ -3374,15 +3399,20 @@ endif
                V1_r(ir) = pot_r
             enddo
             call FitInterp(4,r_mesh(1:4),V1_r(1:4),ZERO,vc_0,dps)
-            Potential(id)%VcoulombR0 = Potential(id)%VcoulombR0 + vc_0*Y0
+            Potential(id)%VcoulombR0(3) = vc_0*Y0
 !ywg        Potential(id)%VcoulombR0 = Potential(id)%VcoulombR0 +    &
 !ywg                                   real(V_L0,kind=RealKind)*Y0
             if ( print_level(1) >=0 ) then
-               write(6,'(a,d15.8,a,d15.8)')'Pseudo Pot at Site = ',vc_0*Y0
+               write(6,'(a,d15.8,a,d15.8)')'Extrapolation: r = ',ZERO,     'pot_pseudo_0 = ',vc_0
+               write(6,'(a,d15.8,a,d15.8)')'               r = ',r_mesh(1),'pot_pseudo_0 = ',V1_r(1)
+               write(6,'(a,d15.8,a,d15.8)')'               r = ',r_mesh(2),'pot_pseudo_0 = ',V1_r(2)
+               write(6,'(a,d15.8,a,d15.8)')'               r = ',r_mesh(3),'pot_pseudo_0 = ',V1_r(3)
+               write(6,'(a,d15.8,a,d15.8)')'               r = ',r_mesh(4),'pot_pseudo_0 = ',V1_r(4)
+               write(6,'(a,d15.8,a,d15.8)')'Pseudo Pot at Site = ',vc_0*Y0, &
+                                           ', with extrapolation error = ',dps
 !ywg           write(6,'(a,d15.8,a,d15.8)')'Old Pseudo V0 = ',vc_0*Y0,  &
 !ywg                   ', New Pseudo V0 = ',real(V_L0,kind=RealKind)*Y0
             endif
-            vc_r0(3) = vc_0*Y0
          else if ( mofj(jl)==0 ) then
             do ir = 1,nr
                pot_r = real(v_jl(ir,jl),kind=RealKind)
@@ -3928,6 +3958,10 @@ endif
             cost = cos(theta(it))
             posi(1) = sint*sinp
             posi(2) = cost*sinp
+!ywg 11/14/18
+  posi(1) = cost*sinp
+  posi(2) = sint*sinp
+!
             posi(3) = cosp
             posi(1:3) = r_mesh(ir)*posi(1:3)
             rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi )
@@ -4187,6 +4221,11 @@ endif
             cost = cos(theta(it))
             posi(1) = sint*sinp
             posi(2) = cost*sinp
+!
+!ywg 11/14/18
+  posi(1) = cost*sinp
+  posi(2) = sint*sinp
+!
             posi(3) = cosp
 !           ----------------------------------------------------
             call calYlm(posi, ll, ylm_ngl(1:kl,ing) )

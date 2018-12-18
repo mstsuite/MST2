@@ -71,6 +71,7 @@ private
 !
    logical :: Initialized = .false.
    logical :: isIterateEfOn = .true.
+   logical :: isEfPinning = .false.
 !
 !  Flags to stop the code after the specific task is completed( input(external) flags )
 !
@@ -237,7 +238,7 @@ contains
    endif
 !
    stop_routine = istop
-   isIterateEfOn = isEfIterateOn()
+   isIterateEfOn = isEfIterateOn(isEfPinning)
    iharris = Harris
 !
    if ( isLloyd() ) then
@@ -751,10 +752,12 @@ contains
    if (RelativisticFlag == 2) then
 !     ----------------------------------------------------------------
       isBxyz=is_Bxyz !xianglin
-      call initRelSSSolver(LocalNumAtoms, lmax_kkr, 2*(lmax_kkr), 2*(lmax_kkr), &
-           AtomicNumber, isBxyz, print_level, stop_routine, evec)
-      call initRelMSSolver(LocalNumAtoms, AtomIndex, lmax_kkr,lmax_kkr,2*(lmax_kkr),&
-           posi,is_Bxyz,stop_routine, print_level )
+!YW   call initRelSSSolver(LocalNumAtoms, lmax_kkr, 2*(lmax_kkr), 2*(lmax_kkr), &
+      call initRelSSSolver(LocalNumAtoms, lmax_kkr, lmax_pot, lmax_green, &
+                           AtomicNumber, isBxyz, print_level, stop_routine, evec)
+!YW   call initRelMSSolver(LocalNumAtoms, AtomIndex, lmax_kkr,lmax_kkr,2*(lmax_kkr),&
+      call initRelMSSolver(LocalNumAtoms, AtomIndex, lmax_kkr,lmax_kkr,lmax_green, &
+                           posi,is_Bxyz,stop_routine, print_level )
    else
 !     ----------------------------------------------------------------
       call initSSSolver(LocalNumAtoms, getLocalNumSpecies, getLocalAtomicNumber, &
@@ -1618,7 +1621,7 @@ contains
 !        -------------------------------------------------------------
       enddo
       do is = 1, n_spin_pola/n_spin_cant
-         if (isFullPotential()) then
+         if (isFullPotential() .or. .not.useIrregularSolution) then
 !           =========================================================
 !           In this case, the multiple scattering module returns DOS of
 !           Z*(tau-t)*Z, instead of Z*tau*Z-Z*J. One needs to add the single
@@ -1648,7 +1651,7 @@ contains
             endif
          enddo
       enddo
-      if (isFullPotential()) then
+      if (isFullPotential() .or. .not.useIrregularSolution) then
 !        ============================================================
 !        In this case, the multiple scattering module returns DOS of
 !        Z*(tau-t)*Z, instead of Z*tau*Z-Z*J. One needs to add the single
@@ -1744,6 +1747,10 @@ contains
                        ', MS+SS  DOS_ws = ',real(IntegrValue(id)%dos(is))
             enddo
          enddo
+      endif
+!
+      if (isEfPinning) then
+         efermi = efermi_old
       endif
 !
       if ( .not.isIterateEfOn .or. isLloydOn() ) then
