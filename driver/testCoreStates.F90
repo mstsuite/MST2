@@ -166,7 +166,7 @@ program testCoreStates
       if (atom_print_level(id) >= 0) then
 !        -------------------------------------------------------------
          call printCoreStates(id)
-         call printCoreDensity(id)
+         call printCoreDensity(id,derivative=.true.)
 !        -------------------------------------------------------------
       endif
    enddo

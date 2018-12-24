@@ -6,6 +6,7 @@ module CoreStatesModule
                                TEN2p10,PI4,TEN2m12, THIRD, PI4
    use PhysParamModule, only : LightSpeed
    use IntegrationModule, only : calIntegration
+   use DerivativeModule, only : derv5
    use PublicTypeDefinitionsModule, only : GridStruct
 !
 public :: initCoreStates,     &
@@ -17,6 +18,8 @@ public :: initCoreStates,     &
           printCoreDensity,   &
           getDeepCoreDensity, &
           getSemiCoreDensity, &
+          getDeepCoreDensityDerivative,&
+          getSemiCoreDensityDerivative,&
           getDeepCoreEnergy,  &
           getDeepCoreKineticEnergy,  &
           getSemiCoreEnergy,  &
@@ -47,6 +50,14 @@ public :: initCoreStates,     &
 !
    interface getSemiCoreDensity
       module procedure getSCD0, getSCD1, getSCD2
+   end interface
+!
+   interface getDeepCoreDensityDerivative
+      module procedure getDCDDer0, getDCDDer1, getDCDDer2
+   end interface
+!
+   interface getSemiCoreDensityDerivative
+      module procedure getSCDDer0, getSCDDer1, getSCDDer2
    end interface
 !
    interface getCoreVPCharge
@@ -81,6 +92,8 @@ private
       real (kind=RealKind), pointer :: esemv(:,:)
       real (kind=RealKind), pointer :: corden(:,:,:) ! deep core density, without r^2
       real (kind=RealKind), pointer :: semden(:,:,:) ! semi core density, without r^2
+      real (kind=RealKind), pointer :: dcorden(:,:,:) ! derivative of deep core density, without r^2
+      real (kind=RealKind), pointer :: dsemden(:,:,:) ! derivative of semi core density, without r^2
       real (kind=RealKind), pointer :: OldCore(:,:,:)
       real (kind=RealKind), pointer :: r_mesh(:)
       real (kind=RealKind), pointer :: core_ke(:,:)
@@ -141,6 +154,7 @@ private
    real (kind=RealKind), allocatable :: tmp(:)
    real (kind=RealKind), allocatable :: qmp(:)
    real (kind=RealKind), allocatable :: ftmp(:)
+   real (kind=RealKind), allocatable :: dftmp(:)
 !
    logical :: GlobalTable_Allocated = .false.
    integer (kind=IntKind) :: maxnc_save = 0
@@ -288,13 +302,17 @@ contains
 !     ----------------------------------------------------------------
       call createDataStorage(LocalNumAtoms,'CoreDensity',  &
                              DataSize, RealType)
+      call createDataStorage(LocalNumAtoms,'DeriCoreDensity',  &
+                             DataSize, RealType)
 !     ----------------------------------------------------------------
       call setDataStorage2Value('CoreDensity',ZERO)
+      call setDataStorage2Value('DeriCoreDensity',ZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
          last = Core(id)%rsize
 !        -------------------------------------------------------------
          call setDataStorageLDA(id,'CoreDensity',last)
+         call setDataStorageLDA(id,'DeriCoreDensity',last)
 !        -------------------------------------------------------------
       enddo
    endif
@@ -314,15 +332,19 @@ contains
    endif
    if (.not.isDataStorageExisting('SemiCoreDensity')) then
 !     ----------------------------------------------------------------
-      call createDataStorage(LocalNumAtoms,'SemiCoreDensity',  &
+      call createDataStorage(LocalNumAtoms,'SemiCoreDensity',         &
+                             DataSize, RealType)
+      call createDataStorage(LocalNumAtoms,'DeriSemiCoreDensity',     &
                              DataSize, RealType)
 !     ----------------------------------------------------------------
       call setDataStorage2Value('SemiCoreDensity',ZERO)
+      call setDataStorage2Value('DeriSemiCoreDensity',ZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
          last = Core(id)%rsize
 !        -------------------------------------------------------------
          call setDataStorageLDA(id,'SemiCoreDensity',last)
+         call setDataStorageLDA(id,'DeriSemiCoreDensity',last)
 !        -------------------------------------------------------------
       enddo
    endif
@@ -335,6 +357,10 @@ contains
                                          last, n_spin_pola, Core(id)%NumSpecies, RealMark )
       Core(id)%semden => getDataStorage( id, 'SemiCoreDensity', &
                                          last, n_spin_pola, Core(id)%NumSpecies, RealMark )
+      Core(id)%dcorden => getDataStorage( id, 'DeriCoreDensity', &
+                                          last, n_spin_pola, Core(id)%NumSpecies, RealMark )
+      Core(id)%dsemden => getDataStorage( id, 'DeriSemiCoreDensity', &
+                                          last, n_spin_pola, Core(id)%NumSpecies, RealMark )
       Core(id)%OldCore => getDataStorage( id, 'OldCoreDensity', &
                                          last, n_spin_pola, Core(id)%NumSpecies, RealMark )
 !
@@ -347,7 +373,7 @@ contains
    enddo
 !
    GlobalNumAtoms = getNumAtoms()
-   allocate( tmp(0:g2last), qmp(0:g2last), ftmp(0:g2last) )
+   allocate( tmp(0:g2last), qmp(0:g2last), ftmp(0:g2last), dftmp(1:g2last) )
 !
    deallocate( DataSize )
 !
@@ -774,11 +800,12 @@ contains
       deallocate( Core(id)%numc, Core(id)%numc_below )
 !      deallocate( Core(id)%corden, Core(id)%semden, Core(id)%OldCore)
       nullify( Core(id)%corden, Core(id)%semden, Core(id)%OldCore)
+      nullify( Core(id)%dcorden, Core(id)%dsemden )
       deallocate( Core(id)%ecorv, Core(id)%esemv, Core(id)%r_mesh )
       deallocate( Core(id)%core_ke, Core(id)%semi_ke )
       nullify(Core(id)%Grid)
    enddo
-   deallocate(qmp, tmp, Core, ftmp)
+   deallocate(qmp, tmp, Core, ftmp, dftmp)
 !
    if (GlobalTable_Allocated) then
       deallocate(NumStatesTable)
@@ -1569,6 +1596,8 @@ contains
 !
          Core(id)%corden(:,:,ia)=ZERO
          Core(id)%semden(:,:,ia)=ZERO
+         Core(id)%dcorden(:,:,ia)=ZERO
+         Core(id)%dsemden(:,:,ia)=ZERO
          Core(id)%ecorv(1:n_spin_pola,ia)=ZERO
          Core(id)%esemv(1:n_spin_pola,ia)=ZERO
          Core(id)%core_ke(1:n_spin_pola,ia)=ZERO
@@ -2023,7 +2052,7 @@ contains
 !
    real (kind=RealKind) :: fac1
    real (kind=RealKind) :: gnrm
-   real (kind=RealKind) :: ftmp_int, err
+   real (kind=RealKind) :: ftmp_int, dftmp_int, err
 !
    integer, parameter :: solver = 1
    integer, parameter :: nr = 4
@@ -2075,15 +2104,16 @@ contains
       ndeep=ndeep+fac1
       if(solver.eq.1) then
 !        -------------------------------------------------------------
-         call deepst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia),    &
-                     Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last),h,Core(id)%ztotss(ia),nws,last)
+         call deepst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia), &
+                     Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last), &
+                     dftmp(1:last),h,Core(id)%ztotss(ia),nws,last)
 !        -------------------------------------------------------------
 !
          if (ndeep > ndeepz) then
 !           ----------------------------------------------------------
-            call semcst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia),    &
-                        Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last2),h,Core(id)%ztotss(ia), &
-                        jmt,nws,last2)
+            call semcst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia),  &
+                        Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last2), &
+                        dftmp(1:last2),h,Core(id)%ztotss(ia),jmt,nws,last2)
 !           ----------------------------------------------------------
          endif
       else
@@ -2119,7 +2149,7 @@ contains
 !     ================================================================
       ftmp(0) = ZERO
       do j=1,last2
-         ftmp(j)=ftmp(j)/r(j)
+         ftmp(j)=ftmp(j)/r(j)  ! get rid of factor r
       enddo
 !     ----------------------------------------------------------------
 !     call calIntegration(0,last2,r(1:last2),ftmp(1:last2),qmp(1:last2))
@@ -2127,9 +2157,15 @@ contains
 !     ----------------------------------------------------------------
       call calIntegration(last2+1,sqrt_r(0:last2),ftmp(0:last2),qmp(0:last2),3)
 !     ----------------------------------------------------------------
-      gnrm=ONE/(TWO*PI4*qmp(last2))    ! get rid off factor PI4
+      gnrm=ONE/(TWO*PI4*qmp(last2))
       do j=1,last2
-         ftmp(j)=ftmp(j)*gnrm/r(j)    ! get rid off factor r^2
+         ftmp(j)=ftmp(j)*gnrm/r(j)    ! get rid off another factor r so that
+                                      ! at this stage, ftmp is just density
+      enddo
+      do j=1,last2
+         dftmp(j)=dftmp(j)*gnrm/r(j)**2 ! get rid off factor r**2 so that
+                                        ! at this stage, dftmp is just density
+                                        ! derivative
       enddo
       if (print_level > 0 .and. (npt /= Core(id)%nc(i,ia) .or. lpt /= Core(id)%lc(i,ia))) then
          if (Core(id)%lc(i,ia) > 3) then
@@ -2180,15 +2216,26 @@ contains
          do j=1,Core(id)%Grid%jmt
             Core(id)%semden(j,is,ia)=Core(id)%semden(j,is,ia) + fac1*ftmp(j)
          enddo
+         do j=1,Core(id)%Grid%jmt
+            Core(id)%dsemden(j,is,ia)=Core(id)%dsemden(j,is,ia) + fac1*dftmp(j)
+         enddo
          if ( Core(id)%Grid%nmult>1 ) then
             do j=Core(id)%Grid%jmt+1,Core(id)%Grid%jmt+(last2-Core(id)%Grid%jmt)*Core(id)%Grid%nmult
-               ftmp_int = getInterpolation(last2,r,ftmp,Core(id)%r_mesh(j),err)
+               ftmp_int = getInterpolation(last2,r,ftmp(1:),Core(id)%r_mesh(j),err)
                Core(id)%semden(j,is,ia)=Core(id)%semden(j,is,ia) + fac1*ftmp_int
+            enddo
+            do j=Core(id)%Grid%jmt+1,Core(id)%Grid%jmt+(last2-Core(id)%Grid%jmt)*Core(id)%Grid%nmult
+               dftmp_int = getInterpolation(last2,r,dftmp,Core(id)%r_mesh(j),err)
+               Core(id)%dsemden(j,is,ia)=Core(id)%dsemden(j,is,ia) + fac1*dftmp_int
             enddo
          else
             do j=Core(id)%Grid%jmt+1,last2
                ftmp_int = ftmp(j)
                Core(id)%semden(j,is,ia)=Core(id)%semden(j,is,ia) + fac1*ftmp_int
+            enddo
+            do j=Core(id)%Grid%jmt+1,last2
+               dftmp_int = dftmp(j)
+               Core(id)%dsemden(j,is,ia)=Core(id)%dsemden(j,is,ia) + fac1*dftmp_int
             enddo
          endif
          Core(id)%esemv(is,ia)=Core(id)%esemv(is,ia)+Core(id)%ec(i,is,ia)*fac1
@@ -2196,15 +2243,26 @@ contains
          do j=1,Core(id)%Grid%jmt
             Core(id)%corden(j,is,ia)= Core(id)%corden(j,is,ia) + fac1*ftmp(j)
          enddo
+         do j=1,Core(id)%Grid%jmt
+            Core(id)%dcorden(j,is,ia)= Core(id)%dcorden(j,is,ia) + fac1*dftmp(j)
+         enddo
          if ( Core(id)%Grid%nmult>1 ) then
             do j=Core(id)%Grid%jmt+1,Core(id)%Grid%jmt+(last2-Core(id)%Grid%jmt)*Core(id)%Grid%nmult
-               ftmp_int = getInterpolation(last2,r,ftmp,Core(id)%r_mesh(j),err)
+               ftmp_int = getInterpolation(last2,r,ftmp(1:),Core(id)%r_mesh(j),err)
                Core(id)%corden(j,is,ia)=Core(id)%corden(j,is,ia) + fac1*ftmp_int
+            enddo
+            do j=Core(id)%Grid%jmt+1,Core(id)%Grid%jmt+(last2-Core(id)%Grid%jmt)*Core(id)%Grid%nmult
+               dftmp_int = getInterpolation(last2,r,dftmp,Core(id)%r_mesh(j),err)
+               Core(id)%dcorden(j,is,ia)=Core(id)%dcorden(j,is,ia) + fac1*dftmp_int
             enddo
          else
             do j=Core(id)%Grid%jmt+1,last2
                ftmp_int = ftmp(j)
                Core(id)%corden(j,is,ia)=Core(id)%corden(j,is,ia) + fac1*ftmp_int
+            enddo
+            do j=Core(id)%Grid%jmt+1,last2
+               dftmp_int = dftmp(j)
+               Core(id)%dcorden(j,is,ia)=Core(id)%dcorden(j,is,ia) + fac1*dftmp_int
             enddo
          endif
          Core(id)%ecorv(is,ia)=Core(id)%ecorv(is,ia)+Core(id)%ec(i,is,ia)*fac1
@@ -2245,7 +2303,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine deepst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,h,z,nws,last)
+   subroutine deepst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h,z,nws,last)
 !  ===================================================================
 !
 !     core states solver ...............................bg...june 1990
@@ -2264,8 +2322,10 @@ contains
 !               en:      energy;
 !               rv:      potential in rydbergs times r;
 !               r:       radial log. grid;
-!               rg:      big component;
-!               rf:      small component;
+!               rg:      big component times r;
+!               rf:      small component times r; 
+!                        In return, it is density times r**2
+!               der_rf:  derivative of density times r**2
 !               h:       exp. step;
 !               z:       atomic number;
 !               nws:     bounding sphere radius index;
@@ -2295,6 +2355,7 @@ contains
 !
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind), intent(out) :: rf(last)
+   real (kind=RealKind), intent(out) :: der_rf(last)
    real (kind=RealKind), intent(in) :: rv(last)
    real (kind=RealKind), intent(in) :: r(last)
    real (kind=RealKind), intent(in) :: sqrt_r(0:last)
@@ -2303,7 +2364,7 @@ contains
 !
    real (kind=RealKind) :: drg(ipdeq2)
    real (kind=RealKind) :: drf(ipdeq2)
-   real (kind=RealKind) :: rg(last)
+   real (kind=RealKind) :: rg(last), der_rg(last)
    real (kind=RealKind) :: dk
    real (kind=RealKind) :: dm
    real (kind=RealKind) :: gam
@@ -2388,8 +2449,8 @@ contains
    en_save = en  ! Inserted here by Yang Wang on 12/17/2015
    LOOP_iter: do while(iter <= nitmax)
 !     ----------------------------------------------------------------
-      call outws(invp,rg,rf,rv,r,en,drg,drf,elim,z,gam,slp,imm,lll,dk,dm, &
-                 nodes,last)
+      call outws(invp,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,elim,z,          &
+                 gam,slp,imm,lll,dk,dm,nodes,last)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
@@ -2401,7 +2462,7 @@ contains
 !     ================================================================
 !     routine inws performs the inward integration
 !     ----------------------------------------------------------------
-      call inws(invp,nmax,rg,rf,rv,r,en,drg,drf,dk,dm,last,imm)
+      call inws(invp,nmax,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,dk,dm,last,imm)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
@@ -2421,6 +2482,14 @@ contains
       do j=invp,nmax
          rg(j)=rg(j)*fnrm
          rf(j)=rf(j)*fnrm
+      enddo
+!
+!     ================================================================
+!     Inserted by Yang Wang @12/21/2018
+!     ----------------------------------------------------------------
+      do j=invp,nmax
+         der_rg(j) = der_rg(j)*fnrm
+         der_rf(j) = der_rf(j)*fnrm
       enddo
 !
 !     ================================================================
@@ -2494,6 +2563,20 @@ contains
 !        -------------------------------------------------------------
 !     endif
 !  endif
+!
+!  ===================================================================
+!  Inserted by Yang Wang @12/21/2018
+!  -------------------------------------------------------------------
+   do j=1,nmax
+      der_rf(j) = TWO*(rf(j)*(der_rf(j)-rf(j)) + rg(j)*(der_rg(j)-rg(j)))/r(j)
+   enddo
+   if(nmax.lt.last) then
+      do j=nmax+1,last
+         der_rf(j)=ZERO
+      enddo
+   endif
+!  ===================================================================
+!
    do j=1,nmax
       rf(j)=rf(j)*rf(j)+rg(j)*rg(j)
    enddo    
@@ -2544,11 +2627,11 @@ contains
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind), intent(in) :: v
    real (kind=RealKind), intent(in) :: en
-   real (kind=RealKind), intent(out) :: rg(*)
-   real (kind=RealKind), intent(out) :: rf(*)
+   real (kind=RealKind), intent(out) :: rg(:)
+   real (kind=RealKind), intent(out) :: rf(:)
    real (kind=RealKind), intent(out) :: drg(ipdeq2)
    real (kind=RealKind), intent(out) :: drf(ipdeq2)
-   real (kind=RealKind), intent(in) :: r(*)
+   real (kind=RealKind), intent(in) :: r(:)
    real (kind=RealKind), intent(in) :: dk
    real (kind=RealKind), intent(in) :: gam
    real (kind=RealKind), intent(in) :: slp
@@ -2635,7 +2718,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine semcst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,h,z,jmt,nws,last2)
+   subroutine semcst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h,z,jmt,nws,last2)
 !  ===================================================================
 !
 !     semi-core states solver ..........................bg...june 1990
@@ -2657,6 +2740,8 @@ contains
 !               r:        radial log. grid;
 !               rg:       big component;
 !               rf:       small component;
+!                         In return, it is density times r**2
+!               der_rf:   derivative of density times r**2
 !               h:        exp. step;
 !               z:        atomic number;
 !               jmt:      muffin-tin radius index;
@@ -2688,10 +2773,11 @@ contains
    real (kind=RealKind), intent(in) :: h
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind), intent(out) :: rf(last2)
+   real (kind=RealKind), intent(out) :: der_rf(last2)
    real (kind=RealKind), intent(in) :: rv(last2)
    real (kind=RealKind), intent(in) :: r(last2)
    real (kind=RealKind), intent(in) :: sqrt_r(0:last2)
-   real (kind=RealKind) :: rg(last2)
+   real (kind=RealKind) :: rg(last2), der_rg(last2)
    real (kind=RealKind) :: drg(ipdeq*2)
    real (kind=RealKind) :: drf(ipdeq*2)
    real (kind=RealKind) :: dk
@@ -2776,8 +2862,8 @@ contains
 !  routine outws performs the outward integration
    LOOP_while: do while(iter<=nitmax)
 !     ----------------------------------------------------------------
-      call outws(invp,rg,rf,rv,r,en,drg,drf,elim,z,gam,slp,imm,lll,dk,dm, &
-                 nodes,last2)
+      call outws(invp,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,elim,z,     &
+                 gam,slp,imm,lll,dk,dm,nodes,last2)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
@@ -2789,13 +2875,13 @@ contains
 !     ================================================================
 !     sets free solution directly to Riccati-Hankel for r*g and r*f.
 !     ----------------------------------------------------------------
-      call inwhnk(invp,rg,rf,r,en,drg,drf,dk,last2)
+      call inwhnk(invp,rg,rf,der_rg,der_rf,r,en,drg,drf,dk,last2)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
 !     routine inws performs the inward integration
 !     ----------------------------------------------------------------
-!     call inws(invp,nmax,rg,rf,rv,r,en,drg,drf,dk,dm,nws,imm)
+!     call inws(invp,nmax,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,dk,dm,nws,imm)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
@@ -2816,6 +2902,15 @@ contains
          rg(j)=rg(j)*fnrm
          rf(j)=rf(j)*fnrm
       enddo
+!
+!     ================================================================
+!     Inserted by Yang Wang @12/21/2018
+!     ----------------------------------------------------------------
+      do j=invp,last2
+         der_rg(j) = der_rg(j)*fnrm
+         der_rf(j) = der_rf(j)*fnrm
+      enddo
+!     ================================================================
 !
 !     ================================================================
 !     energy derivative of the wvfcns "log. derivative"
@@ -2883,6 +2978,14 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
+!  ===================================================================
+!  Inserted by Yang Wang @12/21/2018
+!  -------------------------------------------------------------------
+   do j=1,last2
+      der_rf(j) = TWO*(rf(j)*(der_rf(j)-rf(j)) + rg(j)*(der_rg(j)-rg(j)))/r(j)
+   enddo
+!  ===================================================================
+!
    do j=1,last2
       rf(j)=rf(j)*rf(j)+rg(j)*rg(j)
    enddo
@@ -2893,7 +2996,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine inwhnk(invp,rg,rf,r,en,drg,drf,dk,last2)
+   subroutine inwhnk(invp,rg,rf,der_rg,der_rf,r,en,drg,drf,dk,last2)
 !  ===================================================================
 !
 !     drg,drf:   derivative of dp and dq times r;
@@ -2911,9 +3014,11 @@ contains
    integer (kind=IntKind) :: n
 !
    real (kind=RealKind) :: kappa
-   real (kind=RealKind) :: rg(*)
-   real (kind=RealKind) :: rf(*)
-   real (kind=RealKind), intent(in) :: r(*)
+   real (kind=RealKind) :: rg(:)
+   real (kind=RealKind) :: rf(:)
+   real (kind=RealKind) :: der_rg(:)
+   real (kind=RealKind) :: der_rf(:)
+   real (kind=RealKind), intent(in) :: r(:)
    real (kind=RealKind) :: en
    real (kind=RealKind) :: drf(ipdeq2)
    real (kind=RealKind) :: drg(ipdeq2)
@@ -2962,6 +3067,13 @@ contains
 !     ================================================================
       rg(n)=SQRTm1*mil*bh(l)
       rf(n)=-factor*mil*bh(lp)
+!
+!     ================================================================
+!     Inserted by Yang Wang @12/21/2018
+!     ----------------------------------------------------------------
+      der_rg(n) = x*(SQRTm1*mil*dh(l))
+      der_rf(n) = -x*factor*mil*dh(lp)
+!     ================================================================
    enddo
 !
    drg(ipdeq)=x*(SQRTm1*mil*dh(l))
@@ -2973,7 +3085,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine inws(invp,nmax,rg,rf,rv,r,en,drg,drf,dk,dm,nws,imm)
+   subroutine inws(invp,nmax,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,dk,dm,nws,imm)
 !  ===================================================================
 !
    implicit   none
@@ -2987,8 +3099,9 @@ contains
    integer (kind=IntKind) :: i,j,itop,l
 !
    real (kind=RealKind), intent(in) :: en,dk,dm
-   real (kind=RealKind), intent(in) :: r(*),rv(*)
-   real (kind=RealKind), intent(out) :: rg(*),rf(*)
+   real (kind=RealKind), intent(in) :: r(:),rv(:)
+   real (kind=RealKind), intent(out) :: rg(:),rf(:)
+   real (kind=RealKind), intent(out) :: der_rg(:),der_rf(:)
    real (kind=RealKind), intent(out) :: drf(ipdeq2),drg(ipdeq2)
    real (kind=RealKind) :: p,pq,dpr,dqr,er,emvoc,dq,dp
 !
@@ -3004,7 +3117,7 @@ contains
 !  ===================================================================
 !  adams 5 points  diff. eq. solver for dirac equations
 !
-!     drg,drf enrivatives of dp and dq times r;  c speed of light
+!     drg,drf enrivatives of rg and rf times r;  c speed of light
 !     rv potential times r; r: radial grid; en energy guess
 !     coef1=475./502., coef2=27./502.
 !
@@ -3040,6 +3153,13 @@ contains
    do i=1,ipdeq
       drg(i)=-p*rg(nmax+1-i)*r(nmax+1-i)
       drf(i)=pq*drg(i)
+!
+!     ================================================================
+!     Inserted by Yang Wang @12/21/2018
+!     ----------------------------------------------------------------
+      der_rf(nmax+1-i) = drf(i)
+      der_rg(nmax+1-i) = drg(i)
+!     ================================================================
    enddo
    itop=nmax-ipdeq
 !
@@ -3091,21 +3211,27 @@ contains
       rf(j)=dq
 !
 !     ================================================================
+!     Inserted by Yang Wang @12/21/2018
+!     ----------------------------------------------------------------
+      der_rf(j) = drf(5)
+      der_rg(j) = drg(5)
+!     ================================================================
+!
+!     ================================================================
 !     update derivative
 !     ================================================================
       drg(ipdeq)=-dk*dp+(MyLightSpeed*r(j)+emvoc)*dq
       drf(ipdeq)=dk*dq-emvoc*dp
    enddo
 !
-   return
    end subroutine inws
 !  ===================================================================
 !
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine outws(invp,rg,rf,rv,r,en,drg,drf,elim,z,gam,slp,imm,    &
-                    lll,dk,dm,nodes,nws)
+   subroutine outws(invp,rg,rf,der_rg,der_rf,rv,r,en,drg,drf,elim,z,  &
+                    gam,slp,imm,lll,dk,dm,nodes,nws)
 !  ===================================================================
 !
    implicit   none
@@ -3129,10 +3255,12 @@ contains
    real (kind=RealKind), intent(in) :: slp
    real (kind=RealKind), intent(in) :: dk
    real (kind=RealKind), intent(in) :: dm
-   real (kind=RealKind), intent(in) :: r(*)
-   real (kind=RealKind), intent(in) :: rv(*)
-   real (kind=RealKind), intent(out) :: rg(*)
-   real (kind=RealKind), intent(out) :: rf(*)
+   real (kind=RealKind), intent(in) :: r(:)
+   real (kind=RealKind), intent(in) :: rv(:)
+   real (kind=RealKind), intent(out) :: rg(:)
+   real (kind=RealKind), intent(out) :: rf(:)
+   real (kind=RealKind), intent(out) :: der_rg(:)
+   real (kind=RealKind), intent(out) :: der_rf(:)
    real (kind=RealKind), intent(out) :: drf(ipdeq2)
    real (kind=RealKind), intent(out) :: drg(ipdeq2)
    real (kind=RealKind) :: vor
@@ -3143,6 +3271,7 @@ contains
    real (kind=RealKind) :: dqr
    real (kind=RealKind) :: er
    real (kind=RealKind) :: dpr
+!  real (kind=RealKind) :: drfdr(nws)
    real (kind=RealKind), parameter :: twnsvn=27.d0
    real (kind=RealKind), parameter :: fhnd=475.d0
    real (kind=RealKind), parameter :: fnd=502.d0
@@ -3152,7 +3281,7 @@ contains
 !  ===================================================================
 !     outward solution
 !     adams 5 points  diff. eq. solver for dirac equations
-!     drg,drf derivatives of dp and dq times r;  c speed of light
+!     drg,drf derivatives of rg and rf times r;  c speed of light
 !     rv potential times r; r: radial grid; en energy guess
 !     coef1=475./502., coef2=27./502.
 !  ===================================================================
@@ -3203,6 +3332,13 @@ contains
          rf(j)=rf(j)*rpow
          drg(j)=drg(j)*rpow
          drf(j)=drf(j)*rpow
+!
+!        =============================================================
+!        Inserted by Yang Wang @12/21/2018
+!        -------------------------------------------------------------
+         der_rf(j) = drf(j)
+         der_rg(j) = drg(j)
+!        =============================================================
       enddo
 !
 !     ================================================================
@@ -3262,6 +3398,13 @@ contains
          rf(j)=dq
 !
 !        =============================================================
+!        Inserted by Yang Wang @12/21/2018
+!        -------------------------------------------------------------
+         der_rf(j) = drf(5)
+         der_rg(j) = drg(5)
+!        =============================================================
+!
+!        =============================================================
 !        update derivative
 !        =============================================================
          drg(ipdeq)=-dk*dp+(MyLightSpeed*r(j)+emvoc)*dq
@@ -3290,6 +3433,16 @@ contains
 !     if no. of nodes is too small increase the energy and start again
 !     ================================================================
       if( nd == nodes ) then
+!        if (print_level >= 0) then
+!           call derv5(rf,drfdr,r,invp)
+!           write(6,'(/,a)')'================================================='
+!           write(6,'(a,2i5)')'Core state wave function and derivatives with nodes, invp = ',nodes,invp
+!           write(6,'(  a)')'-------------------------------------------------'
+!           do j=1,invp
+!              write(6,'(f13.8,2x,3d16.8)')r(j),rf(j),der_rf(j),drfdr(j)*r(j)
+!           enddo
+!           write(6,'(a,/)')'================================================='
+!        endif
          return
       endif
 !
@@ -3452,6 +3605,75 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDCDDer0(id,ia,is) result(dcdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia, is
+!
+   real (kind=RealKind), pointer :: dcdp(:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid local atom index',id)
+   else if (ia < 1 .or. ia > Core(id)%NumSpecies) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid local species index',ia)
+   else if (is < 1 .or. is > n_spin_pola) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid spin index',is)
+   endif
+!
+!  n = Core(id)%rsize
+   dcdp => Core(id)%dcorden(:,is,ia)
+!
+   end function getDCDDer0
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDCDDer1(id,ia) result(dcdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia
+!
+   real (kind=RealKind), pointer :: dcdp(:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid local atom index',id)
+   else if (ia < 1 .or. ia > Core(id)%NumSpecies) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid local species index',ia)
+   endif
+!
+!  n = Core(id)%rsize
+   dcdp => Core(id)%dcorden(:,:,ia)
+!
+   end function getDCDDer1
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDCDDer2(id) result(dcdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+!
+   real (kind=RealKind), pointer :: dcdp(:,:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getDeepCoreDenDeri','Invalid local atom index',id)
+   endif
+!
+!  n = Core(id)%rsize
+   dcdp => Core(id)%dcorden(:,:,:)
+!
+   end function getDCDDer2
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getSCD0(id,ia,is) result(scdp)
 !  ===================================================================
    implicit none
@@ -3517,6 +3739,75 @@ contains
    scdp => Core(id)%semden(:,:,:)
 !
    end function getSCD2
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getSCDDer0(id,ia,is) result(scdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia, is
+!
+   real (kind=RealKind), pointer :: scdp(:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid local atom index',id)
+   else if (ia < 1 .or. ia > Core(id)%NumSpecies) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid local species index',ia)
+   else if (is < 1 .or. is > n_spin_pola) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid spin index',is)
+   endif
+!
+!  n = Core(id)%rsize
+   scdp => Core(id)%dsemden(:,is,ia)
+!
+   end function getSCDDer0
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getSCDDer1(id,ia) result(scdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia
+!
+   real (kind=RealKind), pointer :: scdp(:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid local atom index',id)
+   else if (ia < 1 .or. ia > Core(id)%NumSpecies) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid local species index',ia)
+   endif
+!
+!  n = Core(id)%rsize
+   scdp => Core(id)%dsemden(:,:,ia)
+!
+   end function getSCDDer1
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getSCDDer2(id) result(scdp)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+!
+   real (kind=RealKind), pointer :: scdp(:,:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getSemiCoreDenDeri','Invalid local atom index',id)
+   endif
+!
+!  n = Core(id)%rsize
+   scdp => Core(id)%dsemden(:,:,:)
+!
+   end function getSCDDer2
 !  ===================================================================
 !
 !  *******************************************************************
@@ -3850,9 +4141,10 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printCoreDensity(id)
+   subroutine printCoreDensity(id,derivative)
 !  ===================================================================
    use MathParamModule, only: Ten2m8
+   use InterpolationModule, only : FitInterp
    use Atom2ProcModule, only : getGlobalIndex
    use WriteFunctionModule, only : writeFunction
 !
@@ -3866,10 +4158,22 @@ contains
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind) :: ia
 !
-   real (kind=RealKind), pointer :: den(:,:), r_mesh(:)
+   logical, intent(in), optional :: derivative
+   logical :: deriv
+!
+   real (kind=RealKind), pointer :: den(:,:), der_den(:,:), r_mesh(:)
    real (kind=RealKind), allocatable :: total_den(:,:)
+   real (kind=RealKind), allocatable :: copy_der_den(:,:)
+   real (kind=RealKind), allocatable :: int_der_den(:,:), sqrt_r(:)
+   real (kind=RealKind) :: dps, den0
 !
    integer (kind=IntKind) :: funit, nrs, is, ir
+!
+   if (present(derivative)) then
+      deriv = derivative
+   else
+      deriv = .false.
+   endif
 !
    funit = id*100
    write(denFlag,'(i6)')100000+getGlobalIndex(id)
@@ -3877,6 +4181,15 @@ contains
    nrs = Core(id)%rsize
    r_mesh => Core(id)%r_mesh
    allocate(total_den(nrs,n_spin_pola))
+   if (deriv) then
+      allocate(copy_der_den(0:nrs,n_spin_pola))
+      allocate(int_der_den(0:nrs,n_spin_pola))
+      allocate(sqrt_r(0:nrs))
+      sqrt_r(0) = ZERO
+      do ir = 1,nrs
+         sqrt_r(ir) = sqrt(r_mesh(ir))
+      enddo
+   endif
    do ia = 1, Core(id)%NumSpecies
       write(specFlag,'(i2)')10+ia
       specFlag(1:1) = 'c'
@@ -3884,16 +4197,68 @@ contains
       den => Core(id)%corden(:,:,ia)
       funit = funit + 1
       file_den = 'DeepCore'//'_'//denFlag//specFlag
-!     ----------------------------------------------------------------
-      call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den)
-!     ----------------------------------------------------------------
+      if (deriv) then
+         der_den => Core(id)%dcorden(:,:,ia)
+         do is = 1, n_spin_pola
+!           copy_der_den(0,is) = ZERO
+!           do ir = 1, nrs
+!              copy_der_den(ir,is) = der_den(ir,is)
+!           enddo
+!           ----------------------------------------------------------
+!           call FitInterp( 4, sqrt_r(1:4), den(1:4,is), ZERO, den0, dps )
+!           call FitInterp( 4, sqrt_r(1:4), copy_der_den(1:4,is),     &
+!                           ZERO, copy_der_den(0,is), dps )
+!           ----------------------------------------------------------
+!           call calIntegration(nrs+1,sqrt_r(0:nrs),copy_der_den(0:nrs,is),&
+!                               int_der_den(0:nrs,is),1)
+!           ----------------------------------------------------------
+!           int_der_den(:,is) = TWO*int_der_den(:,is) + den0
+!           ----------------------------------------------------------
+            call derv5(den(1:,is),copy_der_den(1:,is),r_mesh,nrs)
+!           ----------------------------------------------------------
+         enddo
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den,      &
+                            der_den,copy_der_den(1:,:))
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den)
+!        -------------------------------------------------------------
+      endif
 !
       den => Core(id)%semden(:,:,ia)
       funit = funit + 1
       file_den = 'SemiCore'//'_'//denFlag//specFlag
-!     ----------------------------------------------------------------
-      call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den)
-!     ----------------------------------------------------------------
+      if (deriv) then
+         der_den => Core(id)%dsemden(:,:,ia)
+         do is = 1, n_spin_pola
+!           copy_der_den(0,is) = ZERO
+!           do ir = 1, nrs
+!              copy_der_den(ir,is) = der_den(ir,is)
+!           enddo
+!           ----------------------------------------------------------
+!           call FitInterp( 4, sqrt_r(1:4), den(1:4,is), ZERO, den0, dps )
+!           call FitInterp( 4, sqrt_r(1:4), copy_der_den(1:4,is),     &
+!                           ZERO, copy_der_den(0,is), dps )
+!           ----------------------------------------------------------
+!           call calIntegration(nrs+1,sqrt_r(0:nrs),copy_der_den(0:nrs,is),&
+!                               int_der_den(0:nrs,is),1)
+!           ----------------------------------------------------------
+!           int_der_den(:,is) = TWO*int_der_den(:,is) + den0
+!           ----------------------------------------------------------
+            call derv5(den(1:,is),copy_der_den(1:,is),r_mesh,nrs)
+!           ----------------------------------------------------------
+         enddo
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den,      &
+                            der_den,copy_der_den(1:,:))
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,den)
+!        -------------------------------------------------------------
+      endif
 !
       do is = 1, n_spin_pola
          do ir = 1, nrs
@@ -3902,11 +4267,41 @@ contains
       enddo
       funit = funit + 1
       file_den = 'TotalCore'//'_'//denFlag//specFlag
-!     ----------------------------------------------------------------
-      call writeFunction(file_den,nrs,n_spin_pola,r_mesh,total_den)
-!     ----------------------------------------------------------------
+      if (deriv) then
+         do is = 1, n_spin_pola
+            int_der_den(0,is) = ZERO
+            do ir = 1, nrs
+               int_der_den(ir,is) = Core(id)%dsemden(ir,is,ia) + Core(id)%dcorden(ir,is,ia)
+            enddo
+!           ----------------------------------------------------------
+!           call FitInterp( 4, sqrt_r(1:4), total_den(1:4,is), ZERO, den0, dps )
+!           call FitInterp( 4, sqrt_r(1:4), copy_der_den(1:4,is),    &
+!                           ZERO, copy_der_den(0,is), dps )
+!           ----------------------------------------------------------
+!           call calIntegration(nrs+1,sqrt_r(0:nrs),copy_der_den(0:nrs,is),&
+!                               int_der_den(0:nrs,is),1)
+!           ----------------------------------------------------------
+!           int_der_den(:,is) = TWO*int_der_den(:,is) + den0
+!           ----------------------------------------------------------
+            call derv5(total_den(1:,is),copy_der_den(1:,is),r_mesh,nrs)
+!           ----------------------------------------------------------
+         enddo
+!
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,total_den,&
+                            int_der_den(1:,:),copy_der_den(1:,:))
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call writeFunction(file_den,nrs,n_spin_pola,r_mesh,total_den)
+!        -------------------------------------------------------------
+      endif
    enddo
    deallocate(total_den)
+   if (deriv) then
+      deallocate(sqrt_r,copy_der_den,int_der_den)
+   endif
+   nullify(den, der_den)
 !
    if (sname == stop_routine) then
       call StopHandler(sname)
