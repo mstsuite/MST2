@@ -60,6 +60,7 @@ public
    character (len=50) :: inputpath
    character (len=50) :: inputfile
    character (len=50) :: info_table
+   character (len=50) :: excorr_name
 !  character (len=50) :: info_path
 !
    integer (kind=IntKind) :: nscf  = 0
@@ -68,7 +69,6 @@ public
    integer (kind=IntKind) :: Minv_alg = -1
    integer (kind=IntKind) :: ngaussr  = 0
    integer (kind=IntKind) :: ngaussq  = 0
-   integer (kind=IntKind) :: excorr = -1
    integer (kind=IntKind) :: nrelc  = -1
    integer (kind=IntKind) :: nrelv  = -1
    integer (kind=IntKind) :: harris = -1
@@ -239,7 +239,7 @@ contains
    endif
    rstatus = getKeyValue(tbl_id,'Compute Phase Shifts (>=0)',ss_phaseshift)
    rstatus = getKeyValue(tbl_id,'Potential Type (>= 0)',pot_type)
-   rstatus = getKeyValue(tbl_id,'Exch-Corr. LDA Type (>= 0)',excorr)
+   rstatus = getKeyValue(tbl_id,'Exch-Corr. LDA Type (>= 0)',excorr_name)
    rstatus = getKeyValue(tbl_id,'Spin Index Param (>= 1)',nspin)
    if (nspin > 1) then
       rstatus = getKeyValue(tbl_id,'Interstitial Electron Spin',i_vdif)

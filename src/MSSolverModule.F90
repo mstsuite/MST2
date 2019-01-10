@@ -97,7 +97,8 @@ public :: initMSSolver,            &
           getMSCellDOS,            &
           getMSMTSphereDOS,        &
           getMSCellPDOS,           &
-          getMSMTSpherePDOS
+          getMSMTSpherePDOS,       &
+          getMSGreenFunctionDerivative
 !
    interface getDOS
       module procedure getDOS_is, getDOS_sc
@@ -142,11 +143,14 @@ private
       integer :: lmax
       integer :: iend
       complex (kind=CmplxKind), pointer :: dos(:)
-      complex (kind=CmplxKind), pointer :: green(:,:,:)  ! Stores the multiple scattering component of the Green fucntion, and
-   end type MSTStruct                                    ! the single site scattering term is included.
+      complex (kind=CmplxKind), pointer :: green(:,:,:)      ! Stores the multiple scattering component of the Green fucntion, and
+                                                             ! the single site scattering term may be included.
+      complex (kind=CmplxKind), pointer :: der_green(:,:,:)  ! Stores the multiple scattering component of the Green fucntion derivative,
+   end type MSTStruct                                        ! and the single site scattering term may be included.
 !
    type (MSTStruct), allocatable :: mst(:)
    complex (kind=CmplxKind), allocatable, target :: wspace(:), wspacep(:), gspace(:)
+   complex (kind=CmplxKind), allocatable, target :: dwspace(:), dgspace(:)
    complex (kind=CmplxKind), allocatable, target :: gspacep(:)
 !
    complex (kind=CmplxKind), pointer :: gaunt(:,:,:)
@@ -169,6 +173,7 @@ private
    complex (kind=CmplxKind), allocatable, target :: dosws_comp(:)
 !
    logical :: isDosSymmOn = .false.
+   logical :: rad_deriv = .false.
 !   
 contains
 !
@@ -176,7 +181,8 @@ contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initMSSolver( num_latoms, index, lmaxkkr, lmaxphi, lmaxgreen, &
-                            local_posi, pola, cant, rel, istop, iprint)
+                            local_posi, pola, cant, rel, istop, iprint,     &
+                            derivative )
 !  ===================================================================
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
 !
@@ -198,6 +204,8 @@ contains
 !
    character (len=*), intent(in) :: istop
 !
+   logical, intent(in), optional :: derivative
+!
    integer (kind=IntKind), intent(in) :: num_latoms
    integer (kind=IntKind), intent(in) :: index(num_latoms)
    integer (kind=IntKind), intent(in) :: lmaxkkr(num_latoms)
@@ -215,6 +223,12 @@ contains
    integer (kind=IntKind), pointer :: nj3(:,:), kj3(:,:,:)
 !
    real (kind=RealKind), pointer :: cgnt(:,:,:)
+!
+   if (present(derivative)) then
+      rad_deriv = derivative
+   else
+      rad_deriv = .false.
+   endif
 !
 !  -------------------------------------------------------------------
    call initParameters(num_latoms,lmaxkkr,lmaxphi,lmaxgreen,pola,cant,rel,istop,iprint)
@@ -417,12 +431,18 @@ contains
       mst(i)%iend = iend
       allocate( mst(i)%dos(n_spin_cant*n_spin_cant) )
       allocate( mst(i)%green(iend,kmax,n_spin_cant*n_spin_cant) )
+      if (rad_deriv) then
+         allocate( mst(i)%der_green(iend,kmax,n_spin_cant*n_spin_cant) )
+      endif
    enddo
    iend_max = getMaxNumRmesh()
    wspace_size = iend_max*kmax_phi_max*kmax_kkr_max
    gspace_size = iend_max*kmax_green_max*kmax_phi_max
    allocate( wspace(wspace_size), wspacep(kmax_phi_max*kmax_green_max) )
    allocate( gspace(gspace_size), gspacep(kmax_phi_max*kmax_green_max*kmax_phi_max) )
+   if (rad_deriv) then
+      allocate( dgspace(gspace_size), dwspace(wspace_size) )
+   endif
 !
    end subroutine initParameters
 !  ===================================================================
@@ -460,8 +480,14 @@ contains
    do i=1, LocalNumAtoms
       deallocate( mst(i)%dos )
       deallocate( mst(i)%green )
+      if (rad_deriv) then
+         deallocate( mst(i)%der_green )
+      endif
    enddo
    deallocate( mst, wspace, wspacep, gspace, gspacep )
+   if (rad_deriv) then
+      deallocate( dwspace, dgspace )
+   endif
    nullify( Neighbor )
 !
    if ( isRealSpace ) then
@@ -572,6 +598,24 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getMSGreenFunctionDerivative(id,gform) result(der_green)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind), intent(out), optional :: gform
+!
+   complex (kind=CmplxKind), pointer :: der_green(:,:,:)
+!
+   der_green => mst(id)%der_green
+   if (present(gform)) then
+      gform = MSGF_Form
+   endif
+!
+   end function getMSGreenFunctionDerivative
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getMSGreenMatrix(id) result(mat)
 !  ===================================================================
    implicit none
@@ -649,9 +693,11 @@ contains
    use SystemSymmetryModule, only : getSymmetryFlags
 !
    use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
+   use SSSolverModule, only : getRegSolutionDerivative
    use SSSolverModule, only : getSolutionFlags, getOmegaHatMatrix
    use SSSolverModule, only : solveSingleScattering
    use SSSolverModule, only : computeGreenFunction, getGreenFunction
+   use SSSolverModule, only : getGreenFunctionDerivative
 !
    use ClusterMatrixModule, only : getClusterKau => getKau
 !
@@ -672,7 +718,9 @@ contains
 !
    complex (kind=CmplxKind), pointer :: tfac(:,:), gfs(:,:)
    complex (kind=CmplxKind), pointer :: PhiLr_right(:,:,:), PhiLr_left(:,:,:), kau00(:,:,:)
+   complex (kind=CmplxKind), pointer :: der_PhiLr_right(:,:,:), der_PhiLr_left(:,:,:)
    complex (kind=CmplxKind), pointer :: gf(:,:), pp(:,:), ppr(:,:), ppg(:,:,:)
+   complex (kind=CmplxKind), pointer :: dgf(:,:), dpp(:,:), dppr(:,:), dppg(:,:,:)
    complex (kind=CmplxKind), pointer :: pau00(:,:), OmegaHat(:,:), p_kau00(:,:)
    complex (kind=CmplxKind) :: cfac, kappa
 !
@@ -782,6 +830,11 @@ contains
 !     ppg => aliasArray3_c(gspace,mst(id)%iend,kmaxg,kmaxp)
       ppg => aliasArray3_c(gspace,irmax,kmaxg,kmaxp)
       tfac => aliasArray2_c(wspacep,kmaxp,kmaxg)
+      if (rad_deriv) then
+         dpp => aliasArray2_c(dwspace,irmax,kmaxp)
+         dppr => aliasArray2_c(dwspace,irmax*kmaxp,kmaxk)
+         dppg => aliasArray3_c(dgspace,irmax,kmaxg,kmaxp)
+      endif
       ns = 0
       if (add_SingleSiteT) then
          pau00 => aliasArray2_c(store_space,kmaxk,kmaxk)
@@ -797,11 +850,21 @@ contains
 !           ----------------------------------------------------------
          endif
          PhiLr_right => getRegSolution(js2,id)
+         if (rad_deriv) then
+            der_PhiLr_right => getRegSolutionDerivative(js2,id)
+         endif
          do js1 = 1, n_spin_cant
             PhiLr_left => getRegSolution(js1,id)
+            if (rad_deriv) then
+               der_PhiLr_left => getRegSolutionDerivative(js1,id)
+            endif
             ns = ns + 1
             gf => mst(id)%green(:,:,ns)
             gf = CZERO
+            if (rad_deriv) then
+               dgf => mst(id)%der_green(:,:,ns)
+               dgf = CZERO
+            endif
             p_kau00 => kau00(:,:,ns)
 !           ==========================================================
 !           gf is the multiple scattering part of the Green function
@@ -827,6 +890,12 @@ contains
 !              -------------------------------------------------------
                call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
 !              -------------------------------------------------------
+               if (rad_deriv) then
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,der_PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO, &
+                             dppr,irmax*kmaxp)
+!                 ----------------------------------------------------
+               endif
                np = mod(kmaxk,NumPEsInGroup)
                do kl2 = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
                   m2 = mofk(kl2)
@@ -837,6 +906,12 @@ contains
 !                 ----------------------------------------------------
                   call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
 !                 ----------------------------------------------------
+                  if (rad_deriv) then
+!                    -------------------------------------------------
+                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO, &
+                                dppg,irmax)
+!                    -------------------------------------------------
+                  endif
 !
 !                 ====================================================
 !                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
@@ -846,6 +921,12 @@ contains
                         do ir = 1, mst(id)%iend
                            gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
                         enddo
+                        if (rad_deriv) then
+                           do ir = 1, mst(id)%iend
+                              dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
+                                                         + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
+                           enddo
+                        endif
                      enddo
                   enddo
                enddo ! kl2
@@ -853,6 +934,11 @@ contains
 !                 ----------------------------------------------------
                   call GlobalSumInGroup(kGID,gf,mst(id)%iend,kmaxg)
 !                 ----------------------------------------------------
+                  if (rad_deriv) then
+!                    -------------------------------------------------
+                     call GlobalSumInGroup(kGID,dgf,mst(id)%iend,kmaxg)
+!                    -------------------------------------------------
+                  endif
                endif
                do kl2 = kmaxk-np+1,kmaxk
                   m2 = mofk(kl2)
@@ -863,6 +949,12 @@ contains
 !                 ----------------------------------------------------
                   call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
 !                 ----------------------------------------------------
+                  if (rad_deriv) then
+!                    -------------------------------------------------
+                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO, &
+                                dppg,irmax)
+!                    -------------------------------------------------
+                  endif
 !
 !                 ====================================================
 !                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
@@ -872,6 +964,12 @@ contains
                         do ir = 1, mst(id)%iend
                            gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
                         enddo
+                        if (rad_deriv) then
+                           do ir = 1, mst(id)%iend
+                              dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
+                                                         + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
+                           enddo
+                        endif
                      enddo
                   enddo
                enddo
@@ -891,6 +989,15 @@ contains
                               pp(ir,klp2) = PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2)
                            enddo
                         enddo
+                        if (rad_deriv) then
+                           dpp = CZERO
+                           do klp2 = 1, kmaxp
+                              do ir = 1, irmax
+                                 dpp(ir,klp2) = der_PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2) &
+                                              + PhiLr_left(ir,klp1,kl1)*der_PhiLr_right(ir,klp2,kl2)
+                              enddo
+                           enddo
+                        endif
 !                       ==============================================
 !                       tfac(klp2,klg;kl2,klp1,kl1) = gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2)
 !                       ==============================================
@@ -904,6 +1011,11 @@ contains
 !                       ----------------------------------------------
                         call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,pp,irmax,tfac,kmaxp,CONE,gf,mst(id)%iend)
 !                       ----------------------------------------------
+                        if (rad_deriv) then
+!                          -------------------------------------------
+                           call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,dpp,irmax,tfac,kmaxp,CONE,dgf,mst(id)%iend)
+!                          -------------------------------------------
+                        endif
                      enddo ! kl2
                   enddo ! do klp1
                enddo ! do kl1
@@ -915,12 +1027,26 @@ contains
 !                 ----------------------------------------------------
                   call zgemv('n',irmax*kmaxp,kmaxk,cfac,PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO,pp,1)
 !                 ----------------------------------------------------
+                  if (rad_deriv) then
+!                    -------------------------------------------------
+                     call zgemv('n',irmax*kmaxp,kmaxk,cfac,der_PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO, &
+                                dpp,1)
+!                    -------------------------------------------------
+                  endif
                   do klp2 = 1, kmaxp
                      do klg = 1, kmaxg
                         do klp1 = 1, kmaxp
                            do ir = 1, mst(id)%iend
                               gf(ir,klg) = gf(ir,klg) + gaunt(klp1,klg,klp2)*pp(ir,klp1)*PhiLr_right(ir,klp2,kl2)
                            enddo
+                           if (rad_deriv) then
+                              do ir = 1, mst(id)%iend
+                                 dgf(ir,klg) = dgf(ir,klg) +                                                   &
+                                               gaunt(klp1,klg,klp2)*( dpp(ir,klp1)*PhiLr_right(ir,klp2,kl2) +  &
+                                                                      pp(ir,klp1)*der_PhiLr_right(ir,klp2,kl2) )
+                                                             
+                              enddo
+                           endif
                         enddo
                      enddo
                   enddo
@@ -947,6 +1073,14 @@ contains
                      gf(ir,klg) = gf(ir,klg) + gfs(ir,klg)
                   enddo
                enddo
+               if (rad_deriv) then
+                  gfs => getGreenFunctionDerivative(max(js1,is),id)
+                  do klg = 1, kmaxg
+                     do ir = 1, mst(id)%iend
+                        dgf(ir,klg) = dgf(ir,klg) + gfs(ir,klg)
+                     enddo
+                  enddo
+               endif
             endif
 !
 !           ==========================================================
@@ -957,6 +1091,9 @@ contains
                do klg = 1, kmaxg
                   if (green_flags(jofk(klg)) == 0) then
                      gf(:,klg) = CZERO
+                     if (rad_deriv) then
+                        dgf(:,klg) = CZERO
+                     endif
                   endif
                enddo
             endif
@@ -965,7 +1102,8 @@ contains
       enddo ! do js2
    enddo ! do id
 !
-   nullify(p_kau00, pau00, OmegaHat)
+   nullify(kau00, p_kau00, pau00, OmegaHat, gf, dgf, pp, ppr, ppg, tfac)
+   nullify(PhiLr_right, PhiLr_left, der_PhiLr_right, der_PhiLr_left)
 !
    end subroutine computeMSGreenFunction
 !  ===================================================================

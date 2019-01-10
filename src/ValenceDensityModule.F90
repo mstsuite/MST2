@@ -32,7 +32,8 @@ public :: initValenceDensity,        &
           getValenceMomentDensityAtPosi, &
           getValenceMomentTorque,    &
           setValenceMomentTorque,    &
-          getValenceSphericalDensity,  &
+          getValenceSphericalElectronDensity,  &
+          getValenceSphericalMomentDensity,  &
           getSphRho,                 &
           setSphRho,                 &
           getSphMom,                 &
@@ -55,11 +56,11 @@ public :: initValenceDensity,        &
           getDenComponentFlag
 !
    interface getValenceElectronDensity
-      module procedure getved0, getved1
+      module procedure getved0, getved1, getved2
    end interface
 !
    interface getValenceMomentDensity
-      module procedure getvmd0, getvmd1
+      module procedure getvmd0, getvmd1, getvmd2, getvmd3
    end interface
 !
    interface getSphRho
@@ -93,10 +94,14 @@ private
       integer (kind=IntKind) :: jmax
       integer (kind=IntKind), pointer :: DenCompFlag(:)
 !
-      real (kind=RealKind), pointer :: rho_0(:)
-      real (kind=RealKind), pointer :: mom_0(:,:)
-      complex (kind=CmplxKind), pointer :: rho_l(:,:)
-      complex (kind=CmplxKind), pointer :: mom_l(:,:,:)
+      real (kind=RealKind), pointer :: rho_0(:,:)
+      real (kind=RealKind), pointer :: mom_0(:,:,:)
+      complex (kind=CmplxKind), pointer :: rho_l(:,:,:)
+      complex (kind=CmplxKind), pointer :: mom_l(:,:,:,:)
+      real (kind=RealKind), pointer :: der_rho_0(:,:)
+      real (kind=RealKind), pointer :: der_mom_0(:,:,:)
+      complex (kind=CmplxKind), pointer :: der_rho_l(:,:,:)
+      complex (kind=CmplxKind), pointer :: der_mom_l(:,:,:,:)
       real (kind=RealKind) :: eigensum(2)
       real (kind=RealKind) :: ChargeVP
       real (kind=RealKind) :: ChargeMT
@@ -111,6 +116,7 @@ private
 !
    logical :: Initialized = .false.
    logical :: isValSymmOn = .false.
+   logical :: rad_derivative = .false.
 !
 !  Flags to stop the code after the specific task is completed( input(external) flags )
 !
@@ -151,7 +157,7 @@ contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initValenceDensity(na,vnum,lmax_rho_in,pola,cant,efermi, &
-                                 istop,iprint)
+                                 istop,iprint,isGGA)
 !  ===================================================================
    use IntegerFactorsModule, only : initIntegerFactors
 !
@@ -183,12 +189,14 @@ contains
    integer (kind=IntKind), intent(in) :: lmax_rho_in(na)
    integer (kind=IntKind), intent(in) :: pola, cant
    integer (kind=IntKind), intent(in) :: iprint(na)
-   integer (kind=IntKind) :: id, is, jend, iend
+   integer (kind=IntKind) :: id, is, jend, iend, ns
    integer (kind=IntKind) :: jmax_rho, lmax_max
    integer (kind=IntKind), allocatable :: DataSize(:), DataSizeL(:)
 !
    real (kind=RealKind), intent(in) :: vnum(na)
    real (kind=RealKind), intent(in) :: efermi
+!
+   logical, intent(in), optional :: isGGA
 !
    type (GridStruct), pointer :: Grid
 !
@@ -217,6 +225,12 @@ contains
    endif
 !
    stop_routine = istop
+!
+   if (present(isGGA)) then
+      rad_derivative = isGGA
+   else
+      rad_derivative = .false.
+   endif
 !
    isValSymmOn = isChargeSymm();  ! isValSymmOn = .true.
    LocalNumAtoms = na
@@ -249,8 +263,8 @@ contains
       Grid => getGrid(id)
       jend = Grid%jend
       jmax_rho=(lmax_rho_in(id)+1)*(lmax_rho_in(id)+2)/2
-      DataSize(id)  = jend
-      DataSizeL(id) = jend*jmax_rho
+      DataSize(id)  = jend*getLocalNumSpecies(id)
+      DataSizeL(id) = jend*jmax_rho*getLocalNumSpecies(id)
    enddo
 !
    node_print_level = getStandardOutputLevel()
@@ -269,7 +283,8 @@ contains
       call setDataStorage2Value('ValenceElectronDensity',ZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
-         jend = DataSize(id)
+         Grid => getGrid(id)
+         jend = Grid%jend
 !        -------------------------------------------------------------
          call setDataStorageLDA(id,'ValenceElectronDensity',jend)
 !        -------------------------------------------------------------
@@ -285,7 +300,8 @@ contains
          call setDataStorage2Value('ValenceElectronDensity',ZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            jend = DataSize(id)
+            Grid => getGrid(id)
+            jend = Grid%jend
 !           ----------------------------------------------------------
             call setDataStorageLDA(id,'ValenceElectronDensity',jend)
 !           ----------------------------------------------------------
@@ -301,7 +317,8 @@ contains
       call setDataStorage2Value('L-ValenceElectronDensity',CZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
-         jend = DataSize(id)
+         Grid => getGrid(id)
+         jend = Grid%jend
 !        -------------------------------------------------------------
          call setDataStorageLDA(id,'L-ValenceElectronDensity',jend)
 !        -------------------------------------------------------------
@@ -317,7 +334,8 @@ contains
          call setDataStorage2Value('L-ValenceElectronDensity',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            jend = DataSize(id)
+            Grid => getGrid(id)
+            jend = Grid%jend
 !           ----------------------------------------------------------
             call setDataStorageLDA(id,'L-ValenceElectronDensity',jend)
 !           ----------------------------------------------------------
@@ -332,15 +350,16 @@ contains
       jend = Grid%jend
       Density(id)%NumSpecies = getLocalNumSpecies(id)
       Density(id)%NumRs = jend
+      ns = Density(id)%NumSpecies
 !     ================================================================
       Density(id)%ExchangeEnergy = ZERO
       Density(id)%rho_l => getDataStorage( id,'L-ValenceElectronDensity',  &
-                                           jend, jmax_rho, ComplexMark )
+                                           jend, jmax_rho, ns, ComplexMark )
       Density(id)%rho_l = CZERO
       allocate(Density(id)%DenCompFlag(jmax_rho))
       if (n_spin_pola == 2) then
          Density(id)%mom_l => getDataStorage( id,'L-ValenceMomentDensity', &
-                                              jend, jmax_rho, 2*n_spin_cant-1, ComplexMark )
+                                              jend, jmax_rho, 2*n_spin_cant-1, ns, ComplexMark )
          Density(id)%mom_l = CZERO
          Density(id)%MomentVP = ZERO
          Density(id)%MomentMT = ZERO
@@ -349,12 +368,24 @@ contains
       Density(id)%ChargeMT = ZERO
 !     ================================================================
       Density(id)%rho_0 => getDataStorage( id,'ValenceElectronDensity', &
-                                     jend, RealMark )
+                                     jend, ns, RealMark )
       Density(id)%rho_0 = ZERO
       if (n_spin_pola == 2) then
          Density(id)%mom_0 => getDataStorage( id,'ValenceMomentDensity', &
-                                              jend,2*n_spin_cant-1, RealMark )
+                                              jend,2*n_spin_cant-1,ns,RealMark )
          Density(id)%mom_0 = ZERO
+      endif
+!     ================================================================
+      if (rad_derivative) then
+         allocate(Density(id)%der_rho_0(jend,ns),Density(id)%der_rho_l(jend,jmax_rho,ns))
+         Density(id)%der_rho_0 = ZERO
+         Density(id)%der_rho_l = CZERO
+         if (n_spin_pola == 2) then
+            allocate(Density(id)%der_mom_0(jend,2*n_spin_cant-1,ns))
+            allocate(Density(id)%der_mom_l(jend,jmax_rho,2*n_spin_cant-1,ns))
+            Density(id)%der_mom_0 = ZERO
+            Density(id)%der_mom_l = CZERO
+         endif
       endif
 !     ================================================================
       Density(id)%Grid=>Grid
@@ -410,6 +441,12 @@ contains
       endif
       nullify(Density(id)%Grid)
       deallocate(Density(id)%DenCompFlag)
+      if (rad_derivative) then
+         deallocate(Density(id)%der_rho_0, Density(id)%der_rho_l)
+         if (n_spin_pola == 2) then
+            deallocate(Density(id)%der_mom_0, Density(id)%der_mom_l)
+         endif
+      endif
    enddo
 !
    deallocate( Density )
@@ -432,7 +469,7 @@ contains
 !  ===================================================================
    use IntegrationModule, only : calIntegration
 !
-   use AtomModule, only : getLocalEvecNew
+   use AtomModule, only : getLocalEvecNew, getLocalSpeciesContent
 !
    use StepFunctionModule, only : getVolumeIntegration
 !
@@ -441,7 +478,7 @@ contains
 !
    implicit none
 !
-   integer (kind=Intkind) :: id, is, ip, ic, nump, numc, j
+   integer (kind=Intkind) :: id, is, ip, ic, nump, numc, j, ia
    integer (kind=Intkind) :: nr, klmax, jlmax
 !
    real (kind=RealKind), pointer :: pp(:,:), pc(:,:)
@@ -480,84 +517,86 @@ contains
          nr = Density(id)%NumRs
          jlmax = Density(id)%jmax; klmax = (Density(id)%lmax+1)**2
          if (print_level(id) >= 0) then
+            do ia = 1, Density(id)%NumSpecies
 !
-            write(6,'(/,2x,60(''-''))')
-            write(6,'(2x,a,t40,a,i4)')'Local Atom Index','=',id
-            do is=1,n_spin_pola
-               write(6,'(4x,a,i2,a,t40,a,f18.11)')                          &
-                     'Spin =',is,', LOCAL Int[e*n(e)]','=',Density(id)%eigensum(is)
-            enddo
-!           ----------------------------------------------------------
-            call calIntegration(Density(id)%Grid%jmt,Density(id)%Grid%r_mesh,    &
-                                Density(id)%rho_0,intr,2)
-!           ----------------------------------------------------------
-            write(6,'(4x,a,t40,a,f18.11)')'Integrated Electron Density in MT','=', &
-                                          intr(Density(id)%Grid%jmt)*PI4
-!           ----------------------------------------------------------
-            q_VP=getVolumeIntegration( id, nr, Density(id)%Grid%r_mesh(1:nr),&
-                                       klmax, jlmax, 0, Density(id)%rho_l(1:nr,1:jlmax), q_MT )
-!           ----------------------------------------------------------
-            write(6,'(4x,a,t40,a,2f18.11)')                                  &
-                  'Integrated Electron Density in VP','=',q_VP, q_MT
-            write(6,'(4x,a,t40,a,3f18.11)')                                 &
-                  'Integrated Moment Density in MT','=',Density(id)%MomentMT
-            write(6,'(4x,a,t40,a,3f18.11)')                                 &
-                  'Integrated Moment Density in VP','=',Density(id)%MomentVP
-!           ----------------------------------------------------------
-            if (n_spin_pola == 1) then
-               write(6,'(/,15x,a)')                                         &
-                       ' Electron Density on Selected Cell Boundary Points'
-               write(6,'(12x,55(''=''))')
-               write(6,'(12x,a)')                                           &
-                   '      X         Y         Z         Electron Density'
-               write(6,'(12x,55(''-''))')
-            else
-               write(6,'(/,10x,a)')                                         &
-                       'Electron and Moment Density on Selected Cell Boundary Points'
-               write(6,'(1x,78(''=''))')
-               write(6,'(1x,a)')                                            &
-                   '      X         Y         Z         Electron Density         Moment Density'
-               write(6,'(1x,78(''-''))')
-            endif
+               write(6,'(/,2x,60(''-''))')
+               write(6,'(2x,a,i4,a,i4)')'Local Atom Index =',id,', Species Index',ia
+               do is=1,n_spin_pola
+                  write(6,'(4x,a,i2,a,t40,a,f18.11)')                          &
+                        'Spin =',is,', LOCAL Int[e*n(e)]','=',Density(id)%eigensum(is)
+               enddo
+!              -------------------------------------------------------
+               call calIntegration(Density(id)%Grid%jmt,Density(id)%Grid%r_mesh,    &
+                                   Density(id)%rho_0(:,ia),intr,2)
+!              -------------------------------------------------------
+               write(6,'(4x,a,t40,a,f18.11)')'Integrated Electron Density in MT','=', &
+                                             intr(Density(id)%Grid%jmt)*PI4
+!              -------------------------------------------------------
+               q_VP=getVolumeIntegration( id, nr, Density(id)%Grid%r_mesh(1:nr),&
+                                          klmax, jlmax, 0, Density(id)%rho_l(1:nr,1:jlmax,ia), q_MT )
+!              -------------------------------------------------------
+               write(6,'(4x,a,t40,a,2f18.11)')                                  &
+                     'Integrated Electron Density in VP','=',q_VP, q_MT
+               write(6,'(4x,a,t40,a,3f18.11)')                                 &
+                     'Integrated Moment Density in MT','=',Density(id)%MomentMT
+               write(6,'(4x,a,t40,a,3f18.11)')                                 &
+                     'Integrated Moment Density in VP','=',Density(id)%MomentVP
+!              -------------------------------------------------------
+               if (n_spin_pola == 1) then
+                  write(6,'(/,15x,a)')                                         &
+                          ' Electron Density on Selected Cell Boundary Points'
+                  write(6,'(12x,55(''=''))')
+                  write(6,'(12x,a)')                                           &
+                      '      X         Y         Z         Electron Density'
+                  write(6,'(12x,55(''-''))')
+               else
+                  write(6,'(/,10x,a)')                                         &
+                          'Electron and Moment Density on Selected Cell Boundary Points'
+                  write(6,'(1x,78(''=''))')
+                  write(6,'(1x,a)')                                            &
+                      '      X         Y         Z         Electron Density         Moment Density'
+                  write(6,'(1x,78(''-''))')
+               endif
 !
-            nump = getNumPlanes(id)
-            pp => getPlane(id)
-            do ip = 1, nump
-               r = sqrt(pp(1,ip)*pp(1,ip)+pp(2,ip)*pp(2,ip)+pp(3,ip)*pp(3,ip))
-               if (r <= Density(id)%Grid%rend) then
-!                 rho = getValenceElectronDensityAtPosi(id,1,pp(1:3,ip))
-                  rho = getValueAtPosi(Density(id)%Grid%r_mesh,pp(1:3,ip),Density(id)%rho_l)
-                  if (n_spin_pola == 1) then
-                     write(6,'(12x,3f10.5,4x,d20.13)')pp(1:3,ip),rho
-                  else
-                     mom = getValenceMomentDensityAtPosi(id,1,pp(1:3,ip))
-                     write(6,'(1x,3f10.5,2(4x,d20.13))')pp(1:3,ip),rho,mom
+               nump = getNumPlanes(id)
+               pp => getPlane(id)
+               do ip = 1, nump
+                  r = sqrt(pp(1,ip)*pp(1,ip)+pp(2,ip)*pp(2,ip)+pp(3,ip)*pp(3,ip))
+                  if (r <= Density(id)%Grid%rend) then
+!                    rho = getValenceElectronDensityAtPosi(id,1,pp(1:3,ip))
+                     rho = getValueAtPosi(Density(id)%Grid%r_mesh,pp(1:3,ip),Density(id)%rho_l(:,:,ia))
+                     if (n_spin_pola == 1) then
+                        write(6,'(12x,3f10.5,4x,d20.13)')pp(1:3,ip),rho
+                     else
+                        mom = getValenceMomentDensityAtPosi(id,1,pp(1:3,ip))
+                        write(6,'(1x,3f10.5,2(4x,d20.13))')pp(1:3,ip),rho,mom
+                     endif
                   endif
+               enddo
+!
+               numc = getNumCorners(id)
+               pc => getCorner(id)
+               do ic = 1, numc
+                  r = sqrt(pc(1,ic)*pc(1,ic)+pc(2,ic)*pc(2,ic)+pc(3,ic)*pc(3,ic))
+                  if (r <= Density(id)%Grid%rend) then
+!                    rho = getValenceElectronDensityAtPosi(id,1,pc(1:3,ic))
+                     rho = getValueAtPosi(Density(id)%Grid%r_mesh,pc(1:3,ic),Density(id)%rho_l(:,:,ia))
+                     if (n_spin_pola == 1) then
+                        write(6,'(12x,3f10.5,4x,d20.13)')pc(1:3,ic),rho
+                     else
+                        mom = getValenceMomentDensityAtPosi(id,1,pc(1:3,ic))
+!                       mom = getValueAtPosi(Density(id)%Grid%r_mesh,pc(1:3,ic),Density(id)%mom_l(:,:,:,ia))
+                        write(6,'(1x,3f10.5,2(4x,d20.13))')pc(1:3,ic),rho,mom
+                     endif
+                  endif
+               enddo
+!
+               if (n_spin_pola == 1) then
+                  write(6,'(12x,55(''=''),/)')
+               else
+                  write(6,'(1x,78(''=''),/)')
                endif
             enddo
-!
-            numc = getNumCorners(id)
-            pc => getCorner(id)
-            do ic = 1, numc
-               r = sqrt(pc(1,ic)*pc(1,ic)+pc(2,ic)*pc(2,ic)+pc(3,ic)*pc(3,ic))
-               if (r <= Density(id)%Grid%rend) then
-!                 rho = getValenceElectronDensityAtPosi(id,1,pc(1:3,ic))
-                  rho = getValueAtPosi(Density(id)%Grid%r_mesh,pc(1:3,ic),Density(id)%rho_l)
-                  if (n_spin_pola == 1) then
-                     write(6,'(12x,3f10.5,4x,d20.13)')pc(1:3,ic),rho
-                  else
-                     mom = getValenceMomentDensityAtPosi(id,1,pc(1:3,ic))
-!                    mom = getValueAtPosi(Density(id)%Grid%r_mesh,pc(1:3,ic),Density(id)%mom_l(:,:,1))
-                     write(6,'(1x,3f10.5,2(4x,d20.13))')pc(1:3,ic),rho,mom
-                  endif
-               endif
-            enddo
-!
-            if (n_spin_pola == 1) then
-               write(6,'(12x,55(''=''),/)')
-            else
-               write(6,'(1x,78(''=''),/)')
-            endif
 !
          endif
       enddo
@@ -815,7 +854,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphRho_evec(id,ia,is,evec) result(p_rho0)
+   function getSphRho_evec(id,ia,is,evec,isDerivative) result(p_rho0)
 !  ===================================================================
    implicit none
 !
@@ -825,23 +864,50 @@ contains
    real (kind=RealKind), intent(in) :: evec(3)
    real (kind=RealKind), pointer :: p_rho0(:)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getSphRho','Invalid atom index',id)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getSphRho','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    else if (n_spin_cant == 1) then
       call ErrorHandler('getSphRho','This is not spin-canted case')
    else if (abs(sqrt(evec(1)**2+evec(2)**2+evec(3)**2)-ONE) > TEN2m6) then
       call ErrorHandler('getSphRho','evec is not unit vector')
    endif
 !
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getSphRho_evec','Invalid atom index',id)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphRho_evec',                             &
+                        'ValenceDensityModule is not initialized with GGA enabled')
+   endif
+!
    iend = Density(id)%Grid%jend
    isig = 3-2*is
    rho0(1:iend) = ZERO
-   do js = 1, 3
-      rho0(1:iend) = rho0(1:iend) + evec(js)*Density(id)%mom_0(1:iend,js)
-   enddo
-   rho0(1:iend) = (Density(id)%rho_0(1:iend)+isig*rho0(1:iend))*HALF
+   if (deriv) then
+      do js = 1, 3
+         rho0(1:iend) = rho0(1:iend) + evec(js)*Density(id)%der_mom_0(1:iend,js,ia)
+      enddo
+      rho0(1:iend) = (Density(id)%der_rho_0(1:iend,ia)+isig*rho0(1:iend))*HALF
+   else
+      do js = 1, 3
+         rho0(1:iend) = rho0(1:iend) + evec(js)*Density(id)%mom_0(1:iend,js,ia)
+      enddo
+      rho0(1:iend) = (Density(id)%rho_0(1:iend,ia)+isig*rho0(1:iend))*HALF
+   endif
    p_rho0=>rho0(:)
 !
    end function getSphRho_evec
@@ -850,7 +916,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphRho_is(id,ia,is) result(p_rho0)
+   function getSphRho_is(id,ia,is,isDerivative) result(p_rho0)
 !  ===================================================================
    use AtomModule, only : getLocalEvecOld
 !
@@ -862,29 +928,66 @@ contains
    real (kind=RealKind), pointer :: p_rho0(:)
    real (kind=RealKind) :: evec(3)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getSphRho','Invalid atom index',id)
+      call ErrorHandler('getSphRho_is','Invalid atom index',id)
    else if (is < 1 .or. is > n_spin_pola) then
-      call ErrorHandler('getSphRho','Invalid spin index',is)
+      call ErrorHandler('getSphRho_is','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getSphRho_is','Invalid atom index',id)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphRho_is',                               &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
    endif
 !
    iend = Density(id)%Grid%jend
    if (n_spin_pola == 1) then
-       p_rho0=>Density(id)%rho_0(:)
+      if (deriv) then
+         p_rho0=>Density(id)%der_rho_0(:,ia)
+      else
+         p_rho0=>Density(id)%rho_0(:,ia)
+      endif
    else
       if (n_spin_cant == 1) then
          isig = 3-2*is
-         rho0(1:iend)=( Density(id)%rho_0(1:iend)                     &
-                        +isig*Density(id)%mom_0(1:iend,1) )*HALF
+         if (deriv) then
+            rho0(1:iend)=( Density(id)%der_rho_0(1:iend,ia)           &
+                           +isig*Density(id)%der_mom_0(1:iend,1,ia) )*HALF
+         else
+            rho0(1:iend)=( Density(id)%rho_0(1:iend,ia)               &
+                           +isig*Density(id)%mom_0(1:iend,1,ia) )*HALF
+         endif
       else
          evec(1:3) = getLocalEvecOld(id)
          isig = 3-2*is
          rho0(1:iend) = ZERO
-         do js = 1, 3
-            rho0(1:iend) = rho0(1:iend) +                             &
-                           evec(js)*Density(id)%mom_0(1:iend,js)
-         enddo
-         rho0(1:iend)=(Density(id)%rho_0(1:iend)+isig*rho0(1:iend))*HALF
+         if (deriv) then
+            do js = 1, 3
+               rho0(1:iend) = rho0(1:iend) +                             &
+                              evec(js)*Density(id)%der_mom_0(1:iend,js,ia)
+            enddo
+            rho0(1:iend)=(Density(id)%der_rho_0(1:iend,ia)+isig*rho0(1:iend))*HALF
+         else
+            do js = 1, 3
+               rho0(1:iend) = rho0(1:iend) +                             &
+                              evec(js)*Density(id)%mom_0(1:iend,js,ia)
+            enddo
+            rho0(1:iend)=(Density(id)%rho_0(1:iend,ia)+isig*rho0(1:iend))*HALF
+         endif
       endif
       p_rho0=>rho0(:)
    endif
@@ -895,7 +998,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphRho_tot(id,ia) result(p_rho0)
+   function getSphRho_tot(id,ia,isDerivative) result(p_rho0)
 !  ===================================================================
    implicit none
 !
@@ -904,12 +1007,33 @@ contains
 !
    real (kind=RealKind), pointer :: p_rho0(:)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getSphRho','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphRho_tot',                              &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
    endif
 !
    iend = Density(id)%Grid%jend
-   p_rho0=>Density(id)%rho_0(:)
+!
+   if (deriv) then
+      p_rho0=>Density(id)%der_rho_0(:,ia)
+   else
+      p_rho0=>Density(id)%rho_0(:,ia)
+   endif
 !
    end function getSphRho_tot
 !  ===================================================================
@@ -917,7 +1041,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getValenceSphericalDensity(id,ia) result(p_rho0)
+   function getValenceSphericalElectronDensity(id,ia,isDerivative) result(p_rho0)
 !  ===================================================================
    implicit none
 !
@@ -926,20 +1050,84 @@ contains
 !
    real (kind=RealKind), pointer :: p_rho0(:)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getValSphDen','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceSphericalElectronDensity',                 &
+                        'ValenceDensityModule is not initialized with GGA enabled')
    endif
 !
    iend = Density(id)%Grid%jend
-   p_rho0=>Density(id)%rho_0(:)
 !
-   end function getValenceSphericalDensity
+   if (deriv) then
+      p_rho0=>Density(id)%der_rho_0(:,ia)
+   else
+      p_rho0=>Density(id)%rho_0(:,ia)
+   endif
+!
+   end function getValenceSphericalElectronDensity
 !  ===================================================================
 !
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphMom_tot(id,ia) result(p_mom0)
+   function getValenceSphericalMomentDensity(id,ia,isDerivative) result(p_mom0)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind) :: iend
+!
+   real (kind=RealKind), pointer :: p_mom0(:,:)
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValSphDen','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceSphericalMomentDensity',           &
+                        'ValenceDensityModule is not initialized with GGA enabled')
+   endif
+!
+   iend = Density(id)%Grid%jend
+!
+   if (deriv) then
+      p_mom0=>Density(id)%der_mom_0(:,:,ia)
+   else
+      p_mom0=>Density(id)%mom_0(:,:,ia)
+   endif
+!
+   end function getValenceSphericalMomentDensity
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getSphMom_tot(id,ia,isDerivative) result(p_mom0)
 !  ===================================================================
    use AtomModule, only : getLocalEvecOld
    implicit none
@@ -950,8 +1138,24 @@ contains
    real (kind=RealKind), pointer :: p_mom0(:)
    real (kind=RealKind) :: evec(3)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getSphMom','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphMom_tot',                              &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
    endif
 !
    iend = Density(id)%Grid%jend
@@ -959,13 +1163,23 @@ contains
       mom0(1:iend)=ZERO
       p_mom0 => mom0(:)
    else if (n_spin_cant == 1) then
-      p_mom0 => Density(id)%mom_0(:,1)
+      if (deriv) then
+         p_mom0 => Density(id)%der_mom_0(:,1,ia)
+      else
+         p_mom0 => Density(id)%mom_0(:,1,ia)
+      endif
    else
       evec(1:3) = getLocalEvecOld(id)
       mom0(1:iend) = ZERO
-      do is = 1,3
-         mom0(1:iend)=mom0(1:iend)+Density(id)%mom_0(1:iend,is)*evec(is)
-      enddo
+      if (deriv) then
+         do is = 1,3
+            mom0(1:iend)=mom0(1:iend)+Density(id)%der_mom_0(1:iend,is,ia)*evec(is)
+         enddo
+      else
+         do is = 1,3
+            mom0(1:iend)=mom0(1:iend)+Density(id)%mom_0(1:iend,is,ia)*evec(is)
+         enddo
+      endif
       p_mom0 => mom0(:)
    endif
 !
@@ -975,7 +1189,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphMom_is(id,ia,is) result(p_mom0)
+   function getSphMom_is(id,ia,is,isDerivative) result(p_mom0)
 !  ===================================================================
    implicit none
 !
@@ -984,16 +1198,36 @@ contains
 !
    real (kind=RealKind), pointer :: p_mom0(:)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getSphMom','Invalid atom index',id)
    else if(is < 1 .or. is > 2*n_spin_cant-1) then
       call ErrorHandler('getSphMom','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    else if (n_spin_pola == 1) then
       return
    endif
 !
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphMom_tot',                              &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
    iend = Density(id)%Grid%jend
-   p_mom0=>Density(id)%mom_0(:,is)
+   if (deriv) then
+      p_mom0=>Density(id)%der_mom_0(:,is,ia)
+   else
+      p_mom0=>Density(id)%mom_0(:,is,ia)
+   endif
 !
    end function getSphMom_is
 !  ===================================================================
@@ -1001,7 +1235,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSphMom_evec(id,ia,evec) result(p_mom0)
+   function getSphMom_evec(id,ia,evec,isDerivative) result(p_mom0)
 !  ===================================================================
    implicit none
 !
@@ -1011,21 +1245,43 @@ contains
    real (kind=RealKind), intent(in) :: evec(3)
    real (kind=RealKind), pointer :: p_mom0(:)
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getSphMom','Invalid atom index',id)
    else if (n_spin_pola == 1) then
       call ErrorHandler('getSphMom','This is not spin-canted case')
    else if (n_spin_cant == 1) then
       call ErrorHandler('getSphMom','This is not spin-canted case')
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    else if (abs(sqrt(evec(1)**2+evec(2)**2+evec(3)**2)-ONE) > TEN2m6) then
       call ErrorHandler('getSphMom','evec is not unit vector')
    endif
 !
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getSphMom_tot',                              &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
    iend = Density(id)%Grid%jend
    mom0(1:iend) = ZERO
-   do is = 1,3
-      mom0(1:iend)=mom0(1:iend)+Density(id)%mom_0(1:iend,is)*evec(is)
-   enddo
+   if (deriv) then
+      do is = 1,3
+         mom0(1:iend)=mom0(1:iend)+Density(id)%der_mom_0(1:iend,is,ia)*evec(is)
+      enddo
+   else
+      do is = 1,3
+         mom0(1:iend)=mom0(1:iend)+Density(id)%mom_0(1:iend,is,ia)*evec(is)
+      enddo
+   endif
    p_mom0 => mom0(:)
 !
    end function getSphMom_evec
@@ -1045,11 +1301,13 @@ contains
 !
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('setSphRho','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    endif
 !
    iend = Density(id)%Grid%jend
-   Density(id)%rho_0(1:iend)=in_rho0(1:iend)
-   Density(id)%rho_l(1:iend,1)=in_rho0(1:iend)/Y0
+   Density(id)%rho_0(1:iend,ia)=in_rho0(1:iend)
+   Density(id)%rho_l(1:iend,1,ia)=in_rho0(1:iend)/Y0
 !
    end subroutine setSphRho
 !  ===================================================================
@@ -1070,11 +1328,13 @@ contains
       call ErrorHandler('setSphMom','Invalid atom index',id)
    else if(is < 1 .or. is > 2*n_spin_cant-1) then
       call ErrorHandler('setSphMom','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    endif
 !
    iend = Density(id)%Grid%jend
-   Density(id)%mom_0(1:iend,is)=in_mom0(1:iend)
-   Density(id)%mom_l(1:iend,1,is)=in_mom0(1:iend)/Y0
+   Density(id)%mom_0(1:iend,is,ia)=in_mom0(1:iend)
+   Density(id)%mom_l(1:iend,1,is,ia)=in_mom0(1:iend)/Y0
 !
    end subroutine setSphMom
 !  ===================================================================
@@ -1082,31 +1342,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getved0(id,ia) result(rho_l)
-!  ===================================================================
-   implicit none
-!
-   integer (kind=IntKind), intent(in) :: id, ia
-   integer (kind=IntKind) :: iend, jmax
-!
-   complex (kind=CmplxKind), pointer :: rho_l(:,:)
-!
-   if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getValenceElectronDensity','Invalid atom index',id)
-   endif
-!
-   iend = Density(id)%Grid%jend
-   jmax = Density(id)%jmax
-!
-   rho_l=>Density(id)%rho_l(:,:)
-!
-   end function getved0
-!  ===================================================================
-!
-!  *******************************************************************
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getved1(id,ia,jl) result(rho_l)
+   function getved0(id,ia,jl,isDerivative) result(rho_l)
 !  ===================================================================
    implicit none
 !
@@ -1114,19 +1350,125 @@ contains
    integer (kind=IntKind), intent(in) :: jl
    integer (kind=IntKind) :: iend
 !
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
    complex (kind=CmplxKind), pointer :: rho_l(:)
 !
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getValenceElectronDensity','Invalid atom index',id)
    else if(jl < 1 .or. jl > Density(id)%jmax) then
       call ErrorHandler('getValenceElectronDensity','Invalid jl index',jl)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceElectronDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
    endif
 !
    iend = Density(id)%Grid%jend
 !
-   rho_l=>Density(id)%rho_l(:,jl)
+   if (deriv) then
+      rho_l=>Density(id)%der_rho_l(:,jl,ia)
+   else
+      rho_l=>Density(id)%rho_l(:,jl,ia)
+   endif
+!
+   end function getved0
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getved1(id,ia,isDerivative) result(rho_l)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind) :: iend, jmax
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   complex (kind=CmplxKind), pointer :: rho_l(:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValenceElectronDensity','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceElectronDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   iend = Density(id)%Grid%jend
+   jmax = Density(id)%jmax
+!
+   if (deriv) then
+      rho_l=>Density(id)%der_rho_l(:,:,ia)
+   else
+      rho_l=>Density(id)%rho_l(:,:,ia)
+   endif
 !
    end function getved1
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getved2(id,isDerivative) result(rho_l)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind) :: iend, jmax
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   complex (kind=CmplxKind), pointer :: rho_l(:,:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValenceElectronDensity','Invalid atom index',id)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceElectronDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   iend = Density(id)%Grid%jend
+   jmax = Density(id)%jmax
+!
+   if (deriv) then
+      rho_l=>Density(id)%der_rho_l(:,:,:)
+   else
+      rho_l=>Density(id)%rho_l(:,:,:)
+   endif
+!
+   end function getved2
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1169,19 +1511,23 @@ contains
       end function getValueAtPosi
    end interface
 !
-   rho = getValueAtPosi(Density(id)%Grid%r_mesh,posi,Density(id)%rho_l)
-   if (n_spin_pola == 2) then
-      mom = getValueAtPosi(Density(id)%Grid%r_mesh,posi,Density(id)%mom_l(:,:,1))
-      rho = HALF*(rho + (3-2*is)*mom)
-   endif
-   return
-!
    if (.not.Initialized) then
       call ErrorHandler('getValenceElectronDensityAtPosi',                 &
                         'Valence Module is not initialized')
    else if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getValenceElectronDensityAtPosi','Invalid atom index',id)
+   else if (is < 1 .or. is > 2) then
+      call ErrorHandler('getSphRho','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getSphRho','Invalid species index',ia)
    endif
+!
+   rho = getValueAtPosi(Density(id)%Grid%r_mesh,posi,Density(id)%rho_l(:,:,ia))
+   if (n_spin_pola == 2) then  ! Needs some work for spin-canting case
+      mom = getValueAtPosi(Density(id)%Grid%r_mesh,posi,Density(id)%mom_l(:,:,1,ia))
+      rho = HALF*(rho + (3-2*is)*mom)
+   endif
+   return
 !
    r = sqrt(posi(1)*posi(1)+posi(2)*posi(2)+posi(3)*posi(3))
    if (r > Density(id)%Grid%rend) then
@@ -1209,7 +1555,7 @@ contains
       irp=1
    endif
 !
-   rho_l=>Density(id)%rho_l(:,:)
+   rho_l=>Density(id)%rho_l(:,:,ia)
 !
    rho = ZERO
 !
@@ -1235,40 +1581,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getvmd0(id,ia,is) result(mom_l)
-!  ===================================================================
-   implicit none
-!
-   integer (kind=IntKind), intent(in) :: id, ia
-   integer (kind=IntKind), intent(in) :: is
-   integer (kind=IntKind) :: iend
-!
-   complex (kind=CmplxKind), pointer :: mom_l(:,:)
-!
-   if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getValenceMomentDensity','Invalid atom index',id)
-   else if(is < 1 .or. is > 2*n_spin_pola-1) then
-      call ErrorHandler('getValenceMomentDensity','Invalid spin index',is)
-   endif
-!
-   iend = Density(id)%Grid%jend
-!
-   mom_l=>Density(id)%mom_l(:,:,is)
-!
-   end function getvmd0
-!  ===================================================================
-!
-!  *******************************************************************
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getvmd1(id,ia,is,jl) result(mom_l)
+   function getvmd0(id,ia,is,jl,isDerivative) result(mom_l)
 !  ===================================================================
    implicit none
 !
    integer (kind=IntKind), intent(in) :: id, ia
    integer (kind=IntKind), intent(in) :: is
    integer (kind=IntKind), intent(in) :: jl
-   integer (kind=IntKind) :: iend
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
 !
    complex (kind=CmplxKind), pointer :: mom_l(:)
 !
@@ -1278,13 +1600,150 @@ contains
       call ErrorHandler('getValenceMomentDensity','Invalid spin index',is)
    else if(jl < 1 .or. jl > Density(id)%jmax) then
       call ErrorHandler('getValenceMomentDensity','Invalid jl index',jl)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getValenceMomentDensity','Invalid species index',ia)
    endif
 !
-   iend = Density(id)%Grid%jend
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
 !
-   mom_l=>Density(id)%mom_l(:,jl,is)
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceMomentDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   if (deriv) then
+      mom_l=>Density(id)%der_mom_l(:,jl,is,ia)
+   else
+      mom_l=>Density(id)%mom_l(:,jl,is,ia)
+   endif
+!
+   end function getvmd0
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getvmd1(id,ia,is,isDerivative) result(mom_l)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: is
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   complex (kind=CmplxKind), pointer :: mom_l(:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValenceMomentDensity','Invalid atom index',id)
+   else if(is < 1 .or. is > 2*n_spin_pola-1) then
+      call ErrorHandler('getValenceMomentDensity','Invalid spin index',is)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getValenceMomentDensity','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceMomentDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   if (deriv) then
+      mom_l=>Density(id)%der_mom_l(:,:,is,ia)
+   else
+      mom_l=>Density(id)%mom_l(:,:,is,ia)
+   endif
 !
    end function getvmd1
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getvmd2(id,ia,isDerivative) result(mom_l)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind), intent(in) :: ia
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   complex (kind=CmplxKind), pointer :: mom_l(:,:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValenceMomentDensity','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getValenceMomentDensity','Invalid species index',ia)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceMomentDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   if (deriv) then
+      mom_l=>Density(id)%der_mom_l(:,:,:,ia)
+   else
+      mom_l=>Density(id)%mom_l(:,:,:,ia)
+   endif
+!
+   end function getvmd2
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getvmd3(id,isDerivative) result(mom_l)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: id
+!
+   logical, intent(in), optional :: isDerivative
+   logical :: deriv
+!
+   complex (kind=CmplxKind), pointer :: mom_l(:,:,:,:)
+!
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getValenceMomentDensity','Invalid atom index',id)
+   endif
+!
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv .and. .not.rad_derivative) then
+      call ErrorHandler('getValenceMomentDensity',                  &
+                        'ValenceDensityMOdule is not initialized with GGA enabled')
+   endif
+!
+   if (deriv) then
+      mom_l=>Density(id)%der_mom_l(:,:,:,:)
+   else
+      mom_l=>Density(id)%mom_l(:,:,:,:)
+   endif
+!
+   end function getvmd3
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1324,6 +1783,8 @@ contains
                         'Valence Module is not initialized')
    else if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getValenceMomentDensityAtPosi','Invalid atom index',id)
+   else if (ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getValenceMomentDensity','Invalid species index',ia)
    else if (n_spin_pola == 1) then
       mom = ZERO
       return
@@ -1356,14 +1817,14 @@ contains
       irp=1
    endif
 !
-   mom_l=>Density(id)%mom_l(1:iend,1:Density(id)%jmax,1:2*n_spin_cant-1)
+   mom_l=>Density(id)%mom_l(1:iend,1:Density(id)%jmax,1:2*n_spin_cant-1,ia)
 !
    momv = ZERO
 !
    do is = 1, 2*n_spin_cant-1
 !     ----------------------------------------------------------------
 !      call PolyInterp(n_inter, Density(id)%Grid%r_mesh(irp:irp+n_inter-1), &
-!                   Density(id)%mom_0(irp:irp+n_inter-1,is), r, momv(is), err)
+!                   Density(id)%mom_0(irp:irp+n_inter-1,is,ia), r, momv(is), err)
 !     ----------------------------------------------------------------
       do jl = 1,Density(id)%jmax
          l = lofj(jl)
@@ -1410,13 +1871,15 @@ contains
       call ErrorHandler('setValenElectronDensity','Invalid atom index',id)
    else if(jl < 1 .or. jl > Density(id)%jmax) then
       call ErrorHandler('setValenElectronDensity','Invalid jl index',jl)
+   else if(ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('setValenMomentDensity','Invalid species index',ia)
    endif
 !
    iend = Density(id)%Grid%jend
    if (jl == 1) then
-      Density(id)%rho_0(1:iend)=rho_l(1:iend)*Y0
+      Density(id)%rho_0(1:iend,ia)=rho_l(1:iend)*Y0
    endif
-   Density(id)%rho_l(1:iend,jl)=rho_l(1:iend)
+   Density(id)%rho_l(1:iend,jl,ia)=rho_l(1:iend)
 !
    end subroutine setValenceElectronDensity
 !  ===================================================================
@@ -1441,13 +1904,15 @@ contains
       call ErrorHandler('setValenMomentDensity','Invalid spin index',is)
    else if(jl < 1 .or. jl > Density(id)%jmax) then
       call ErrorHandler('setValenMomentDensity','Invalid jl index',jl)
+   else if(ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('setValenMomentDensity','Invalid species index',ia)
    endif
 !
    iend = Density(id)%Grid%jend
    if (jl == 1) then
-      Density(id)%mom_0(1:iend,is)=mom_l(1:iend)
+      Density(id)%mom_0(1:iend,is,ia)=mom_l(1:iend)
    endif
-   Density(id)%mom_l(1:iend,jl,is)=mom_l(1:iend)
+   Density(id)%mom_l(1:iend,jl,is,ia)=mom_l(1:iend)
 !
    end subroutine setValenceMomentDensity
 !  ===================================================================
@@ -1515,6 +1980,8 @@ contains
       call ErrorHandler('getBandEnergy','Invalid atom index',id)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getBandEnergy','Invalid spin index',is)
+   else if(ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getBandEnergy','Invalid species index',ia)
    endif
 !
    ev = Density(id)%eigensum(is)
@@ -1564,17 +2031,19 @@ contains
       call ErrorHandler('getValenceKineticEnergy','Invalid atom index',id)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getValenceKineticEnergy','Invalid spin index',is)
+   else if(ia < 1 .or. ia > Density(id)%NumSpecies) then
+      call ErrorHandler('getValenceKineticEnergy','Invalid species index',ia)
    endif
 !
    lmax_rho = Density(id)%lmax
    jmax_rho = Density(id)%jmax
-   rho_val=>Density(id)%rho_l(:,:)
+   rho_val=>Density(id)%rho_l(:,:,ia)
    Grid => Density(id)%Grid
    jend = Grid%jend
    r_mesh => Grid%r_mesh(1:jend)
 !
    if (n_spin_pola == 2) then
-      mom_val => Density(id)%mom_l(:,:,:)
+      mom_val => Density(id)%mom_l(:,:,:,ia)
    endif
 !
    lmax_pot = getPotLmax(id)
@@ -1742,7 +2211,7 @@ contains
 !
    integer (kind=IntKind), intent(in) :: id
 !
-   real (kind=RealKind), intent(in) :: evalsum(*),exc
+   real (kind=RealKind), intent(in) :: evalsum(:),exc
    real (kind=RealKind) :: ev0, evm
    real (kind=RealKind) :: evec(3)
 !
@@ -1790,7 +2259,7 @@ contains
 !
    implicit none
 !
-   integer (kind=IntKind) :: id, ig, i, iend
+   integer (kind=IntKind) :: id, ig, i, iend, ia
 !
    real (kind=RealKind), intent(in) :: ef, zvaltss
    real (kind=RealKind) :: qvalws
@@ -1871,9 +2340,11 @@ contains
           do id = 1, LocalNumAtoms
              iend = Density(id)%Grid%jend
              r_mesh => Density(id)%Grid%r_mesh
-             do i=1, iend
-                Density(id)%rho_0(i) = Density(id)%rho_0(i) + rhoint
-                Density(id)%rho_l(i,1) = Density(id)%rho_l(i,1) + sqrt(PI4)*rhoint
+             do ia = 1, Density(id)%NumSpecies
+                do i=1, iend
+                   Density(id)%rho_0(i,ia) = Density(id)%rho_0(i,ia) + rhoint
+                   Density(id)%rho_l(i,1,ia) = Density(id)%rho_l(i,1,ia) + sqrt(PI4)*rhoint
+                enddo
              enddo
           enddo
        endif
@@ -1934,8 +2405,10 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine updateValenceDensity(id,dos_r_jl)
+   subroutine updateValenceDensity(id,dos_r_jl,isDerivative)
 !  ===================================================================
+!  This code needs modified to allow for dos_r_jl has an extra
+!  dimention for multi chemical species
    use MPPModule, only : MyPE, syncAllPEs
 !
    use SystemSymmetryModule, only : getSymmetryFlags
@@ -1944,139 +2417,175 @@ contains
 !
    character (len=20) :: sname='updateValenceDensity'
 !
-   logical :: isZERO
+   logical :: isZERO, deriv
+   logical, intent(in), optional :: isDerivative
 !
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind) :: is, ir, jl, NumRs, izamax
+   integer (kind=IntKind) :: is, ir, jl, NumRs, izamax, ia
    integer (kind=IntKind) :: jmax_rho
    integer (kind=IntKind), pointer :: flags_jl(:)
 !
    real (kind=RealKind) :: rfac, rho_r, rho_i, mom_r, mom_i
    real (kind=RealKind), pointer :: r_mesh(:)
+   real (kind=RealKind), pointer :: rho_0(:,:), mom_0(:,:,:)
 !
    complex (kind=CmplxKind), intent(in) :: dos_r_jl(:,:,:)
-   complex (kind=CmplxKind), pointer :: rho_l(:)
+   complex (kind=CmplxKind), pointer :: rho_l(:,:,:), mom_l(:,:,:,:)
 !
    NumRs = Density(id)%NumRs
    r_mesh => Density(id)%Grid%r_mesh(1:NumRs)
    jmax_rho = Density(id)%jmax
 !
+   if (present(isDerivative)) then
+      deriv = isDerivative
+   else
+      deriv = .false.
+   endif
+!
+   if (deriv) then
+      rho_0 => Density(id)%der_rho_0
+      rho_l => Density(id)%der_rho_l
+      if (n_spin_pola == 2) then
+         mom_0 => Density(id)%der_mom_0
+         mom_l => Density(id)%der_mom_l
+      endif
+   else
+      rho_0 => Density(id)%rho_0
+      rho_l => Density(id)%rho_l
+      if (n_spin_pola == 2) then
+         mom_0 => Density(id)%mom_0
+         mom_l => Density(id)%mom_l
+      endif
+   endif
+!
    rfac = ONE/(sqrt(PI4))
    if (n_spin_pola == 1 .or. n_spin_cant == 2) then
-      do ir = 1, NumRs
-         Density(id)%rho_0(ir) = real(dos_r_jl(ir,1,1),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
+      do ia = 1, Density(id)%NumSpecies
+         do ir = 1, NumRs
+            rho_0(ir,ia) = real(dos_r_jl(ir,1,1),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
+         enddo
       enddo
    else
-      do ir = 1, NumRs
-         Density(id)%rho_0(ir) = real(dos_r_jl(ir,1,1)+dos_r_jl(ir,1,2),kind=RealKind) &
-                                *rfac/(r_mesh(ir)*r_mesh(ir))
+      do ia = 1, Density(id)%NumSpecies
+         do ir = 1, NumRs
+            rho_0(ir,ia) = real(dos_r_jl(ir,1,1)+dos_r_jl(ir,1,2),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
+         enddo
       enddo
    endif
 !
-   do jl = 1, jmax_rho
-      if (n_spin_pola == 1 .or. n_spin_cant == 2) then
-         do ir = 1, NumRs
-            Density(id)%rho_l(ir,jl) = dos_r_jl(ir,jl,1)/(r_mesh(ir)*r_mesh(ir))
-         enddo
-      else
-         do ir = 1, NumRs
-            Density(id)%rho_l(ir,jl) = (dos_r_jl(ir,jl,1)+dos_r_jl(ir,jl,2))/(r_mesh(ir)*r_mesh(ir))
-         enddo
-      endif
-!
-      isZERO = .true.
-      LOOP_ir: do ir = 1, NumRs
-         if (abs(Density(id)%rho_l(ir,jl)) > rho_tol) then
-            isZERO = .false.
-            exit LOOP_ir
+   do ia = 1, Density(id)%NumSpecies
+      do jl = 1, jmax_rho
+         if (n_spin_pola == 1 .or. n_spin_cant == 2) then
+            do ir = 1, NumRs
+               rho_l(ir,jl,ia) = dos_r_jl(ir,jl,1)/(r_mesh(ir)*r_mesh(ir))
+            enddo
+         else
+            do ir = 1, NumRs
+               rho_l(ir,jl,ia) = (dos_r_jl(ir,jl,1)+dos_r_jl(ir,jl,2))/(r_mesh(ir)*r_mesh(ir))
+            enddo
          endif
-      enddo LOOP_ir
-      if (isZERO) then
-!        if (getSymmetryFlags(id,jl) > 0) then
-!           call WarningHandler('updateValenceDensity','Non-zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
-!        endif
-         Density(id)%DenCompFlag(jl) = 0
-      else
-         Density(id)%DenCompFlag(jl) = 1
-         if (getSymmetryFlags(id,jl) == 0) then
-            call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
-            ir = izamax(NumRs,Density(id)%rho_l(:,jl),1)
-            write(6,'(a,i5,2x,i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,Density(id)%rho_l(ir,jl)
-            if ( isValSymmOn ) then
-               Density(id)%DenCompFlag(jl) = 0
+!
+         isZERO = .true.
+         LOOP_ir: do ir = 1, NumRs
+            if (abs(rho_l(ir,jl,ia)) > rho_tol) then
+               isZERO = .false.
+               exit LOOP_ir
+            endif
+         enddo LOOP_ir
+         if (isZERO) then
+!           if (getSymmetryFlags(id,jl) > 0) then
+!              call WarningHandler('updateValenceDensity','Non-zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+!           endif
+            Density(id)%DenCompFlag(jl) = 0
+         else
+            Density(id)%DenCompFlag(jl) = 1
+            if (getSymmetryFlags(id,jl) == 0) then
+               call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+               ir = izamax(NumRs,rho_l(:,jl,ia),1)
+               write(6,'(a,i5,2x,i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,rho_l(ir,jl,ia)
+               if ( isValSymmOn ) then
+                  Density(id)%DenCompFlag(jl) = 0
+               endif
             endif
          endif
-      endif
-      if (Density(id)%DenCompFlag(jl) == 0) then
-         do ir = 1, NumRs
-            Density(id)%rho_l(ir,jl) = CZERO
-         enddo
-      endif
+         if (Density(id)%DenCompFlag(jl) == 0) then
+            do ir = 1, NumRs
+               rho_l(ir,jl,ia) = CZERO
+            enddo
+         endif
+      enddo
    enddo
 !
    if (n_spin_cant == 2) then
-      Density(id)%mom_l = CZERO
-      do is=1,3
+      mom_l = CZERO
+      do ia = 1, Density(id)%NumSpecies
+         do is=1,3
+            do ir = 1, NumRs
+               mom_0(ir,is,ia) = real(dos_r_jl(ir,1,is+1),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
+            enddo
+            do jl = 1, jmax_rho
+               if (Density(id)%DenCompFlag(jl) > 0) then
+                  do ir = 1, NumRs
+                     mom_l(ir,jl,is,ia) = dos_r_jl(ir,jl,is+1)/(r_mesh(ir)*r_mesh(ir))
+                  enddo
+               endif
+            enddo
+         enddo
+      enddo
+   else if (n_spin_pola == 2) then
+      mom_l = CZERO
+      do ia = 1, Density(id)%NumSpecies
          do ir = 1, NumRs
-            Density(id)%mom_0(ir,is) = real(dos_r_jl(ir,1,is+1),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
+            mom_0(ir,1,ia) = real(dos_r_jl(ir,1,1)-dos_r_jl(ir,1,2),kind=RealKind)*rfac/(r_mesh(ir)*r_mesh(ir))
          enddo
          do jl = 1, jmax_rho
             if (Density(id)%DenCompFlag(jl) > 0) then
                do ir = 1, NumRs
-                  Density(id)%mom_l(ir,jl,is) = dos_r_jl(ir,jl,is+1)/(r_mesh(ir)*r_mesh(ir))
+                  mom_l(ir,jl,1,ia) = (dos_r_jl(ir,jl,1)-dos_r_jl(ir,jl,2))/(r_mesh(ir)*r_mesh(ir))
                enddo
             endif
          enddo
-      enddo
-   else if (n_spin_pola == 2) then
-      Density(id)%mom_l = CZERO
-      do ir = 1, NumRs
-         Density(id)%mom_0(ir,1) = real(dos_r_jl(ir,1,1)-dos_r_jl(ir,1,2),kind=RealKind)       &
-                                  *rfac/(r_mesh(ir)*r_mesh(ir))
-      enddo
-      do jl = 1, jmax_rho
-         if (Density(id)%DenCompFlag(jl) > 0) then
-            do ir = 1, NumRs
-               Density(id)%mom_l(ir,jl,1) = (dos_r_jl(ir,jl,1)-dos_r_jl(ir,jl,2))/(r_mesh(ir)*r_mesh(ir))
-            enddo
-         endif
       enddo
    endif
 !
    if ( isValSymmOn ) then
       flags_jl => getSymmetryFlags(id)
-      do jl = 1, jmax_rho
-         if ( flags_jl(jl) ==0 ) then
-            Density(id)%rho_l(1:NumRs,jl) = CZERO
-            Density(id)%DenCompFlag(jl) = 0
-         else if ( flags_jl(jl) == 1 ) then
-            do ir = 1,NumRs
-               rho_r = real( Density(id)%rho_l(ir,jl), kind=RealKind )
-               Density(id)%rho_l(ir,jl) = cmplx(rho_r,ZERO,kind=CmplxKind)
-            enddo
-         else if ( flags_jl(jl) == 2 ) then
-            do ir = 1,NumRs
-               rho_i = real(-sqrtm1*Density(id)%rho_l(ir,jl), kind=RealKind )
-               Density(id)%rho_l(ir,jl) = cmplx(ZERO, rho_i, kind=CmplxKind)
-            enddo
-         endif
+      do ia = 1, Density(id)%NumSpecies
+         do jl = 1, jmax_rho
+            if ( flags_jl(jl) ==0 ) then
+               rho_l(1:NumRs,jl,ia) = CZERO
+               Density(id)%DenCompFlag(jl) = 0
+            else if ( flags_jl(jl) == 1 ) then
+               do ir = 1,NumRs
+                  rho_r = real(rho_l(ir,jl,ia), kind=RealKind )
+                  rho_l(ir,jl,ia) = cmplx(rho_r,ZERO,kind=CmplxKind)
+               enddo
+            else if ( flags_jl(jl) == 2 ) then
+               do ir = 1,NumRs
+                  rho_i = real(-sqrtm1*rho_l(ir,jl,ia), kind=RealKind )
+                  rho_l(ir,jl,ia) = cmplx(ZERO, rho_i, kind=CmplxKind)
+               enddo
+            endif
+         enddo
       enddo
       if (n_spin_pola == 2) then
-         do is = 1, 2*n_spin_cant-1
-            do jl = 1, jmax_rho
-               if ( flags_jl(jl) ==0 ) then
-                  Density(id)%mom_l(1:NumRs,jl,is) = CZERO
-               else if ( flags_jl(jl) == 1 ) then
-                  do ir = 1,NumRs
-                     mom_r = real( Density(id)%mom_l(ir,jl,is), kind=RealKind )
-                     Density(id)%mom_l(ir,jl,is) = cmplx(mom_r,ZERO,kind=CmplxKind)
-                  enddo
-               else if ( flags_jl(jl) == 2 ) then
-                  do ir = 1,NumRs
-                     mom_i = real(-sqrtm1*Density(id)%mom_l(ir,jl,is), kind=RealKind)
-                     Density(id)%mom_l(ir,jl,is) = cmplx(ZERO, mom_i, kind=CmplxKind)
-                  enddo
-               endif
+         do ia = 1, Density(id)%NumSpecies
+            do is = 1, 2*n_spin_cant-1
+               do jl = 1, jmax_rho
+                  if ( flags_jl(jl) ==0 ) then
+                     mom_l(1:NumRs,jl,is,ia) = CZERO
+                  else if ( flags_jl(jl) == 1 ) then
+                     do ir = 1,NumRs
+                        mom_r = real( mom_l(ir,jl,is,ia), kind=RealKind )
+                        mom_l(ir,jl,is,ia) = cmplx(mom_r,ZERO,kind=CmplxKind)
+                     enddo
+                  else if ( flags_jl(jl) == 2 ) then
+                     do ir = 1,NumRs
+                        mom_i = real(-sqrtm1*mom_l(ir,jl,is,ia), kind=RealKind)
+                        mom_l(ir,jl,is,ia) = cmplx(ZERO, mom_i, kind=CmplxKind)
+                     enddo
+                  endif
+               enddo
             enddo
          enddo
       endif
@@ -2092,16 +2601,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printRho_L(id,aux_name)
+   subroutine printRho_L(id,ia,aux_name)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in), optional :: id
+   integer (kind=IntKind), intent(in), optional :: id, ia
 !
    character(len=30) :: file_rhol
    character(len=*), intent(in), optional :: aux_name
    integer (kind=IntKind) :: i, l, m, jl, jmax, ir, NumRs, funit, count_flag
-   integer (kind=IntKind) :: offset = 100000, alen, nc, na, nb
+   integer (kind=IntKind) :: offset = 100000, alen, nc, na, nb, ja
    integer (kind=IntKind), allocatable :: flag_jl(:)
 !
    real (kind=RealKind), pointer :: r_mesh(:)
@@ -2128,6 +2637,12 @@ contains
       na = 1; nb = LocalNumAtoms
    endif
 !
+   if (present(ia)) then
+      ja = ia
+   else
+      ja = 1
+   endif
+!
    do i = na, nb
       write(file_rhol(nc:nc+5),'(i6)') offset+MyPE+i
       file_rhol(nc:nc) = 'n'
@@ -2135,7 +2650,7 @@ contains
       open(unit=funit,file=trim(file_rhol),status='unknown')
       NumRs = Density(i)%NumRs
       r_mesh => Density(i)%Grid%r_mesh(1:NumRs)
-      rhol => Density(i)%rho_l
+      rhol => Density(i)%rho_l(:,:,ja)
       jmax =  Density(i)%jmax
       allocate (flag_jl(jmax))
       flag_jl = 0
@@ -2178,16 +2693,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printMom_L(id,aux_name)
+   subroutine printMom_L(id,ia,aux_name)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) , optional :: id
+   integer (kind=IntKind), intent(in) , optional :: id, ia
 !
    character(len=*), intent(in), optional :: aux_name
    character(len=11) :: file_moml
    integer (kind=IntKind) :: i, j, l, m, is, jl, jmax, ir, NumRs, funit, count_flag
-   integer (kind=IntKind) :: offset = 100000, alen, nc, na, nb
+   integer (kind=IntKind) :: offset = 100000, alen, nc, na, nb, ja
    integer (kind=IntKind), allocatable :: flag_jl(:)
 !
    real (kind=RealKind), pointer :: r_mesh(:), moml0(:,:)
@@ -2214,6 +2729,12 @@ contains
       na = 1; nb = LocalNumAtoms
    endif
 !
+   if (present(ia)) then
+      ja = ia
+   else
+      ja = 1
+   endif
+!
    do i = na, nb
       write(file_moml(nc:nc+5),'(i6)') offset+MyPE+i
       file_moml(nc:nc) = 'n'
@@ -2221,8 +2742,8 @@ contains
       open(unit=funit,file=trim(file_moml),status='unknown')
       NumRs = Density(i)%NumRs
       r_mesh => Density(i)%Grid%r_mesh(1:NumRs)
-      moml => Density(i)%mom_l
-      moml0 => Density(i)%mom_0
+      moml => Density(i)%mom_l(:,:,:,ja)
+      moml0 => Density(i)%mom_0(:,:,ja)
       jmax =  Density(i)%jmax
       allocate (flag_jl(jmax))
       flag_jl = 0

@@ -1,6 +1,7 @@
 CUDA_PATH = /opt/packages/cuda/8.0
 MKLROOT = /opt/packages/intel/mkl
 MKLPATH = $(MKLROOT)/lib/intel64
+LIBXC_PATH = /opt/packages/libxc/libxc-4.0.4
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -50,6 +51,11 @@ CPPFLAGS=-DUnderscore
 ADDLIBS = -g -L$(MKLPATH) -lmkl_scalapack_lp64 \
          -Wl,--start-group -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_blacs_intelmpi_lp64 -Wl,--end-group \
          -lifcore -lpthread -lm
+
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
 
 #=====================================================================
 #                         Preprocessing Flags
@@ -154,7 +160,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

@@ -30,12 +30,13 @@
          integer (kind=IntKind), intent(in), optional :: lmax, spin
 !
          interface
-            function getData( dname, id, ia, r, jmax_in, n ) result(v)
+            function getData( dname, id, ia, r, jmax_in, n, grad ) result(v)
                use KindParamModule, only : IntKind, RealKind
                implicit none
                character (len=*), intent(in) :: dname
                integer (kind=IntKind), intent(in) :: id, ia
                real (kind=RealKind), intent(in) :: r(3)
+               real (kind=RealKind), intent(out), optional :: grad(3)
                integer (kind=IntKind), intent(in), optional :: jmax_in, n
                real (kind=RealKind) :: v
             end function getData

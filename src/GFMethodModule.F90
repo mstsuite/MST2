@@ -59,6 +59,7 @@ private
       complex (kind=CmplxKind) :: dos_mt(4)
       complex (kind=CmplxKind) :: evalsum(4)
       complex (kind=CmplxKind), pointer :: dos_r_jl(:,:,:)
+      complex (kind=CmplxKind), pointer :: der_dos_r_jl(:,:,:)
 !
       type (SpinCantStruct), pointer :: pSC
       complex (kind=CmplxKind), pointer :: density_matrix(:,:,:)
@@ -119,6 +120,7 @@ private
 !
    complex (kind=CmplxKind), allocatable, target :: wk_green(:)
    complex (kind=CmplxKind), allocatable, target :: wk_dos(:)
+   complex (kind=CmplxKind), allocatable, target :: wk_dgreen(:)
 !
    logical :: isDensityMatrixNeeded = .false.
    logical :: isSingleSiteCluster = .false.
@@ -127,6 +129,8 @@ private
 !
    logical :: is_Bxyz=.true., rel_B=.false. !xianglin 
    integer (kind=IntKind) :: lmax_kkr_max
+!
+   logical :: rad_derivative = .false.
 !
 !  findResonance variables
 !================================================================
@@ -149,7 +153,8 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initGFMethod(na,gindex,posi_in,                         &
                            lmax_kkr_in,lmax_phi_in,lmax_pot_in,       &
-                           lmax_step_in,lmax_green_in,pola,cant,istop,iprint)
+                           lmax_step_in,lmax_green_in,pola,cant,      &
+                           istop,iprint,isGGA)
 !  ===================================================================
    use IntegerFactorsModule, only : initIntegerFactors
 !
@@ -213,6 +218,8 @@ contains
 !
    real (kind=RealKind), intent(in) :: posi_in(3,na)
 !
+   logical, intent(in), optional :: isGGA
+!
    type (GridStruct), pointer :: Grid
 !
    if (pola == 1 .or. pola == 2) then
@@ -240,6 +247,12 @@ contains
    stop_routine = istop
    isIterateEfOn = isEfIterateOn(isEfPinning)
    iharris = Harris
+!
+   if (present(isGGA)) then
+      rad_derivative = isGGA
+   else
+      rad_derivative = .false.
+   endif
 !
    if ( isLloyd() ) then
 !     ----------------------------------------------------------------
@@ -366,7 +379,11 @@ contains
       NumRs(id) = Grid%jend
       jmax = (lmax_green(id)+1)*(lmax_green(id)+2)/2
       green_size = green_size + NumRs(id)*jmax*n_spin_cant*n_spin_pola
-      nsize = max(nsize,NumRs(id)*jmax)
+      if (rad_derivative) then
+         nsize = max(nsize,2*NumRs(id)*jmax)
+      else
+         nsize = max(nsize,NumRs(id)*jmax)
+      endif
    enddo
 !
    if (getAdaptiveIntegrationMethod() == 1) then
@@ -383,8 +400,12 @@ contains
 !     -------------------------------------------------------------------
    endif
 !
-   allocate(wk_green(green_size*4), wk_dos((nsize+4)*n_spin_cant*n_spin_cant+12))
+   allocate(wk_green(green_size*4),wk_dos((nsize+4)*n_spin_cant*n_spin_cant+12))
    wk_green = CZERO; wk_dos = CZERO
+   if (rad_derivative) then
+      allocate(wk_dgreen(green_size*4))
+      wk_dgreen = CZERO
+   endif
 !
    allocate( LastValue(LocalNumAtoms) )
    allocate( IntegrValue(LocalNumAtoms) )
@@ -444,6 +465,10 @@ contains
 !
    deallocate(LastValue, IntegrValue, ssLastValue, ssIntegrValue)
    deallocate( wk_green, wk_dos )
+   if (rad_derivative) then
+      deallocate( wk_dgreen )
+      rad_derivative = .false.
+   endif
 !  -------------------------------------------------------------------
    call endAdaptIntegration()
    call endSpinRotation()
@@ -499,6 +524,10 @@ contains
 !
    ES%dos_r_jl => aliasArray3_c( wk_green(green_ind:green_ind+green_size-1),  &
                                           iend, jmax, n_spin_cant*n_spin_pola )
+   if (rad_derivative) then
+      ES%der_dos_r_jl => aliasArray3_c( wk_dgreen(green_ind:green_ind+green_size-1),  &
+                                                  iend, jmax, n_spin_cant*n_spin_pola )
+   endif
    green_ind = green_ind + green_size
 !
    if (isDensityMatrixNeeded) then
@@ -541,6 +570,9 @@ contains
    if ( associated(ES%dos_r_jl) ) then
       ES%indx = 0; ES%size = 0;
       nullify( ES%dos_r_jl )
+      if (rad_derivative) then
+         nullify( ES%der_dos_r_jl )
+      endif
    endif
    if ( associated(ES%density_matrix) ) then
       deallocate( ES%density_matrix ); nullify( ES%density_matrix )
@@ -569,6 +601,9 @@ contains
 !
    if(associated(ES%dos_r_jl)) then
       ES%dos_r_jl = CZERO
+      if (rad_derivative) then
+         ES%der_dos_r_jl = CZERO
+      endif
    endif
 !
    if (isDensityMatrixNeeded .and. associated(ES%density_matrix)) then
@@ -763,14 +798,14 @@ contains
       call initSSSolver(LocalNumAtoms, getLocalNumSpecies, getLocalAtomicNumber, &
                         lmax_kkr, lmax_phi, lmax_pot, lmax_step, lmax_green, &
                         n_spin_pola, n_spin_cant, RelativisticFlag,   &
-                        stop_routine, print_level)
+                        stop_routine, print_level, derivative=rad_derivative)
 !     ----------------------------------------------------------------
 !     initialize Multiple scattering solver
 !     ----------------------------------------------------------------
       call initMSSolver(LocalNumAtoms, AtomIndex,                        &
                         lmax_kkr, lmax_phi, lmax_green, posi,            &
                         n_spin_pola, n_spin_cant, RelativisticFlag,      &
-                        stop_routine, print_level)
+                        stop_routine, print_level, derivative=rad_derivative)
 !  -------------------------------------------------------------------
    endif
 !
@@ -924,6 +959,7 @@ contains
    if (isPole_plus) then
       deallocate(NumPoles_plus,Poles_plus)
    endif
+!
    end subroutine calValenceStates
 !  ===================================================================
 !
@@ -1835,7 +1871,6 @@ contains
    complex (kind=CmplxKind) :: ec
 !
    complex (kind=CmplxKind), pointer :: green(:,:,:)
-   complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
    complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
 !
    type (GridStruct), pointer :: Grid
@@ -2203,10 +2238,15 @@ contains
 !  In the no-spin-polarized case, a factor of 2 is included in dos.
 !  ===================================================================
    use GroupCommModule, only : GlobalSumInGroup
+!
    use RadialGridModule, only : getGrid
+!
    use StepFunctionModule, only : getVolumeIntegration
+!
    use SSSolverModule, only : solveSingleScattering, computeDOS, getDOS
    use SSSolverModule, only : getOutsideDOS, computePhaseShift, getPhaseShift
+   use SSSolverModule, only : getDOSDerivative
+!
    use AtomModule, only : getLocalAtomicNumber
 !
    implicit none
@@ -2228,6 +2268,7 @@ contains
    complex (kind=CmplxKind), intent(out) :: aux(:)
    complex (kind=CmplxKind) :: energy
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
+   complex (kind=CmplxKind), pointer :: der_dos_r_jl(:,:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -2257,6 +2298,9 @@ contains
       call computeDOS()
    endif
    dos_r_jl => getDOS()
+   if (rad_derivative) then
+      der_dos_r_jl => getDOSDerivative()
+   endif
 !  -------------------------------------------------------------------
    iend = size(dos_r_jl,1); jmax_dos = size(dos_r_jl,2)
    Grid => getGrid(id)
@@ -2306,6 +2350,14 @@ contains
 !     ----------------------------------------------------------------
    enddo
    n = LastValue(id)%NumRs*jmax_dos
+   if (rad_derivative) then
+      do jl = 1, jmax_dos
+         do ir = 1, LastValue(id)%NumRs
+            aux(n+ir) = rmul*sfac*der_dos_r_jl(ir,jl)
+         enddo
+         n = n + LastValue(id)%NumRs
+      enddo
+   endif
    aux(n+1) = rmul*dos
    aux(n+2) = rmul*dos_mt
    aux(n+3) = rmul*dos*energy
@@ -2336,6 +2388,7 @@ contains
 !
    use SSSolverModule, only : solveSingleScattering
    use SSSolverModule, only : computeGreenFunction, getGreenFunction
+   use SSSolverModule, only : getGreenFunctionDerivative
 !
    implicit none
 !
@@ -2352,6 +2405,7 @@ contains
    complex (kind=CmplxKind) :: energy, cmul, greenint, greenint_mt, ede
    complex (kind=CmplxKind), pointer :: green(:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
+   complex (kind=CmplxKind), pointer :: der_green(:,:), der_dos_r_jl(:,:)
    complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
 !
    type (GridStruct), pointer :: Grid
@@ -2412,6 +2466,19 @@ contains
       pcv_z => dos_r_jl(1:iend,jl)
       pcv_z = sfac*SQRTm1*(cmul*pcv_x-m1m(m)*conjg(cmul*pcv_y))/PI2
    enddo
+   if (rad_derivative) then
+      der_green=>getGreenFunctionDerivative()
+      der_dos_r_jl => aliasArray2_c(aux(n+1:2*n), iend, jmax)
+      do jl = 1, jmax
+         l = lofj(jl); m = mofj(jl)
+         kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
+         pcv_x => der_green(1:iend,kl)
+         pcv_y => der_green(1:iend,klc)
+         pcv_z => der_dos_r_jl(1:iend,jl)
+         pcv_z = sfac*SQRTm1*(cmul*pcv_x-m1m(m)*conjg(cmul*pcv_y))/PI2
+      enddo
+      n = n + iend*jmax
+   endif
    aux(n+1) = SQRTm1*cmul*greenint/PI
    aux(n+2) = SQRTm1*cmul*greenint_mt/PI
    aux(n+3) = SQRTm1*cmul*ede*greenint/PI
@@ -3336,27 +3403,42 @@ contains
 !
    if (ns == 4) then !when ns=4, is=1:4,for relativistic Bxyz calculation. Added by xianglin
       if (is_Bxyz) then
+         n0 = 0
+         n = CurrentValue%NumRs*CurrentValue%jmax
          do js = 1,4
-            n = CurrentValue%NumRs*CurrentValue%jmax
-            n0 = (js-1)*(n+4)
+!           n0 = (js-1)*(n+4)
 !           ----------------------------------------------------------------
             call zcopy(n,dos_array(n0+1:n0+n),1,CurrentValue%dos_r_jl(1,1,js),1)
-      !     ----------------------------------------------------------------
-      !     write(6,'(a,i5)')'Size of dos_array = ',n+4
-            CurrentValue%dos(js) = dos_array(n0+n+1)
-            CurrentValue%dos_mt(js) = dos_array(n0+n+2)
-            CurrentValue%evalsum(js) = dos_array(n0+n+3)
-            if (IntegratedSingleSite) then
-               ssIDOS_out(js,id) = real(dos_array(n0+n+4),kind=RealKind)
+!           ----------------------------------------------------------------
+            n0 = n0 + n
+            if (rad_derivative) then
+!              -------------------------------------------------------------
+               call zcopy(n,dos_array(n0+1:n0+n),1,CurrentValue%der_dos_r_jl(1,1,js),1)
+!              -------------------------------------------------------------
+               n0 = n0 + n
             endif
+!           write(6,'(a,i5)')'Size of dos_array = ',n+4
+            CurrentValue%dos(js) = dos_array(n0+1)
+            CurrentValue%dos_mt(js) = dos_array(n0+2)
+            CurrentValue%evalsum(js) = dos_array(n0+3)
+            if (IntegratedSingleSite) then
+               ssIDOS_out(js,id) = real(dos_array(n0+4),kind=RealKind)
+            endif
+            n0 = n0 + 4
          enddo
       else
          js=is
          n = CurrentValue%NumRs*CurrentValue%jmax
-   !     ----------------------------------------------------------------
+!        ----------------------------------------------------------------
          call zcopy(n,dos_array,1,CurrentValue%dos_r_jl(1,1,js),1)
-   !     ----------------------------------------------------------------
-   !     write(6,'(a,i5)')'Size of dos_array = ',n+4
+!        ----------------------------------------------------------------
+         if (rad_derivative) then
+!           -------------------------------------------------------------
+            call zcopy(n,dos_array(n+1),1,CurrentValue%der_dos_r_jl(1,1,js),1)
+!           -------------------------------------------------------------
+            n = 2*n
+         endif
+!        write(6,'(a,i5)')'Size of dos_array = ',n+4
          CurrentValue%dos(js) = dos_array(n+1)
          CurrentValue%dos_mt(js) = dos_array(n+2)
          CurrentValue%evalsum(js) = dos_array(n+3)
@@ -3371,10 +3453,16 @@ contains
          js = is*is   ! js = 1 or 4
       endif
       n = CurrentValue%NumRs*CurrentValue%jmax
-!     write(6,'(a,i5)')'Size of dos_array = ',n+4
 !     ----------------------------------------------------------------
       call zcopy(n,dos_array,1,CurrentValue%dos_r_jl(1,1,js),1)
 !     ----------------------------------------------------------------
+      if (rad_derivative) then
+!        -------------------------------------------------------------
+         call zcopy(n,dos_array(n+1),1,CurrentValue%der_dos_r_jl(1,1,js),1)
+!        -------------------------------------------------------------
+         n = 2*n
+      endif
+!     write(6,'(a,i5)')'Size of dos_array = ',n+4
       CurrentValue%dos(js) = dos_array(n+1)
       CurrentValue%dos_mt(js) = dos_array(n+2)
       CurrentValue%evalsum(js) = dos_array(n+3)
@@ -3398,6 +3486,12 @@ contains
          pca_x => aliasArray2_c(dos_array(p0+1:p0+n),iend,jmax)
          pca_y => CurrentValue%dos_r_jl(:,:,js)
          pca_y = pca_x
+         if (rad_derivative) then
+            p0 = p0 + n
+            pca_x => aliasArray2_c(dos_array(p0+1:p0+n),iend,jmax)
+            pca_y => CurrentValue%der_dos_r_jl(:,:,js)
+            pca_y = pca_x
+         endif
          p0 = p0 + n
          CurrentValue%dos(js) = dos_array(p0+1)
          CurrentValue%dos_mt(js) = dos_array(p0+2)
@@ -3461,6 +3555,13 @@ contains
    iend = ESV%NumRs; jmax = ESV%jmax
 !  -------------------------------------------------------------------
    call transformDensityMatrix(id,iend,jmax,ESV%dos_r_jl)
+!  -------------------------------------------------------------------
+   if (rad_derivative) then
+!     ----------------------------------------------------------------
+      call transformDensityMatrix(id,iend,jmax,ESV%der_dos_r_jl)
+!     ----------------------------------------------------------------
+   endif
+!  -------------------------------------------------------------------
    call transformDensityMatrix(id,ESV%dos)
    call transformDensityMatrix(id,ESV%dos_mt)
    call transformDensityMatrix(id,ESV%evalsum)
@@ -3481,6 +3582,7 @@ contains
    use MathParamModule, only : CONE, ZERO, PI
 !
    use MSSolverModule, only : getMSGreenFunction, getMSGreenMatrix
+   use MSSolverModule, only : getMSGreenFunctionDerivative
 !
    use PotentialTypeModule, only : isASAPotential
 !
@@ -3517,6 +3619,7 @@ contains
    complex (kind=CmplxKind), pointer :: green_matrix(:,:,:)
    complex (kind=CmplxKind), pointer :: green(:,:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:), pca_x(:,:), pca_y(:,:)
+   complex (kind=CmplxKind), pointer :: der_green(:,:,:), der_dos_r_jl(:,:)
    complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
 !
    type (GridStruct), pointer :: Grid
@@ -3548,6 +3651,11 @@ contains
 !     --------------------------------------------------------------
       green  => getMSGreenFunction(id,gform)
 !     --------------------------------------------------------------
+      if (rad_derivative) then
+!        -----------------------------------------------------------
+         der_green => getMSGreenFunctionDerivative(id)
+!        -----------------------------------------------------------
+      endif
    endif
 !
    sfac= TWO/real(n_spin_pola,kind=RealKind)
@@ -3668,6 +3776,18 @@ contains
          pcv_z = sfac*SQRTm1*(cmul*pcv_x-m1m(m)*conjg(cmul*pcv_y))/PI2
       enddo
       p0 = p0 + n
+      if (rad_derivative) then
+         der_dos_r_jl => aliasArray2_c(dos_array(p0+1:p0+n), iend, jmax)
+         do jl = 1, jmax
+            l = lofj(jl); m = mofj(jl)
+            kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
+            pcv_x => der_green(:,kl,ks)
+            pcv_y => der_green(:,klc,ks)
+            pcv_z => der_dos_r_jl(:,jl)
+            pcv_z = sfac*SQRTm1*(cmul*pcv_x-m1m(m)*conjg(cmul*pcv_y))/PI2
+         enddo
+         p0 = p0 + n
+      endif
       dos_array(p0+1)  = SQRTm1*greenint(ks)/PI
       dos_array(p0+2) = SQRTm1*greenint_mt(ks)/PI
       dos_array(p0+3) = SQRTm1*ede*greenint(ks)/PI
@@ -3748,6 +3868,11 @@ contains
 !     ----------------------------------------------------------------
       call GlobalSumInGroup(eGID,pESVAL%dos_r_jl(1:iend,1:jmax,1:ns),iend,jmax,ns)
 !     ----------------------------------------------------------------
+      if (rad_derivative) then
+!        -------------------------------------------------------------
+         call GlobalSumInGroup(eGID,pESVAL%der_dos_r_jl(1:iend,1:jmax,1:ns),iend,jmax,ns)
+!        -------------------------------------------------------------
+      endif
       if (isDensityMatrixNeeded) then
 !        -------------------------------------------------------------
          call GlobalSumInGroup(eGID,pESVAL%density_matrix(1:kmax,1:kmax,1:ns),kmax,kmax,ns)
@@ -3861,6 +3986,11 @@ contains
 !        -------------------------------------------------------------
          call GlobalSumInGroup(eGID,pESVAL%dos_r_jl(1:iend,1:jmax,is),iend,jmax)
 !        -------------------------------------------------------------
+         if (rad_derivative) then
+!           ----------------------------------------------------------
+            call GlobalSumInGroup(eGID,pESVAL%der_dos_r_jl(1:iend,1:jmax,is),iend,jmax)
+!           ----------------------------------------------------------
+         endif
          if (isDensityMatrixNeeded) then
 !           ----------------------------------------------------------
             call GlobalSumInGroup(eGID,pESVAL%density_matrix(1:kmax,1:kmax,is),kmax,kmax)
@@ -3874,6 +4004,11 @@ contains
 !        -------------------------------------------------------------
          call GlobalSumInGroup(eGID,pESVAL%dos_r_jl(1:iend,1:jmax,1:4),iend,jmax,4)
 !        -------------------------------------------------------------
+         if (rad_derivative) then
+!           ----------------------------------------------------------
+            call GlobalSumInGroup(eGID,pESVAL%der_dos_r_jl(1:iend,1:jmax,1:4),iend,jmax,4)
+!           ----------------------------------------------------------
+         endif
          if (isDensityMatrixNeeded) then
 !           ----------------------------------------------------------
             call GlobalSumInGroup(eGID,pESVAL%density_matrix(1:kmax,1:kmax,1:4),kmax,kmax,4)
@@ -3955,6 +4090,9 @@ contains
 !
    if (.not.present(is)) then
       ESV1%dos_r_jl = ESV1%dos_r_jl + alp*ESV0%dos_r_jl
+      if (rad_derivative) then
+         ESV1%der_dos_r_jl = ESV1%der_dos_r_jl + alp*ESV0%der_dos_r_jl
+      endif
       ESV1%dos = ESV1%dos + alp*ESV0%dos
       ESV1%dos_mt = ESV1%dos_mt + alp*ESV0%dos_mt
       ESV1%evalsum = ESV1%evalsum + alp*ESV0%evalsum
@@ -3970,6 +4108,11 @@ contains
       pca_x => ESV0%dos_r_jl(:,:,is)
       pca_y => ESV1%dos_r_jl(:,:,is)
       pca_y = pca_y + alp*pca_x
+      if (rad_derivative) then
+         pca_x => ESV0%der_dos_r_jl(:,:,is)
+         pca_y => ESV1%der_dos_r_jl(:,:,is)
+         pca_y = pca_y + alp*pca_x
+      endif
       ESV1%dos(is) = ESV1%dos(is) + alp*ESV0%dos(is)
       ESV1%dos_mt(is) = ESV1%dos_mt(is) + alp*ESV0%dos_mt(is)
       ESV1%evalsum(is) = ESV1%evalsum(is) + alp*ESV0%evalsum(is)
@@ -4010,6 +4153,9 @@ contains
 !
    if (.not.present(is)) then
       ESV1%dos_r_jl = ESV1%dos_r_jl + alp*ESV0%dos_r_jl
+      if (rad_derivative) then
+         ESV1%der_dos_r_jl = ESV1%der_dos_r_jl + alp*ESV0%der_dos_r_jl
+      endif
       ESV1%dos = ESV1%dos + alp*ESV0%dos
       ESV1%dos_mt = ESV1%dos_mt + alp*ESV0%dos_mt
       ESV1%evalsum = ESV1%evalsum + alp*ESV0%evalsum
@@ -4025,6 +4171,11 @@ contains
       pca_x => ESV0%dos_r_jl(:,:,is)
       pca_y => ESV1%dos_r_jl(:,:,is)
       pca_y = pca_y + alp*pca_x
+      if (rad_derivative) then
+         pca_x => ESV0%der_dos_r_jl(:,:,is)
+         pca_y => ESV1%der_dos_r_jl(:,:,is)
+         pca_y = pca_y + alp*pca_x
+      endif
       ESV1%dos(is) = ESV1%dos(is) + alp*ESV0%dos(is)
       ESV1%dos_mt(is) = ESV1%dos_mt(is) + alp*ESV0%dos_mt(is)
       ESV1%evalsum(is) = ESV1%evalsum(is) + alp*ESV0%evalsum(is)
@@ -4127,6 +4278,9 @@ contains
    alpc = alp
 !
    ESV%dos_r_jl = alpc*ESV%dos_r_jl
+   if (rad_derivative) then
+      ESV%der_dos_r_jl = alpc*ESV%der_dos_r_jl
+   endif
    ESV%dos = alpc*ESV%dos
    ESV%dos_mt = alpc*ESV%dos_mt
    ESV%evalsum = alpc*ESV%evalsum
@@ -4639,6 +4793,12 @@ contains
       call zcopy(eValue(id)%size,eValue(id)%dos_r_jl,1,wk_dos(n+1),1)
 !     ----------------------------------------------------------------
       n = n + eValue(id)%size
+      if (rad_derivative) then
+!        -------------------------------------------------------------
+         call zcopy(eValue(id)%size,eValue(id)%der_dos_r_jl,1,wk_dos(n+1),1)
+!        -------------------------------------------------------------
+         n = n + eValue(id)%size
+      endif
    enddo
 !
 !  -------------------------------------------------------------------
@@ -4656,6 +4816,12 @@ contains
       call zcopy(eValue(id)%size,wk_dos(n+1),1,eValue(id)%dos_r_jl,1)
 !     ----------------------------------------------------------------
       n = n + eValue(id)%size
+      if (rad_derivative) then
+!        -------------------------------------------------------------
+         call zcopy(eValue(id)%size,wk_dos(n+1),1,eValue(id)%der_dos_r_jl,1)
+!        -------------------------------------------------------------
+         n = n + eValue(id)%size
+      endif
    enddo
 !
    end subroutine averageElectroStruct
@@ -4664,7 +4830,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calDensity(efermi)
+   subroutine calDensity(efermi) ! This code needs to be modified for random alloys case
 !  ===================================================================
    use ValenceDensityModule, only : updateValenceEvec,                &
                                     updateValenceCharge,              &
@@ -4691,6 +4857,12 @@ contains
       call updateValenceEnergy(id,evalsum,exc(id))
       call updateValenceDensity(id,IntegrValue(id)%dos_r_jl)
 !     ----------------------------------------------------------------
+      if (rad_derivative) then
+!        -------------------------------------------------------------
+         call updateValenceDensity(id,IntegrValue(id)%der_dos_r_jl,   &
+                                   isDerivative=.true.)
+!        -------------------------------------------------------------
+      endif
       if (n_spin_cant == 2 .and. RelativisticFlag .ne. 2) then
          call updateValenceEvec(id,IntegrValue(id)%pSC%torque)
       endif

@@ -85,6 +85,7 @@ private
    logical :: isChargeSymmOn = .false.
    logical :: isFirstExchg = .true.
    logical :: vshift_switch_on = .false.
+   logical :: gga_functional = .false.
 !
    character (len=50) :: StopRoutine
 !
@@ -169,12 +170,13 @@ private
          integer (kind=IntKind), intent(in), optional :: lmax, spin
 !
          interface
-            function getData( dname, id, ia, r, jmax_in, n ) result(v)
+            function getData( dname, id, ia, r, jmax_in, n, grad ) result(v)
                use KindParamModule, only : IntKind, RealKind
                implicit none
                character (len=*), intent(in) :: dname
                integer (kind=IntKind), intent(in) :: id, ia
                real (kind=RealKind), intent(in) :: r(3)
+               real (kind=RealKind), intent(out), optional :: grad(3)
                integer (kind=IntKind), intent(in), optional :: jmax_in, n
                real (kind=RealKind) :: v
             end function getData
@@ -198,7 +200,7 @@ contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initPotentialGeneration(nlocal,num_atoms,lmax_p,lmax_r, &
-                                      npola,istop,iprint)
+                                      npola,istop,iprint,isGGA)
 !  ===================================================================
    use IntegerFactorsModule, only : initIntegerFactors
 !
@@ -251,6 +253,8 @@ contains
 !
    character (len=*), intent(in) :: istop
 !
+   logical, intent(in), optional :: isGGA
+!
    integer (kind=IntKind), intent(in) :: nlocal,num_atoms
    integer (kind=IntKind), intent(in) :: lmax_p(nlocal)
    integer (kind=IntKind), intent(in) :: lmax_r(nlocal)
@@ -301,6 +305,12 @@ contains
    allocate( DataSizeL(LocalNumAtoms) )
 !
    StopRoutine = istop
+!
+   if (present(isGGA)) then
+      gga_functional = isGGA
+   else
+      gga_functional = .false.
+   endif
 !
    jend_max = 0 
    lmax_max = 0
@@ -1784,6 +1794,7 @@ endif
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
    use PotentialTypeModule, only : isMuffintinASAPotential
@@ -1797,7 +1808,7 @@ endif
    integer (kind=IntKind) :: na, j, ia
    integer (kind=IntKind) :: ir
    integer (kind=IntKind) :: is
-   integer (kind=IntKind) :: jmt
+   integer (kind=IntKind) :: jmt, jmt_max
    integer (kind=IntKind) :: n_Rpts
 !
    real (kind=RealKind) :: dps
@@ -1813,7 +1824,9 @@ endif
    real (kind=RealKind), pointer :: madmat(:)
    real (kind=RealKind), pointer :: Vexc(:)
    real (kind=RealKind), pointer :: rho0_p(:), mom0_p(:)
+   real (kind=RealKind), pointer :: der_rho0_p(:), der_mom0_p(:)
    real (kind=RealKind), pointer :: r_mesh(:)
+   real (kind=RealKind), allocatable, target :: der_rho_ws(:), der_mom_ws(:)
 !
 !   real (kind=RealKind), allocatable :: vmt1(:)
 !
@@ -1836,6 +1849,7 @@ endif
 !  ===================================================================
 !
    vsum = ZERO
+   jmt_max = 0
    do na=1, LocalNumAtoms
       rmt = Potential(na)%Grid%rmt
       surfamt=PI4*rmt*rmt
@@ -1847,7 +1861,10 @@ endif
       enddo
       vsum = vsum + TWO*vmt1(na)
       vmt1(na) = TWO*vmt1(na) + rhoint*surfamt
+      jmt_max = max(jmt_max, Potential(na)%jmt)
    enddo
+   allocate(der_rho_ws(jmt_max), der_mom_ws(jmt_max))
+   der_rho_ws = ZERO; der_mom_ws = ZERO
 !
 !  ===================================================================
 !  If vshift_switch_on is false, the unit cell summation of the Madelung
@@ -1909,25 +1926,38 @@ endif
 !        ============================================================
 !        retrieve the charge density and the moment density
 !        ============================================================
-         rho0_p => getSphChargeDensity("TotalNew",na,ia)
+         if (gga_functional) then
+            rho0_p => getSphChargeDensity("TotalNew",na,ia,der_rho0_p)
+         else
+            rho0_p => getSphChargeDensity("TotalNew",na,ia)
+            der_rho0_p => der_rho_ws
+         endif
+         
 #ifdef No_BLAS
          rho_tmp_r(1:jmt) = rho0_p(1:jmt)
 #else
-!     ---------------------------------------------------------------
+!        ------------------------------------------------------------
          call dcopy(jmt,rho0_p(1:jmt),1,rho_tmp_r(1:jmt),1)
-!     ---------------------------------------------------------------
+!        ------------------------------------------------------------
 #endif
          if (n_spin_pola == 2) then
-            mom0_p => getSphMomentDensity("TotalNew",na,ia)
+            if (gga_functional) then
+               mom0_p => getSphMomentDensity("TotalNew",na,ia,der_mom0_p)
+            else
+               mom0_p => getSphMomentDensity("TotalNew",na,ia)
+               der_mom0_p => der_mom_ws
+            endif
 #ifdef No_BLAS
             mom_tmp_r(1:jmt) = mom0_p(1:jmt)
 #else
-!        ------------------------------------------------------------
+!           ---------------------------------------------------------
             call dcopy(jmt,mom0_p(1:jmt),1,mom_tmp_r(1:jmt),1)
-!        ------------------------------------------------------------
+!           ---------------------------------------------------------
 #endif
          else
-            mom_tmp_r(1:jmt) = ZERO
+            mom_tmp_r = ZERO
+            mom0_p => mom_tmp_r
+            der_mom0_p => der_mom_ws
          endif
 !
 !        ============================================================
@@ -1957,8 +1987,29 @@ endif
          else
             V2rmt = V2_r(jmt)
          endif
+         if (gga_functional) then
+            if (n_spin_pola == 1) then
+!              ------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho0_p,der_rho_den=der_rho0_p)
+!              ------------------------------------------------------
+            else
+!              ------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho0_p,der_rho0_p,mom0_p,der_mom0_p)
+!              ------------------------------------------------------
+            endif
+         else
+            if (n_spin_pola == 1) then
+!              ------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho0_p)
+!              ------------------------------------------------------
+            else
+!              ------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho0_p,mag_den=mom0_p)
+!              ------------------------------------------------------
+            endif
+         endif
          do is =1, n_spin_pola
-            Vexc => getExchCorrPot(jmt,rho_tmp_r(1:jmt),mom_tmp_r(1:jmt),is)
+            Vexc => getExchCorrPot(jmt,is)
             do ir = 1, jmt
                Potential(na)%potr_sph(ir,is) =                                  &
                      TWO*(-ztotss+PI8*(V1_r(ir)+(V2rmt-V2_r(ir))*r_mesh(ir))) + &
@@ -1973,6 +2024,7 @@ endif
    enddo
 !
 !   deallocate( vmt1 )
+   deallocate(der_rho_ws, der_mom_ws)
    nullify( r_mesh, Vexc)
 !
    end subroutine calSphPotential
@@ -1999,6 +2051,7 @@ endif
                                         getInterstitialElectronDensityOld, &
                                         getInterstitialMomentDensity
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
    implicit   none
@@ -2065,8 +2118,30 @@ endif
    nullify( madmat )
 !
    MuffinTinZeroCoulumb = vmt
+   if (gga_functional) then
+      if (n_spin_pola == 1) then
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO)
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO,      &
+                                        mag_den=mdenint,der_mag_den=ZERO)
+!        -------------------------------------------------------------
+      endif
+   else
+      if (n_spin_pola == 1) then
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint)
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,mag_den=mdenint)
+!        -------------------------------------------------------------
+      endif
+   endif
    do is = 1,n_spin_pola
-      vxout(is) = getExchCorrPot(rhoint,mdenint,is)
+      vxout(is) = getExchCorrPot(is)
       v0(is) = vmt + vxout(is)
       MuffinTinZeroExchCorr(is) = vxout(is)
 #ifdef DEBUG
@@ -2100,6 +2175,7 @@ endif
 !
    use StepFunctionModule, only : getVolumeIntegration
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
    implicit   none
@@ -2145,8 +2221,30 @@ endif
                   ! This can be modified in the future.
 !
    MuffinTinZeroCoulumb = vmt
+   if (gga_functional) then
+      if (n_spin_pola == 1) then
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO)
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO,      &
+                                        mag_den=mdenint,der_mag_den=ZERO)
+!        -------------------------------------------------------------
+      endif
+   else
+      if (n_spin_pola == 1) then
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint)
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call calSphExchangeCorrelation(rhoint,mag_den=mdenint)
+!        -------------------------------------------------------------
+      endif
+   endif
    do is = 1,n_spin_pola
-      vxout(is) = getExchCorrPot(rhoint,mdenint,is)
+      vxout(is) = getExchCorrPot(is)
       v0(is) = vmt + vxout(is)
       MuffinTinZeroExchCorr(is) = vxout(is)
    enddo
@@ -2169,6 +2267,7 @@ endif
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
    implicit   none
@@ -2240,8 +2339,30 @@ endif
             mdenint_tmp = ZERO
          endif
 !
+         if (gga_functional) then
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
+                                              mag_den=mdenint_tmp,der_mag_den=ZERO)
+!              -------------------------------------------------------
+            endif
+         else
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
+!              -------------------------------------------------------
+            endif
+         endif
          do is = 1,n_spin_pola
-            sums(is) = sums(is) + getExchCorrPot(rhoint_tmp,mdenint_tmp,is)
+            sums(is) = sums(is) + getExchCorrPot(is)
          enddo
          sums(3) = sums(3) + rhoint_tmp*getLocalSpeciesContent(na,ia)
       enddo
@@ -2291,6 +2412,7 @@ endif
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
    implicit   none
@@ -2402,8 +2524,30 @@ endif
 !
          dq = getDQinter(j,rhoint_tmp)
          sums(3) = sums(3) + dq
+         if (gga_functional) then
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
+                                              mag_den=mdenint_tmp,der_mag_den=ZERO)
+!              -------------------------------------------------------
+            endif
+         else
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
+!              -------------------------------------------------------
+            endif
+         endif
          do is = 1,n_spin_pola
-            sums(is) = sums(is) + dq*getExchCorrPot(rhoint_tmp,mdenint_tmp,is)
+            sums(is) = sums(is) + dq*getExchCorrPot(is)
          enddo
       enddo
    enddo
@@ -2957,284 +3101,6 @@ endif
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calExchgCorrPot()
-!  ===================================================================
-   use MPPModule, only : GlobalSum, setCommunicator, resetCommunicator
-   use ChargeDensityModule, only : getChargeDensity, getMomentDensity, &
-                                   getChargeDensityAtPoint,           &
-                                   getMomentDensityAtPoint,           &
-                                   isChargeComponentZero,             &
-                                   getRhoLmax
-   use ExchCorrFunctionalModule, only : getExchCorrPot
-   use Uniform3DGridModule, only : getNumGridPoints, isOnAtomicCellBoundary
-   use ParallelFFTModule, only : performTransformR2C, allocateFunctionSpace
-   use ParallelFFTModule, only : getParaFFTCommunicator
-!
-   implicit none
-!
-   integer (kind=IntKind) :: is, id, ir, jl, jend, ir0, ir1, ia
-   integer (kind=IntKind) :: jmin, lmin, l_rho, jmt, jmax, lmax, lmax_rho
-!
-   integer (kind=IntKind) :: ng, na, nb, nc, nn_av, nn, nlocal, comm, p, n
-!
-   real (kind=RealKind) :: r0, rmt, r, r2, pot_r, buf(3)
-   real (kind=RealKind) :: ac, bc, cc, pot_av(n_spin_pola), rho_n, mom_n
-   real (kind=RealKind), allocatable, target :: rhoData(:), momData(:), excData(:)
-   real (kind=RealKind), pointer :: p_rho(:), p_mom(:)
-   real (kind=RealKind), allocatable :: dV1_r(:)
-   real (kind=RealKind), pointer :: V_tmp(:), r_mesh(:)
-   real (kind=RealKind), pointer :: p_Vexch(:)
-#ifdef TIMING
-   real (kind=RealKind) :: t0
-#endif
-!
-   complex (kind=CmplxKind) :: V1_c0, dV1_c0
-   complex (kind=CmplxKind), pointer :: rhol(:), moml(:)
-   complex (kind=CmplxKind), pointer :: V_exc(:), vexch_jl(:,:)
-   complex (kind=CmplxKind), pointer :: p_fft_c(:)
-!
-#ifdef TIMING
-   t0 = getTime()
-#endif
-!
-   allocate( dV1_r(jend_max) )
-!
-!  ng = fft_grid%NumLocalGridPoints
-   ng = getNumGridPoints('FFT',local_grid=.true.)
-   call allocateFunctionSpace( rhoData, nlocal )
-   p_rho => rhoData
-!
-   call constructDataOnGrid( 'FFT', 'Charge', 'TotalNew', getChargeDensityAtPoint, p_rho )
-!
-   if ( n_spin_pola==2 ) then
-      call allocateFunctionSpace( momData, nlocal )
-      p_mom => momData
-      call constructDataOnGrid( 'FFT', 'Moment', 'TotalNew', getMomentDensityAtPoint, p_mom )
-   endif
-!
-   pot_av = ZERO
-   if ( n_spin_pola==1 ) then
-      nn_av = 0
-      do nn = 1, ng
-         p_rho(nn) = getExchCorrPot(p_rho(nn),ZERO,1)
-         if ( isOnAtomicCellBoundary('FFT',nn,local_index=.true.) ) then
-            nn_av = nn_av + 1
-            pot_av(1) = pot_av(1) + p_rho(nn)
-         endif
-      enddo
-   else
-      nn_av = 0
-      do nn = 1, ng
-         rho_n = p_rho(nn)
-         mom_n = p_mom(nn)
-         p_rho(nn) = getExchCorrPot(rho_n,mom_n,1)
-         p_mom(nn) = getExchCorrPot(rho_n,mom_n,2)
-         if ( isOnAtomicCellBoundary('FFT',nn,local_index=.true.) ) then
-            nn_av = nn_av + 1
-            pot_av(1) = pot_av(1) + p_rho(nn)
-            pot_av(2) = pot_av(2) + p_mom(nn)
-         endif
-      enddo
-   endif
-   buf(1) = nn_av
-   buf(2:2+n_spin_pola-1) = pot_av(1:n_spin_pola)
-   comm = getParaFFTCommunicator(MyProc=p,NumProcs=n)
-   if (comm > 0) then ! For serial FFT, comm = -1.
-      call setCommunicator(comm,p,n)
-      call GlobalSum(buf,2+n_spin_pola)
-      call resetCommunicator()
-   endif
-   if ( buf(1) >= ONE ) then
-      pot_av(1:n_spin_pola) = buf(2:2+n_spin_pola-1)/buf(1)   ! This average needs to be checked for parallel case 05/15/18
-   else
-      pot_av = ZERO
-   endif
-!
-!  write(6,*) "Surface Pot_XC Global average::",pot_av
-!
-!  Note: I am not clear why we need to calculate pot_av, the average
-!  exchange-correlation potential on atomic cell surface.
-!  -Yang Wang, 07/10/2018
-!
-   do id = 1,LocalNumAtoms
-      jend = Potential(id)%n_Rpts
-      jend = Potential(id)%jend
-      jmt = Potential(id)%jmt
-      ir0 = Potential(id)%ifit_XC
-      ir1 = jmt
-      l_rho  = getRhoLmax(id)
-      lmax   = Potential(id)%lmax
-      jmax = ((lmax+1)*(lmax+2))/2
-      lmin   = min(l_rho,Potential(id)%lmax)
-      jmin = ((lmin+1)*(lmin+2))/2
-      r_mesh => Potential(id)%Grid%r_mesh
-      r0 = r_mesh(ir0)
-      rmt = r_mesh(jmt)
-      do ir = 1,jend
-         sqrt_r(ir) =sqrt(r_mesh(ir))
-      enddo
-      Potential(id)%potL_XCHat = CZERO
-!
-      do ia = 1, Potential(id)%NumSpecies
-         rhol => getChargeDensity("TotalNew",id,ia,1)
-         do ir = 1,jend
-            rho_tmp_r(ir) = real(rhol(ir),kind=RealKind)*Y0
-         enddo
-         if ( n_spin_pola == 2 ) then
-            moml => getMomentDensity("TotalNew",id,ia,1)
-            do ir = 1,jend
-               mom_tmp_r(ir) = real(moml(ir),kind=RealKind)*Y0
-            enddo
-         else
-            mom_tmp_r(1:jend) = ZERO
-         endif
-!
-         do is = 1,n_spin_pola
-            V_exc => Potential(id)%potL_XCHat(1:jend,1,is)
-            V_tmp => getExchCorrPot( jend, rho_tmp_r(1:jend),        &
-                                     mom_tmp_r(1:jend), is )
-            do ir = 1,jend
-               V1_r(ir) = V_tmp(ir)
-               V1_c(ir) = cmplx(V1_r(ir)/Y0,ZERO,kind=CmplxKind)
-               V_exc(ir) = V1_c(ir)
-            enddo
-#ifdef Check_XC
-            if (id==1) then
-               Potential(id)%potL_Exch(1:ir1,1,is) = V1_c(1:ir1)
-               V_tmp => V1_r
-               call printDensity_r("V_XC_L0", id, ir1,r_mesh,V_tmp)
-            endif
-#endif
-!        -------------------------------------------------------------
-            call newder(V1_r,dV1_r,sqrt_r(1:),jend)
-!        -------------------------------------------------------------
-            do ir = 1,jend
-               dV1_r(ir) = HALF*dV1_r(ir)/sqrt_r(ir)
-            enddo
-            V1_c0   = cmplx(V1_r(ir0),ZERO,kind=CmplxKind)
-            dV1_c0  = cmplx(dV1_r(ir0),ZERO,kind=CmplxKind)
-!
-            r0  = r_mesh(ir0)-r_mesh(ir1)
-            bc  = (dV1_r(ir0)*r0 - V1_r(ir0) + pot_av(is))/(r0**2)
-            ac  = bc*r0-HALF*dV1_r(ir0)
-            cc  = -ac
-            do ir = ir0+1,ir1
-               r  = r_mesh(ir)-r_mesh(ir1)
-               r2 = r*r
-               V_exc(ir) = (ONE/Y0)*cmplx(ac*r*cos(-r*PI/r0) + cc*r+bc*r2 + pot_av(is), &
-                                          ZERO,kind=CmplxKind)
-            enddo
-!
-            do ir = 1,jmt
-               V_exc(ir) = V_exc(ir) - cmplx(pot_av(is)/Y0,ZERO,kind=CmplxKind)
-            enddo
-            V_exc(jmt+1:jend) = CZERO
-!            do ir = 1,jmt
-!               V_exc(ir) = HALF*(ONE+cos(r_mesh(ir)*PI/r_mesh(jmt)))*(V_exc(ir)-cmplx(pot_av(is)/Y0,ZERO,kind=CmplxKind))
-!            enddo
-!
-#ifdef Check_XC
-            vexch_jl => Potential(id)%potL_XCHat(1:jend,1:jmax,is)
-            do ir = 1,jend
-               V1_r(ir) = real(vexch_jl(ir,1)*Y0,kind=RealKind)
-            enddo
-            V_tmp => V1_r
-            if (id==1) then
-               call printDensity_r("V_XC_Hat_L0", id, jend,r_mesh,V_tmp)
-            endif
-            do ir = 1,jend
-               V1_r(ir) = real( (Potential(id)%potL_Exch(ir,1,is) -      &
-                                vexch_jl(ir,1))*Y0, kind=RealKind )
-            enddo
-            V_tmp => V1_r
-            if (id==1) then
-               call printDensity_r("Diff_V_XC_L0", id, jend,r_mesh,V_tmp)
-            endif
-#endif
-         enddo
-      enddo
-   enddo
-!
-!  -------------------------------------------------------------------
-!  On the uniform mesh compute difference between the exchange potential
-!  of total charge and the smooth exchange potential of the sherical charge.
-!  Perform the Fourier transform on the exchange potential difference
-!  and construct the full expansion of the exchange Potential.
-!  -------------------------------------------------------------------
-   p_fft_c => fft_c
-!
-   call allocateFunctionSpace( excData, nlocal )
-   p_Vexch => excData
-!
-   Potential(id)%potL_Exch = CZERO ! set ZERO here
-   do is = 1,n_spin_pola
-      p_Vexch = ZERO
-      call constructDataOnGrid( 'FFT', 'Potential', 'XCHat', getPotentialAtPoint, p_Vexch, lmax=0, spin=is )
-!
-      if ( is == 2 ) then
-         p_rho => p_mom
-      endif
-      do nn = 1, ng
-         p_Vexch(nn) = p_rho(nn)- p_Vexch(nn)
-      enddo
-!
-!     ----------------------------------------------------------------
-      call performTransformR2C(p_Vexch,p_fft_c)
-!     ----------------------------------------------------------------
-      call calRadialInterpolation(p_fft_c,0,60,iparam,v_interp)
-!     ---------------------------------------------------------------
-      do id = 1,LocalNumAtoms
-         lmax   = Potential(id)%lmax
-         lmax_rho = getRhoLmax(id)
-         jmax = ((lmax+1)*(lmax+2))/2
-         jmin = min(jmax,((lmax_rho+1)*(lmax_rho+2))/2)
-         jend = Potential(id)%jend
-         r_mesh => Potential(id)%Grid%r_mesh(1:jend)
-         do ia = 1, Potential(id)%NumSpecies
-            vexch_jl => Potential(id)%potL_Exch(1:jend,1:jmax,is)
-!           ---------------------------------------------------------
-            call calRadialProjection(jend,r_mesh,                    &
-                                     iparam(:,id),v_interp(:,id),vexch_jl)
-!           ---------------------------------------------------------
-            LOOP_jl: do jl = 1,jmin
-               if ( isChargeComponentZero(id,jl) ) then
-                  vexch_jl(1:jend,jl) = CZERO
-                  cycle LOOP_jl
-               else if ( lofj(jl)==0 ) then
-                  do ir = 1,jend
-                     pot_r = real( vexch_jl(ir,jl) +                     &
-                         Potential(id)%potL_XCHat(ir,jl,is),kind=RealKind)
-                     vexch_jl(ir,jl) = cmplx( pot_r, ZERO, kind=CmplxKind)
-                  enddo
-               else if ( mofj(jl)==0 ) then
-                  do ir = 1,jend
-                     pot_r = real( vexch_jl(ir,jl),kind=RealKind)
-                     vexch_jl(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                  enddo
-               endif
-            enddo LOOP_jl
-         enddo
-      enddo
-   enddo
-!
-   nullify(p_fft_c, p_rho, p_mom, p_Vexch)
-!
-   deallocate( dV1_r, rhoData, excData )
-   if (n_spin_pola == 2) then
-      deallocate( momData )
-   endif
-!
-#ifdef TIMING
-   t0 = getTime() - t0
-   write(6,*) "calExchgCorrPot:: Time: ",t0
-#endif
-!
-   end subroutine calExchgCorrPot
-!  ===================================================================
-!
-!  *******************************************************************
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine calFFTPseudoPot()
 !  ===================================================================
    use MPPModule, only : NumPEs, MyPE
@@ -3546,256 +3412,6 @@ endif
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calExchgCorrEnergy()
-!  ===================================================================
-   use MPPModule, only : GlobalSum, setCommunicator, resetCommunicator
-!
-   use ChargeDensityModule, only : getChargeDensity, getMomentDensity, &
-                                   getChargeDensityAtPoint,           &
-                                   getMomentDensityAtPoint,           &
-                                   isChargeComponentZero,             &
-                                   getRhoLmax
-   use ExchCorrFunctionalModule, only : getExchCorrEnDen
-   use Uniform3DGridModule, only : getNumGridPoints, isOnAtomicCellBoundary
-   use ParallelFFTModule, only : performTransformR2C, allocateFunctionSpace
-   use ParallelFFTModule, only : getParaFFTCommunicator
-!
-   implicit none
-!
-   integer (kind=IntKind) :: is, id, ia, ir, jl, jend, ir0, ir1
-   integer (kind=IntKind) :: jmin, lmin, l_rho, jmt, jmax, lmax
-   integer (kind=IntKind) :: lmax_rho, jmax_rho
-!
-   integer (kind=IntKind) :: ng, na, nb, nc, nn_av, nn, nlocal, comm, p, n
-!
-   real (kind=RealKind) :: r0, r, r2, en_r, buf(3)
-   real (kind=RealKind) ::  ac, bc, cc, en_av(n_spin_pola), rho_n, mom_n
-   real (kind=RealKind), pointer :: E_tmp(:), r_mesh(:)
-   real (kind=RealKind), pointer :: p_rho(:), p_mom(:), p_Eexch(:)
-   real (kind=RealKind), allocatable :: dE1_r(:)
-   real (kind=RealKind), allocatable, target :: rhoData(:), momData(:), excData(:)
-#ifdef TIMING
-   real (kind=RealKind) :: t0
-#endif
-!
-   complex (kind=CmplxKind) :: E1_c0, dE1_c0
-   complex (kind=CmplxKind), pointer :: rhol(:), moml(:)
-   complex (kind=CmplxKind), pointer :: E_exc(:), Eexch_jl(:,:)
-   complex (kind=CmplxKind), pointer :: p_fft_c(:)
-!
-#ifdef TIMING
-   t0 = getTime()
-#endif
-   allocate( dE1_r(jend_max) )
-!
-!  ng = fft_grid%NumLocalGridPoints
-   ng = getNumGridPoints('FFT',local_grid=.true.)
-   call allocateFunctionSpace( rhoData, nlocal )
-   p_rho => rhoData
-!
-   call constructDataOnGrid( 'FFT', 'Charge', 'TotalNew', getChargeDensityAtPoint, p_rho )
-!
-   if ( n_spin_pola==2 ) then
-      call allocateFunctionSpace( momData, nlocal )
-      p_mom => momData
-      call constructDataOnGrid( 'FFT', 'Moment', 'TotalNew', getMomentDensityAtPoint, p_mom )
-   endif
-!
-   en_av(1:n_spin_pola) = ZERO
-   if ( n_spin_pola==1 ) then
-      nn = 0
-      nn_av = 0
-      do nn = 1, ng
-         p_rho(nn) = getExchCorrEnDen(p_rho(nn),ZERO,1)
-         if ( isOnAtomicCellBoundary('FFT',nn,local_index=.true.) ) then
-            nn_av = nn_av + 1
-            en_av(1) = en_av(1) + p_rho(nn)
-         endif
-      enddo
-   else
-      nn = 0
-      nn_av = 0
-      do nn = 1, ng
-         rho_n = p_rho(nn)
-         mom_n = p_mom(nn)
-         p_rho(nn) = getExchCorrEnDen(rho_n,mom_n,1)
-         p_mom(nn) = getExchCorrEnDen(rho_n,mom_n,2)
-         if ( isOnAtomicCellBoundary('FFT',nn,local_index=.true.) ) then
-            nn_av = nn_av + 1
-            en_av(1) = en_av(1) + p_rho(nn)
-            en_av(2) = en_av(2) + p_mom(nn)
-         endif
-      enddo
-   endif
-   buf(1) = nn_av
-   buf(2:2+n_spin_pola-1) = en_av(1:n_spin_pola)
-   comm = getParaFFTCommunicator(MyProc=p,NumProcs=n)
-   if (comm > 0) then ! For serial FFT, comm = -1.
-      call setCommunicator(comm,p,n)
-      call GlobalSum(buf,2+n_spin_pola)
-      call resetCommunicator()
-   endif
-   if ( buf(1) >= ONE ) then
-      en_av(1:n_spin_pola) = buf(2:2+n_spin_pola-1)/buf(1)   ! This average needs to be checked for parallel case 05/15/18
-   else
-      en_av = ZERO
-   endif
-!
-!  write(6,*) "Surface Energy_XC Global average::",en_av
-!
-!  Note: I am not clear why we need to calculate en_av, the average
-!  exchange-correlation energy density on atomic cell surface.
-!  -Yang Wang, 07/10/2018
-!
-   do id = 1,LocalNumAtoms
-      jend = Potential(id)%n_Rpts
-      jend = Potential(id)%jend
-      jmt = Potential(id)%jmt
-      ir0 = Potential(id)%ifit_XC
-      ir1 = jmt
-      l_rho  = getRhoLmax(id)
-      lmax   = Potential(id)%lmax
-      jmax = ((lmax+1)*(lmax+2))/2
-      lmin   = min(l_rho,Potential(id)%lmax)
-      jmin = (lmin+1)*(lmin+2)/2
-      r_mesh => Potential(id)%Grid%r_mesh(1:jend)
-      r0 = r_mesh(ir0)
-      do ir = 1,jend
-         sqrt_r(ir) =sqrt(r_mesh(ir))
-      enddo
-      Potential(id)%enL_XCHat = CZERO
-!
-      do ia = 1, Potential(id)%NumSpecies
-         rhol => getChargeDensity("TotalNew",id,ia,1)
-         do ir = 1,jend
-            rho_tmp_r(ir) = real(rhol(ir),kind=RealKind)*Y0
-         enddo
-         if ( n_spin_pola == 2 ) then
-            moml => getMomentDensity("TotalNew",id,ia,1)
-            do ir = 1,jend
-               mom_tmp_r(ir) = real(moml(ir),kind=RealKind)*Y0
-            enddo
-         else
-            mom_tmp_r(1:jend) = ZERO
-         endif
-         do is = 1,n_spin_pola
-            E_exc => Potential(id)%enL_XCHat(1:jend,1,is)
-            E_tmp => getExchCorrEnDen( jend, rho_tmp_r(1:jend),          &
-                                        mom_tmp_r(1:jend), is )
-            do ir = 1,jend
-               E1_r(ir) = E_tmp(ir)
-               E1_c(ir) = cmplx(E1_r(ir)/Y0,ZERO,kind=CmplxKind)
-               E_exc(ir) = E1_c(ir)
-            enddo
-!           ----------------------------------------------------------
-            call newder(E1_r,dE1_r,sqrt_r(1:),jend)
-!           ----------------------------------------------------------
-            do ir = 1, jend
-               dE1_r(ir) = HALF*dE1_r(ir)/sqrt_r(ir)
-            enddo
-            E1_c0   = cmplx(E1_r(ir0),ZERO,kind=CmplxKind)
-            dE1_c0  = cmplx(dE1_r(ir0),ZERO,kind=CmplxKind)
-!
-            r0  = r_mesh(ir0)-r_mesh(ir1)
-            bc  = (dE1_r(ir0)*r0 - E1_r(ir0) + en_av(is))/(r0**2)
-            ac  = bc*r0-HALF*dE1_r(ir0)
-            cc  = -ac
-            do ir = ir0+1,ir1
-               r  = r_mesh(ir)-r_mesh(ir1)
-               r2 = r*r
-               E_exc(ir) = (ONE/Y0)*cmplx(ac*r*cos(-r*PI/r0) + cc*r+bc*r2 + &
-                                           en_av(is), ZERO,kind=CmplxKind)
-            enddo
-            do ir = 1,jmt
-               E_exc(ir) = E_exc(ir) - cmplx(en_av(is)/Y0,ZERO,kind=CmplxKind)
-            enddo
-            E_exc(jmt+1:jend) = CZERO
-         enddo
-      enddo
-   enddo
-!
-!  -------------------------------------------------------------------
-!  On the uniform mesh compute difference between the exchange correlation
-!  energy of total charge and the smooth exchange potential of the sherical
-!  charge. Perform the Fourier transform on the exchange correlation
-!  potential difference and construct the full spherical harmonics expansion
-!  of the exchange correlation potential.
-!  -------------------------------------------------------------------
-   p_fft_c => fft_c
-!
-   call allocateFunctionSpace( excData, nlocal )
-   p_Eexch => excData
-!
-   Potential(id)%enL_Exch = CZERO  ! set ZERO here
-   do is = 1,n_spin_pola
-      p_Eexch = ZERO
-      call constructDataOnGrid( 'FFT', 'Potential', 'En_XCHat', getPotentialAtPoint, p_Eexch, lmax=0, spin=is )
-!
-      if ( is == 2 ) then
-         p_rho => p_mom
-      endif
-      do nn = 1, ng
-         p_Eexch(nn) = p_rho(nn) - p_Eexch(nn)
-      enddo
-!
-!     ----------------------------------------------------------------
-      call performTransformR2C(p_Eexch,p_fft_c)
-!     ----------------------------------------------------------------
-      call calRadialInterpolation(p_fft_c,0,80,iparam,v_interp)
-!     ---------------------------------------------------------------
-      do id = 1,LocalNumAtoms
-         lmax   = Potential(id)%lmax
-         lmax_rho = getRhoLmax(id)
-         jmax_rho = ((lmax_rho+1)*(lmax_rho+2))/2
-         jmax = ((lmax+1)*(lmax+2))/2
-         jmin = min(jmax,jmax_rho)
-         jend = Potential(id)%jend
-         r_mesh => Potential(id)%Grid%r_mesh(1:jend)
-         Eexch_jl => Potential(id)%enL_Exch(1:jend,1:jmax,is)
-!        ------------------------------------------------------------
-         call calRadialProjection(jend,r_mesh,                       &
-                                  iparam(:,id),v_interp(:,id),Eexch_jl)
-!        ------------------------------------------------------------
-!
-         LOOP_jl: do jl = 1,jmax
-            if ( isChargeComponentZero(id,jl) .and. jl<=jmax_rho) then
-               Eexch_jl(1:jend,jl) = CZERO
-               cycle LOOP_jl
-            else if ( lofj(jl)==0 ) then
-               do ir = 1,jend
-                  en_r = real( Eexch_jl(ir,jl) + &
-                       Potential(id)%enL_XCHat(ir,jl,is),kind=RealKind)
-                  Eexch_jl(ir,jl) = cmplx(en_r,ZERO,kind=CmplxKind)
-               enddo
-            else if ( mofj(jl)==0 ) then
-               do ir = 1,jend
-                  en_r = real( Eexch_jl(ir,jl), kind=RealKind )
-                  Eexch_jl(ir,jl) = cmplx(en_r,ZERO,kind=CmplxKind)
-               enddo
-            endif
-         enddo LOOP_jl
-!
-      enddo
-   enddo
-!
-   deallocate( dE1_r )
-!
-   nullify(p_fft_c, p_rho, p_mom, p_Eexch)
-   deallocate( rhoData, excData)
-   if (n_spin_pola == 2) then
-      deallocate( momData )
-   endif
-#ifdef TIMING
-   t0 = getTime()-t0
-   write(6,*) "calExchgCorrEnergy:: Time : ",t0
-#endif
-!
-   end subroutine calExchgCorrEnergy
-!  ===================================================================
-!
-!  *******************************************************************
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine calExchangeJl(id,ia,lmax_in)
 !  ===================================================================
 !  use SystemSymmetryModule, only : getSymmetryFlags ! The symmetry break is likely 
@@ -3805,6 +3421,7 @@ endif
                                    getChargeDensityAtPoint,           &
                                    getMomentDensityAtPoint,           &
                                    getRhoLmax
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : calExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrEnDen
    use ExchCorrFunctionalModule, only : getExchCorrPot
@@ -3822,17 +3439,21 @@ endif
 !  integer (kind=IntKind), pointer :: flags_jl(:)
 !
    real (kind=RealKind) :: posi(3), fact, sint, cost, sinp, cosp, r
+   real (kind=RealKind) :: grad_rho(3), grad_mom(3)
    real (kind=RealKind) :: rho, mom, pXC_rtp, eXC_rtp, pXC_r0(2), eXC_r0(2)
    real (kind=RealKind), pointer :: r_mesh(:), V_tmp(:)
    real (kind=RealKind), pointer :: theta(:), phi(:)
    real (kind=RealKind), pointer :: wght_the(:), wght_phi(:)
    real (kind=RealKind), pointer :: chgmom_data(:,:,:,:,:)
+   real (kind=RealKind), allocatable :: der_rho_tmp(:), der_mom_tmp(:)
 #ifdef TIMING
    real (kind=RealKind) :: t0, t1, t2
 #endif
 !
    complex (kind=CmplxKind) :: a, b, y1, y2, x1, x2
-   complex (kind=CmplxKind), pointer :: pylm(:), rhol(:,:), moml(:,:), V_exc(:)
+   complex (kind=CmplxKind), pointer :: rhol(:,:), der_rhol(:,:)
+   complex (kind=CmplxKind), pointer :: moml(:,:), der_moml(:,:)
+   complex (kind=CmplxKind), pointer :: pylm(:), V_exc(:)
    complex (kind=CmplxKind), pointer :: potL_Exch(:,:,:), enL_Exch(:,:,:)
    complex (kind=CmplxKind), pointer :: ylm_ngl(:,:)
 !
@@ -3880,32 +3501,70 @@ endif
 !  Early exit
 !
    if ( lmax_in==0 ) then
-      rhol => getChargeDensity("TotalNew",id,ia)
+      allocate(der_rho_tmp(jend), der_mom_tmp(jend))
+      if (gga_functional) then
+         rhol => getChargeDensity("TotalNew",id,ia,der_rhol)
+         do ir = 1,jend
+            der_rho_tmp(ir) = real(der_rhol(ir,1),kind=RealKind)*Y0
+         enddo
+      else
+         rhol => getChargeDensity("TotalNew",id,ia)
+         der_rho_tmp = ZERO
+      endif
       do ir = 1,jend
          rho_tmp_r(ir) = real(rhol(ir,1),kind=RealKind)*Y0
       enddo
       if ( n_spin_pola == 2 ) then
-         moml => getMomentDensity("TotalNew",id,ia)
+         if (gga_functional) then
+            moml => getMomentDensity("TotalNew",id,ia,der_moml)
+            do ir = 1,jend
+               der_mom_tmp(ir) = real(der_moml(ir,1),kind=RealKind)*Y0
+            enddo
+         else
+            moml => getMomentDensity("TotalNew",id,ia)
+            der_mom_tmp = ZERO
+         endif
          do ir = 1,jend
             mom_tmp_r(ir) = real(moml(ir,1),kind=RealKind)*Y0
          enddo
+         if (gga_functional) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(jend,rho_tmp_r(1:),        &
+                                           der_rho_den=der_rho_tmp,   &
+                                           mag_den=mom_tmp_r(1:),     &
+                                           der_mag_den=der_mom_tmp)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(jend,rho_tmp_r(1:),        &
+                                           mag_den=mom_tmp_r(1:))
+!           ----------------------------------------------------------
+         endif
       else
-         mom_tmp_r(1:jend) = ZERO
+         if (gga_functional) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(jend,rho_tmp_r(1:),        &
+                                           der_rho_den=der_rho_tmp)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(jend,rho_tmp_r(1:))
+!           ----------------------------------------------------------
+         endif
       endif
       do is = 1,n_spin_pola
          V_exc => Potential(id)%potL_Exch(1:jend,1,is)
-         V_tmp => getExchCorrPot( jend, rho_tmp_r(1:jend),        &
-                                  mom_tmp_r(1:jend), is )
+         V_tmp => getExchCorrPot(jend,is)
          do ir = 1,jend
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
          enddo
          V_exc => Potential(id)%enL_Exch(1:jend,1,is)
-         V_tmp => getExchCorrEnDen( jend, rho_tmp_r(1:jend),      &
-                                    mom_tmp_r(1:jend), is )
+         V_tmp => getExchCorrEnDen(jend,is)
          do ir = 1,jend
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
          enddo
       enddo
+      deallocate(der_rho_tmp, der_mom_tmp)
 !
       return
    endif
@@ -3964,24 +3623,49 @@ endif
 !
             posi(3) = cosp
             posi(1:3) = r_mesh(ir)*posi(1:3)
-            rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi )
+            if (gga_functional) then
+               rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi, grad=grad_rho )
+            else
+               rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi )
+               grad_rho = ZERO
+            endif
             if ( rho <= ZERO ) then
                cycle Loop_the01
             endif
-            mom = ZERO
             if ( n_spin_pola==2 ) then
-               mom = getMomentDensityAtPoint( 'TotalNew', id, ia, posi )
+               if (gga_functional) then
+                  mom = getMomentDensityAtPoint( 'TotalNew', id, ia, posi, grad=grad_mom )
+!                 ----------------------------------------------------
+                  call calExchangeCorrelation(rho,grad_rho,mom,grad_mom)
+!                 ----------------------------------------------------
+               else
+                  mom = getMomentDensityAtPoint( 'TotalNew', id, ia, posi )
+!                 ----------------------------------------------------
+                  call calExchangeCorrelation(rho,mag_den=mom)
+!                 ----------------------------------------------------
+               endif
+            else
+               if (gga_functional) then
+!                 ----------------------------------------------------
+                  call calExchangeCorrelation(rho,grad_rho_den=grad_rho)
+!                 ----------------------------------------------------
+               else
+!                 ----------------------------------------------------
+                  call calExchangeCorrelation(rho)
+!                 ----------------------------------------------------
+               endif
             endif
             do is = 1,n_spin_pola
-               call calExchangeCorrelation(rho,mom,is,pXC_rtp,eXC_rtp)
+!              -------------------------------------------------------
+               pXC_rtp = getExchCorrPot(is)
+               eXC_rtp = getExchCorrEnDen(is)
+!              -------------------------------------------------------
                chgmom_data(is,1,it0,ip0,ir) = pXC_rtp
                chgmom_data(is,2,it0,ip0,ir) = eXC_rtp
                pXC_rtp = pXC_rtp*wght_the(it)
-               pXC_rphi(1,is) = pXC_rphi(1,is) +                &
-                              Y0*cmplx(pXC_rtp,ZERO,Kind=CmplxKind)
+               pXC_rphi(1,is) = pXC_rphi(1,is) + Y0*cmplx(pXC_rtp,ZERO,Kind=CmplxKind)
                eXC_rtp = eXC_rtp*wght_the(it)
-               eXC_rphi(1,is) = eXC_rphi(1,is) +                &
-                              Y0*cmplx(eXC_rtp,ZERO,Kind=CmplxKind)
+               eXC_rphi(1,is) = eXC_rphi(1,is) + Y0*cmplx(eXC_rtp,ZERO,Kind=CmplxKind)
             enddo
          enddo Loop_the01
          fact = sinp*wght_phi(ip)
@@ -4487,7 +4171,7 @@ endif
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getPotentialAtPoint( potType, id, ia, posi, jmax_in, spin ) result(pot)
+   function getPotentialAtPoint( potType, id, ia, posi, jmax_in, spin, grad ) result(pot)
 !  ===================================================================
    use SphericalHarmonicsModule, only : calYlm
 !
@@ -4508,6 +4192,7 @@ endif
    integer (kind=IntKind), intent(in), optional :: spin
 !
    real (kind=RealKind), intent(in) :: posi(3)
+   real (kind=RealKind), intent(out), optional :: grad(3) ! So far it is not used
 !
    integer (kind=IntKind) :: iend, irp, ir, l, kl, jl, ns, jmt, jmax
 !

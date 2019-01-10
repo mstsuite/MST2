@@ -1,6 +1,6 @@
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine constructDataOnGrid( grid_name, value_name, value_type, &
-                                   getDataAtPoint, denOnGrid, lmax, spin )
+                                   getDataAtPoint, DenOnGrid, lmax, spin )
 !  ===================================================================
    use KindParamModule, only : IntKind, RealKind
    use ErrorHandlerModule, only : ErrorHandler
@@ -33,7 +33,7 @@
 !
    character(len=*), intent(in) :: grid_name, value_name, value_type
 !
-   real (kind=RealKind), intent(out) :: denOnGrid(:)
+   real (kind=RealKind), intent(out) :: DenOnGrid(:)
 !
    type (UniformGridStruct), pointer :: gp
 !
@@ -52,13 +52,14 @@
    real (kind=RealKind), allocatable :: den_local(:), den_remote(:,:)
 !
    interface
-      function getDataAtPoint( dname, id, ia, r, jmax_in, n ) result(v)
+      function getDataAtPoint( dname, id, ia, r, jmax_in, n, grad ) result(v)
          use KindParamModule, only : IntKind, RealKind
          implicit none
          character (len=*), intent(in) :: dname
          integer (kind=IntKind), intent(in) :: id, ia
          real (kind=RealKind), intent(in) :: r(3)
          integer (kind=IntKind), intent(in), optional :: jmax_in, n
+         real (kind=RealKind), intent(out), optional :: grad(3)
          real (kind=RealKind) :: v
       end function getDataAtPoint
    end interface
@@ -123,7 +124,7 @@
    call setCommunicator(comm,MyPEinAGroup,NumPEsInAGroup,sync=.true.)
 !  -------------------------------------------------------------------
 !
-   denOnGrid = ZERO
+   DenOnGrid = ZERO
 !  ===================================================================
 !  loop over grid points in each atom box on my process
 !  ===================================================================
@@ -165,45 +166,45 @@
          if (isDensityType) then
             if (present(lmax)) then
                do ia = 1, getLocalNumSpecies(id)
-                  den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,           &
-                                             jmax_in=jmax, n=n_mult)*getLocalSpeciesContent(id,ia)
+                  den_local(ig) = den_local(ig) +                          &
+                                  getDataAtPoint(value_type, id, ia, r,    &
+                                                 jmax_in=jmax, n=n_mult)*getLocalSpeciesContent(id,ia)
                enddo
             else
                do ia = 1, getLocalNumSpecies(id)
-                  den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,           &
-                                             n=n_mult)*getLocalSpeciesContent(id,ia)
+                  den_local(ig) = den_local(ig) +                          &
+                                  getDataAtPoint(value_type, id, ia, r,    &
+                                                 n=n_mult)*getLocalSpeciesContent(id,ia)
                enddo
             endif
          else
             if (present(lmax) .and. present(spin)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,           &
-                                             jmax_in=jmax, n=spin)*getLocalSpeciesContent(id,ia)
+                                  getDataAtPoint(value_type, id, ia, r,       &
+                                                 jmax_in=jmax, n=spin)*getLocalSpeciesContent(id,ia)
                enddo
             else if (present(lmax)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,           &
-                                             jmax_in=jmax)*getLocalSpeciesContent(id,ia)
+                                  getDataAtPoint(value_type, id, ia, r,       &
+                                                 jmax_in=jmax)*getLocalSpeciesContent(id,ia)
                enddo
             else if (present(spin)) then
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                              getDataAtPoint(value_type, id, ia, r,           &
-                                             n=spin)*getLocalSpeciesContent(id,ia)
+                                  getDataAtPoint(value_type, id, ia, r,       &
+                                                 n=spin)*getLocalSpeciesContent(id,ia)
                enddo
             else
                do ia = 1, getLocalNumSpecies(id)
                   den_local(ig) = den_local(ig) +                             &
-                             getDataAtPoint(value_type, id, ia, r)*getLocalSpeciesContent(id,ia)
+                                  getDataAtPoint(value_type, id, ia, r)*getLocalSpeciesContent(id,ia)
                enddo
             endif
          endif
 !        =============================================================
-!        Note: since denOnGrid will be summed over across all atoms, den_local
+!        Note: since DenOnGrid will be summed over across all atoms, den_local
 !              needs to be divided by n_mult so that the density/potential 
 !              value at this grid point is averaged over the assoicated atoms.
 !
@@ -212,7 +213,7 @@
 !        =============================================================
          den_local(ig) = den_local(ig)/real(n_mult,kind=RealKind)
          if (isLocalGrid(gp,gCounter,local_id)) then
-            denOnGrid(local_id) = denOnGrid(local_id) + den_local(ig)
+            DenOnGrid(local_id) = DenOnGrid(local_id) + den_local(ig)
          endif
       enddo LOOP_ig
 !
@@ -238,7 +239,7 @@
          do ig = 1, grid_remote(2,i)
             gCounter = grid_remote(ig+2,i)
             if (isLocalGrid(gp,gCounter,local_id)) then
-               denOnGrid(local_id) = denOnGrid(local_id) + den_remote(ig,i)
+               DenOnGrid(local_id) = DenOnGrid(local_id) + den_remote(ig,i)
             endif
          enddo
       enddo

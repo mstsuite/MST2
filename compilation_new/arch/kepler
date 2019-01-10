@@ -50,6 +50,12 @@ CPPFLAGS=-DUnderscore -g
 #ADDLIBS = -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++
 #ADDLIBS = -lm -lcudart -lcuda -lcublas -lstdc++
 ADDLIBS =-lscalapack -L/opt/pgi/linux86-64/14.6/lib -lacml
+
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
+
 #=====================================================================
 #                         Preprocessing Flags
 #
@@ -150,7 +156,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

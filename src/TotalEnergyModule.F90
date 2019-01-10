@@ -21,6 +21,7 @@ private
    logical :: Initialized = .false.
    logical :: InitFactors = .false.
    logical :: Computed = .false.
+   logical :: gga_functional = .false.
 !
    integer (kind=IntKind) :: LocalNumAtoms
    integer (kind=IntKind) :: GlobalNumAtoms
@@ -54,7 +55,7 @@ contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initTotalEnergy(nlocal,num_atoms,num_vacancies,         &
-                              npola,istop,iprint)
+                              npola,istop,iprint,isGGA)
 !  ===================================================================
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
    use Atom2ProcModule, only : getGlobalIndex
@@ -63,6 +64,8 @@ contains
    implicit none
 !
    character (len=*), intent(in) :: istop
+!
+   logical, intent(in), optional :: isGGA
 !
    integer (kind=IntKind), intent(in) :: nlocal,num_atoms,num_vacancies
    integer (kind=IntKind), intent(in) :: npola
@@ -101,6 +104,12 @@ contains
    InitFactors = .false.
    Initialized = .true.
    Computed = .false.
+!
+   if (present(isGGA)) then
+      gga_functional = isGGA
+   else
+      gga_functional = .false.
+   endif
 !
    end subroutine initTotalEnergy
 !  ===================================================================
@@ -557,9 +566,9 @@ contains
             exc_term_mt = exc_term_mt + vint_mt*content
 !
 !           ==========================================================
-!           fact1 = int{rho(r)*[v_coul/2 - 3*v_xc + 3*e_xc(r)}
+!           fact1 = int{rho(r)*[v_coul(r)/2 - 3*e_xc(r) + 3*v_xc(r)}
 !           ==========================================================
-            v_tmp = 0.5d0*v_coulomb + 3.0d0*(e_xc-v_xc)
+            v_tmp = 0.5d0*v_coulomb - 3.0d0*(e_xc-v_xc)
 !           ----------------------------------------------------------
             call computeProdExpan(jend,lmax_rho,rho_tmp,lmax_pot,v_tmp,lmax_prod,prod)
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend),      &
@@ -764,6 +773,7 @@ contains
    use CoreStatesModule, only : getDeepCoreEnergy, getSemiCoreEnergy,   &
                                 getDeepCoreDensity, getSemiCoreDensity
 !
+   use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot, getExchCorrEnDen
 !
 !  use DataServiceCenterModule, only : getDataStorage, RealMark
@@ -786,9 +796,10 @@ contains
 !
    integer (kind=IntKind), parameter :: janak_form = 2
 !
-   real (kind=RealKind), pointer :: rho_tot(:)
-   real (kind=RealKind), pointer :: mom_tot(:)
+   real (kind=RealKind), pointer :: rho_tot(:), der_rho_tot(:)
+   real (kind=RealKind), pointer :: mom_tot(:), der_mom_tot(:)
 !
+   real (kind=RealKind), allocatable, target :: rho_tmp(:)
    real (kind=RealKind), allocatable, target :: mom_tmp(:)
    real (kind=RealKind), allocatable :: rho_spin(:)
    real (kind=RealKind), pointer :: vrold(:)
@@ -832,12 +843,9 @@ contains
        jmt = max(jmt,Grid%jmt)
    enddo
    allocate(rho_spin(jmt))
-   if (n_spin_pola == 1) then
-      allocate( mom_tmp(jmt) )
-      do ir = 1, jmt
-         mom_tmp(ir) = ZERO
-      enddo
-   endif
+   allocate( rho_tmp(jmt), mom_tmp(jmt) )
+   rho_tmp = ZERO
+   mom_tmp = ZERO
 !
 #ifdef DEBUG_EPRINT
    e_array = ZERO
@@ -864,12 +872,32 @@ contains
       do ia = 1, getLocalNumSpecies(na)
          ztotss = getLocalAtomicNumber(na,ia)
          content = getLocalSpeciesContent(na,ia)
-         rho_tot => getSphChargeDensity('TotalNew',na,ia)
-         if (n_spin_pola == 1) then
-            mom_tot => mom_tmp(1:jmt)
+         if (gga_functional) then
+            rho_tot => getSphChargeDensity('TotalNew',na,ia,der_rho_tot)
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho_tot,der_rho_den=der_rho_tot)
+!              -------------------------------------------------------
+            else
+!              mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,RealMark)
+               mom_tot => getSphMomentDensity('TotalNew',na,ia,der_mom_tot)
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho_tot,der_rho_tot,mom_tot,der_mom_tot)
+!              -------------------------------------------------------
+            endif
          else
-!           mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,RealMark)
-            mom_tot => getSphMomentDensity('TotalNew',na,ia)
+            rho_tot => getSphChargeDensity('TotalNew',na,ia)
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho_tot)
+!              -------------------------------------------------------
+            else
+!              mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,RealMark)
+               mom_tot => getSphMomentDensity('TotalNew',na,ia)
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(jmt,rho_tot,mag_den=mom_tot)
+!              -------------------------------------------------------
+            endif
          endif
          do is = 1,n_spin_pola
             if ( Print_Level(na) >= 0 ) then
@@ -880,8 +908,8 @@ contains
 !
             valden_rho => getSphRho(na,ia,is)
 !
-            vx => getExchCorrPot(jmt,rho_tot,mom_tot,is)
-            enxc => getExchCorrEnDen(jmt,rho_tot,mom_tot,is)
+            vx => getExchCorrPot(jmt,is)
+            enxc => getExchCorrEnDen(jmt,is)
 !
             deepcore => getDeepCoreDensity(na,ia,is)
             semicore => getSemiCoreDensity(na,ia,is)
@@ -935,10 +963,8 @@ contains
       etot = etot + ecorr
    enddo
    deallocate( rho_spin )
-   nullify( rho_tot, mom_tot )
-   if (n_spin_pola == 1) then
-      deallocate( mom_tmp )
-   endif
+   nullify( rho_tot, mom_tot, der_rho_tot, der_mom_tot )
+   deallocate( rho_tmp, mom_tmp )
 !  ===================================================================
 !  Perform global sums for the Energy and pressure
 !  ===================================================================
@@ -977,11 +1003,32 @@ contains
    emad = ZERO
    emadp = ZERO
    if ( isMuffintinPotential() ) then
+      if (gga_functional) then
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO,   &
+                                           mag_den=mdenint,der_mag_den=ZERO)
+!           ----------------------------------------------------------
+         endif
+      else
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint,mag_den=mdenint)
+!           ----------------------------------------------------------
+         endif
+      endif
       do is = 1,n_spin_pola
          fac = sfac*(qint+(3-2*is)*mint)
-         emad = emad + fac*getExchCorrEnDen(rhoint,mdenint,is)
-         emadp= emadp + fac*THREE*(getExchCorrPot(rhoint,mdenint,is) &
-                                  -getExchCorrEnDen(rhoint,mdenint,is))
+         emad = emad + fac*getExchCorrEnDen(is)
+         emadp= emadp + fac*THREE*(getExchCorrPot(is)-getExchCorrEnDen(is))
       enddo
       do na = 1, LocalNumAtoms
          SiteEnPres(1,na) = SiteEnPres(1,na) + emad/GlobalNumAtoms
@@ -997,8 +1044,30 @@ contains
          omegmt = PI4*THIRD*rmt**3
          j = GlobalIndex(na)
          dq = Qvp_Table(j) - Qmt_Table(j) - rhoint*(getVolume(na)-omegmt)
+         if (gga_functional) then
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint,der_rho_den=ZERO, &
+                                              mag_den=mdenint,der_mag_den=ZERO)
+!              -------------------------------------------------------
+            endif
+         else
+            if (n_spin_pola == 1) then
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call calSphExchangeCorrelation(rhoint,mag_den=mdenint)
+!              -------------------------------------------------------
+            endif
+         endif
          do is=1,n_spin_pola
-            dummy = getExchCorrPot(rhoint,mdenint,is)*dq
+            dummy = getExchCorrPot(is)*dq
             SiteEnPres(1,na) = SiteEnPres(1,na) + sfac*dummy
             emad=emad+dummy
          enddo

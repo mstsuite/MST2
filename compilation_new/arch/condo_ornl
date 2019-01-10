@@ -5,6 +5,7 @@
 ##MKLROOT=/opt/cluster/intel/Compiler/11.1/073/mkl
 MKLROOT=/software/tools/compilers/intel/composer_2016.1/compilers_and_libraries_2016.1.150/linux/mkl
 MKLPATH=$(MKLROOT)/lib/intel64
+#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
 
 #=====================================================================
 # Compilers and archiver tool
@@ -47,6 +48,11 @@ CPPFLAGS=-DUnderscore
 ADDLIBS = -L$(MKLPATH) -lmkl_scalapack_lp64 -lmkl_sequential \
          -Wl,--start-group -lmkl_blacs_openmpi_lp64 -lmkl_lapack95_lp64 -lmkl_intel_lp64 -lmkl_intel_thread \
          -lmkl_core -Wl,--end-group -liomp5 -lpthread -i-dynamic
+
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
 
 #=====================================================================
 #                         Preprocessing Flags
@@ -148,7 +154,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

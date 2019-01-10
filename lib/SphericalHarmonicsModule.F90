@@ -35,7 +35,7 @@ public :: initSphericalHarmonics, &
    interface calYlm
       module procedure SphericalHarmonics0, SphericalHarmonics1,      &
                        SphericalHarmonics2, SphericalHarmonics3,      &
-                       SphericalHarmonics4
+                       SphericalHarmonics4, SphericalHarmonics5
    end interface
 !
 !  ===================================================================
@@ -958,7 +958,7 @@ contains
    real (kind=RealKind) :: plmp1, plmm1, tcoef, pcoef
 !
    complex (kind=CmplxKind), intent(out) :: ylm((lmax+1)*(lmax+1))
-   complex (kind=CmplxKind), intent(out) :: grady((lmax+1)*(lmax+1),3)
+   complex (kind=CmplxKind), intent(out) :: grady(:,:)
 !
    complex (kind=CmplxKind) :: iphi
 !
@@ -1083,5 +1083,23 @@ contains
    endif
 !
    end subroutine SphericalHarmonics4
+!  ===================================================================
 !
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine SphericalHarmonics5(vec,lmax,ylm,grady)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+!
+   real (kind=RealKind), intent(in) :: vec(3)
+!
+   complex (kind=CmplxKind), intent(out) :: ylm((lmax+1)*(lmax+1))
+   complex (kind=CmplxKind), intent(out) :: grady(:,:)
+!
+   call SphericalHarmonics4(vec(1),vec(2),vec(3),lmax,ylm,grady)
+!
+   end subroutine SphericalHarmonics5
+!  ===================================================================
 end module SphericalHarmonicsModule

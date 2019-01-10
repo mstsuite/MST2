@@ -86,7 +86,7 @@ program mst2
    use ScfDataModule, only : isExchangeParamNeeded
    use ScfDataModule, only : getPotentialTypeParam
    use ScfDataModule, only : isChargeMixing, isPotentialMixing
-   use ScfDataModule, only : excorr, eftol, etol, ptol, rmstol
+   use ScfDataModule, only : excorr_name, eftol, etol, ptol, rmstol
    use ScfDataModule, only : isLdaCorrectionNeeded, getUJfile
    use ScfDataModule, only : getSingleSiteSolverType, getDOSrunID
    use ScfDataModule, only : NumSS_IntEs, isSSIrregularSolOn
@@ -173,9 +173,8 @@ program mst2
 !
    use ValenceDensityModule, only : initValenceDensity, getFermiEnergy, endValenceDensity
    use ValenceDensityModule, only : printRho_L
-   use ValenceDensityModule, only : getValenceVPCharge, getValenceVPMoment
    use ValenceDensityModule, only : setValenceVPCharge, setValenceVPMomentSize
-   use ValenceDensityModule, only : getValenceSphericalDensity, getExchangeEnergy
+   use ValenceDensityModule, only : getExchangeEnergy
 !
    use GFMethodModule, only : initGFMethod, printValenceStates, &
                               endGFMethod
@@ -213,7 +212,10 @@ program mst2
 !
    use ExchCorrFunctionalModule, only : initExchCorrFunctional,   &
                                         endExchCorrFunctional,    &
-                                        getExchCorrPot
+                                        isLDAFunctional,          &
+                                        isGGAFunctional,          &
+                                        isMGGAFunctional,         &
+                                        isHybridFunctional
 !
    use ConvergenceCheckModule, only : initConvergenceCheck, &
                                       endConvergenceCheck,  &
@@ -261,6 +263,7 @@ program mst2
    logical :: initSystemMovie=.true.
    logical :: IsoParamVINT = .false.
    logical :: FrozenCoreFileExist = .false.
+   logical :: isDOSCalculationOnly = .false.
 !
    character (len=12) :: str_stdin= 'i_lsms_stdin'
    character (len=80) :: info_table, info_path
@@ -759,6 +762,12 @@ program mst2
 !     ----------------------------------------------------------------
    endif
 !
+   if (getDOSrunID() == PrintDOSswitchOff) then
+      isDOSCalculationOnly = .false.
+   else
+      isDOSCalculationOnly = .true.
+   endif
+!
 !  ===================================================================
 !  initialize medium system if needed
 !  ===================================================================
@@ -1198,39 +1207,66 @@ program mst2
    if (abs(ErTop) > TEN2m8 .and. getDOSrunID() == 0) then
       Efermi = ErTop
       if (node_print_level >= 0) then
-         write(6,'(a,f12.8)')'Starting Fermi energy is set by the input:',Efermi
+         write(6,'(/,a,f12.8)')' Initial Fermi energy is set by the input:',Efermi
       endif
    else
       if (node_print_level >= 0) then
-         write(6,'(a,f12.8)')'Starting Fermi energy read from the potential:',Efermi
+         write(6,'(/,a,f12.8)')' Initial Fermi energy read from the potential:',Efermi
       endif
    endif
-!  -------------------------------------------------------------------
-   call initValenceDensity(LocalNumAtoms,LocalNumValenceElectrons,    &
-                           lmax_rho,n_spin_pola,n_spin_cant,Efermi,   &
-                           istop,atom_print_level)
-!  -------------------------------------------------------------------
-   call initGFMethod(LocalNumAtoms,GlobalIndex,LocalAtomPosi,         &
-                     lmax_kkr,lmax_phi,lmax_pot,lmax_step,lmax_green, &
-                     n_spin_pola,n_spin_cant,istop,atom_print_level)
-!  -------------------------------------------------------------------
-!
-!  *******************************************************************
-!
 !  ===================================================================
 !  initialize exchange-correlation scheme, potential generation, total
 !  energy calculation, and charge distribution book-keeping
 !  -------------------------------------------------------------------
-   call initExchCorrFunctional(n_spin_pola,excorr)
+   call initExchCorrFunctional(n_spin_pola,excorr_name,node_print_level)
 !  -------------------------------------------------------------------
-   call initChargeDensity( LocalNumAtoms, GlobalIndex, lmax_rho,      &
-                           n_spin_pola, n_spin_cant, atom_print_level )
+   if (node_print_level >= 0) then
+      if (isLDAFunctional()) then
+         write(6,'(/,2x,a)')'========================================='
+         write(6,'(2x,a)')  'Exchange-Correlation Functional Type: LDA'
+         write(6,'(2x,a,/)')'========================================='
+      else if (isGGAFunctional()) then
+         write(6,'(/,2x,a)')'========================================='
+         write(6,'(2x,a)')  'Exchange-Correlation Functional Type: GGA'
+         write(6,'(2x,a,/)')'========================================='
+      else if (isHybridFunctional()) then
+         write(6,'(/,2x,a)')'============================================'
+         write(6,'(2x,a)')  'Exchange-Correlation Functional Type: Hybrid'
+         write(6,'(2x,a,/)')'============================================'
+      else if (isMGGAFunctional()) then
+         write(6,'(/,2x,a)')'=========================================='
+         write(6,'(2x,a)')  'Exchange-Correlation Functional Type: MGGA'
+         write(6,'(2x,a,/)')'=========================================='
+      else
+         call ErrorHandler('main','Unknown exchange-correlation functional type')
+      endif
+   endif
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  -------------------------------------------------------------------
+   call initValenceDensity(LocalNumAtoms,LocalNumValenceElectrons,    &
+                           lmax_rho,n_spin_pola,n_spin_cant,Efermi,   &
+                           istop,atom_print_level,                    &
+                           isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
+!  -------------------------------------------------------------------
+   call initGFMethod(LocalNumAtoms,GlobalIndex,LocalAtomPosi,         &
+                     lmax_kkr,lmax_phi,lmax_pot,lmax_step,lmax_green, &
+                     n_spin_pola,n_spin_cant,istop,atom_print_level,  &
+                     isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
+!  -------------------------------------------------------------------
+   call initChargeDensity(LocalNumAtoms, GlobalIndex, lmax_rho,       &
+                          n_spin_pola, n_spin_cant, atom_print_level, &
+                          isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
 !  -------------------------------------------------------------------
    call initPotentialGeneration(LocalNumAtoms,GlobalNumAtoms,lmax_pot,&
-                           lmax_rho,n_spin_pola,istop,atom_print_level)
+                                lmax_rho,n_spin_pola,istop,atom_print_level,&
+                                isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
 !  -------------------------------------------------------------------
    call initTotalEnergy(LocalNumAtoms,GlobalNumAtoms,getNumVacancies(),&
-                        n_spin_pola,istop,atom_print_level)
+                        n_spin_pola,istop,atom_print_level,            &
+                        isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
 !  -------------------------------------------------------------------
    call initChargeDistribution(LocalNumAtoms,GlobalNumAtoms,n_spin_pola)
 !  -------------------------------------------------------------------
@@ -1351,7 +1387,7 @@ program mst2
 !
       SCF_LOOP: do iscf = 1, nscf
 !
-         if (getDOSrunID() /= PrintDOSswitchOff) then
+         if (isDOSCalculationOnly) then
 !           ----------------------------------------------------------
             call calValenceDOS()
 !           ----------------------------------------------------------
@@ -1467,8 +1503,7 @@ program mst2
 !        =============================================================
 !        Construct the total electron density (and moment density)
 !        -------------------------------------------------------------
-         call constructChargeDensity(getValenceVPCharge,getValenceVPMoment, &
-                                     getValenceSphericalDensity)
+         call constructChargeDensity()
 !        -------------------------------------------------------------
 !
 !        =============================================================

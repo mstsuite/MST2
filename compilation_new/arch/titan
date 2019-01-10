@@ -1,4 +1,5 @@
 CUDA_PATH =
+#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -8,7 +9,7 @@ F77=ftn
 CC=gcc
 CXX=gcc
 PREPROC = $(FC)
-EXEC_NAME = mst2
+EXEC_NAME = mst2_cpu
 
 #=====================================================================
 # Set Acceleration to 0 if Accelerator is not used.
@@ -47,6 +48,11 @@ CPPFLAGS=-DUnderscore
 #=====================================================================
 #ADDLIBS = -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++
 ADDLIBS = -lm -lcudart -lcuda -lcublas -lstdc++
+
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
 
 #=====================================================================
 #                         Preprocessing Flags
@@ -160,7 +166,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

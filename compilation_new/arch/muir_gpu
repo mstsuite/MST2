@@ -45,6 +45,11 @@ ADDLIBS = -L$(MKLPATH) -lmkl_scalapack_lp64 \
          -Wl,--start-group -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_blacs_intelmpi_lp64 -Wl,--end-group \
          -lpthread -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++ /lvol/intel/composer_xe_2013.1.117/compiler/lib/intel64/libiomp5.a
 
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
+
 #=====================================================================
 #                         Preprocessing Flags
 #
@@ -156,7 +161,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(FFLAGS_ACC) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

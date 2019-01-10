@@ -1,6 +1,7 @@
 CUDA_PATH = /lvol/cuda
 MPI_ROOT = /opt/pgi/linux86-64/14.10/mpi/mpich
 MATH_ROOT = /opt/pgi/linux86-64/14.10/lib
+#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -55,6 +56,11 @@ CPPFLAGS=-DUnderscore
 #  -lpthread -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++ \
 #  /lvol/intel/composer_xe_2013.1.117/compiler/lib/intel64/libiomp5.a
 ADDLIBS = -Mscalapack -Mmpi=mpich -L$(MATH_ROOT) -lacml
+
+ifdef LIBXC_PATH
+ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
+Use_LibXC = -DLIBXC -I$(LIBXC_PATH)/include
+endif
 
 #=====================================================================
 #                         Preprocessing Flags
@@ -163,7 +169,7 @@ endif
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS -DONESIDED
 # FPPFLAGS=-DSync_EiLoop -DSync_MST -DMPI -DNo_DataComm -DNo_SuperLU -DUSE_SCALAPACK -DCheckDOS
 FPPFLAGS=$(SuperLU_FLAG) $(Check_TIMING) $(Use_BLAS) $(Use_DEBUG) $(Use_SYNC) $(FFT_FLAG) $(Use_MiscFlags) $(MSGPASS_FLAG) \
-$(MaxIO_FLAG) $(Use_ScaLapack)
+$(MaxIO_FLAG) $(Use_ScaLapack) $(Use_LibXC)
 
 #=====================================================================
 # Software path ...

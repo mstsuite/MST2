@@ -39,7 +39,11 @@ public :: initSSSolver,          &
           getCellPDOS,           &
           getMTSpherePDOS,       &
           getPhaseShift,         &
-          getGreenFunction
+          getGreenFunction,      &
+          getDOSDerivative,      &
+          getRegSolutionDerivative, &
+          getGreenFunctionDerivative
+!
 !tmat_global          convertTmatToGlobalFrame
 !
           interface computeGreenFunction
@@ -65,10 +69,12 @@ private
       complex (kind=CmplxKind), pointer :: jinv_mat(:,:)
       complex (kind=CmplxKind), pointer :: reg_sol(:,:,:)  ! Phi_{Lp,L}(r)*r
       complex (kind=CmplxKind), pointer :: irr_sol(:,:,:)  ! H_{Lp,L}(r)*r
-      complex (kind=CmplxKind), pointer :: reg_dsol(:,:,:)  ! Phi_{Lp,L}(r)*r
+      complex (kind=CmplxKind), pointer :: reg_dsol(:,:,:) ! r*d{Phi_{Lp,L}(r)}/dr
       complex (kind=CmplxKind), pointer :: irr_dsol(:,:,:)
       complex (kind=CmplxKind), pointer :: green(:,:)
+      complex (kind=CmplxKind), pointer :: der_green(:,:)
       complex (kind=CmplxKind), pointer :: dos(:,:)
+      complex (kind=CmplxKind), pointer :: der_dos(:,:)
       complex (kind=CmplxKind), pointer :: pdos(:,:,:)
    end type SolutionStruct
 !
@@ -255,7 +261,9 @@ private
    complex (kind=CmplxKind), allocatable, target :: wks_dirrsol(:)
 !
    complex (kind=CmplxKind), allocatable, target :: wks_green(:)
+   complex (kind=CmplxKind), allocatable, target :: wks_dgreen(:)
    complex (kind=CmplxKind), allocatable, target :: wks_dos(:)
+   complex (kind=CmplxKind), allocatable, target :: wks_ddos(:)
    complex (kind=CmplxKind), allocatable, target :: wks_pdos(:)
 !
    complex (kind=CmplxKind), allocatable, target :: wks_mtx1(:)
@@ -297,6 +305,7 @@ private
    integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, kGID
 !
    logical :: isDosSymmOn = .false.
+   logical :: rad_deriv = .false.
 !
 contains
 !
@@ -305,7 +314,7 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initSSSolver( na, getNumSpecies, getAtomicNumber,       &
                             lkkr, lphi, lpot, lstep, lgreen, nsp, nsc, rel,  &
-                            istop, iprint )
+                            istop, iprint, derivative )
 !  ===================================================================
    use MPPModule, only : MyPE, syncAllPEs
 !
@@ -339,6 +348,8 @@ contains
    implicit   none
 !
    character (len=*), intent(in) :: istop
+!
+   logical, intent(in), optional :: derivative
 !
    integer (kind=IntKind), intent(in) :: na
    integer (kind=IntKind), intent(in) :: lkkr(na)
@@ -449,6 +460,12 @@ contains
    else
      call ErrorHandler("initSSSolver",                        &
                        "Undefined Single Site Solver", solv_type,rel)
+   endif
+!
+   if (present(derivative)) then
+      rad_deriv = derivative
+   else
+      rad_deriv = .false.
    endif
 !
    allocate( Scatter(LocalNumSites) )
@@ -1007,8 +1024,14 @@ use MPPModule, only : MyPE, syncAllPEs
    if (allocated(wks_green)) then
       deallocate( wks_green )
    endif
+   if (allocated(wks_dgreen)) then
+      deallocate( wks_dgreen )
+   endif
    if (allocated(wks_dos)) then
       deallocate( wks_dos )
+   endif
+   if (allocated(wks_ddos)) then
+      deallocate( wks_ddos )
    endif
    if (allocated(wks_pdos)) then
       deallocate( wks_pdos )
@@ -4995,6 +5018,84 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getRegSolutionDerivative(spin, site, atom) result(drs)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
+   integer (kind=IntKind) :: is, id, ic
+!
+   complex (kind=CmplxKind), pointer :: drs(:,:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler('getRegSolutionDerivative','module not initialized')
+   endif
+!
+   if (present(spin)) then
+      is = min(NumSpins,spin)
+   else
+      is = LocalSpin
+   endif
+!
+   if (present(site)) then
+      id = site
+   else
+      id = LocalIndex
+   endif
+!
+   if (present(atom)) then
+      ic = atom
+   else
+      ic = 1
+   endif
+!
+   drs => Scatter(id)%Solutions(ic,is)%reg_dsol
+!
+   end function getRegSolutionDerivative
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getGreenFunctionDerivative(spin, site, atom) result(dg)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
+   integer (kind=IntKind) :: is, id, ic
+!
+   complex (kind=CmplxKind), pointer :: dg(:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler('getGreenFunctionDerivative','module not initialized')
+   endif
+!
+   if (present(spin)) then
+      is = min(NumSpins,spin)
+   else
+      is = LocalSpin
+   endif
+!
+   if (present(site)) then
+      id = site
+   else
+      id = LocalIndex
+   endif
+!
+   if (present(atom)) then
+      ic = atom
+   else
+      ic = 1
+   endif
+!
+   dg => Scatter(id)%Solutions(ic,is)%der_green
+!
+   end function getGreenFunctionDerivative
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getPhaseShift(spin, site, atom) result(ps)
 !  ===================================================================
    implicit none
@@ -5072,6 +5173,49 @@ use MPPModule, only : MyPE, syncAllPEs
    dos => Scatter(id)%Solutions(ic,is)%dos
 !
    end function getDOS
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getDOSDerivative(spin, site, atom) result(der_dos)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
+   integer (kind=IntKind) :: is, id, ic
+!
+   complex (kind=CmplxKind), pointer :: der_dos(:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler('getDOS','module not initialized')
+   else if (.not.allocated(wks_ddos)) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('getDOSDerivative','Need to call computeDOS first')
+!     ----------------------------------------------------------------
+   endif
+!
+   if (present(spin)) then
+      is = min(NumSpins,spin)
+   else
+      is = LocalSpin
+   endif
+!
+   if (present(site)) then
+      id = site
+   else
+      id = LocalIndex
+   endif
+!  
+   if (present(atom)) then
+      ic = atom
+   else
+      ic = 1
+   endif
+!
+   der_dos => Scatter(id)%Solutions(ic,is)%der_dos
+!
+   end function getDOSDerivative
 !  ===================================================================
 !
 !  *******************************************************************
@@ -6337,9 +6481,12 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    complex (kind=CmplxKind) :: cmat, cfac
    complex (kind=CmplxKind), pointer :: green(:,:)
-   complex (kind=CmplxKind), pointer :: p_tmp(:,:)
+   complex (kind=CmplxKind), pointer :: der_green(:,:)
+   complex (kind=CmplxKind), pointer :: p_tmp(:,:), q_tmp(:,:)
    complex (kind=CmplxKind), pointer :: wfr_reg(:,:,:)
    complex (kind=CmplxKind), pointer :: wfr_irr(:,:,:)
+   complex (kind=CmplxKind), pointer :: der_wfr_reg(:,:,:)
+   complex (kind=CmplxKind), pointer :: der_wfr_irr(:,:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
    complex (kind=CmplxKind), pointer :: mat(:,:), sin_t(:,:), sin_mat(:,:)
 !
@@ -6380,6 +6527,21 @@ use MPPModule, only : MyPE, syncAllPEs
             enddo
          enddo
       enddo
+      if (rad_deriv) then
+         allocate( wks_dgreen(sz) )
+         loc1 = 0
+         do ia = 1, LocalNumSites
+            nr = Scatter(ia)%numrs_cs
+            km = Scatter(ia)%kmax_green
+            do js = 1, NumSpins
+               do ic = 1, Scatter(ia)%NumSpecies
+                  loc2 = loc1 + nr*km
+                  Scatter(ia)%Solutions(ic,js)%der_green => aliasArray2_c(wks_dgreen(loc1+1:loc2),nr,km)
+                  loc1 = loc2
+               enddo
+            enddo
+         enddo
+      endif
    endif
 !
    kmax_green_loc = Scatter(id)%kmax_green
@@ -6393,6 +6555,13 @@ use MPPModule, only : MyPE, syncAllPEs
       wfr_reg => Scatter(id)%Solutions(ic,is)%reg_sol
       wfr_irr => Scatter(id)%Solutions(ic,is)%irr_sol
       green => Scatter(id)%Solutions(ic,is)%green
+      green = CZERO
+      if (rad_deriv) then
+         der_wfr_reg => Scatter(id)%Solutions(ic,is)%reg_dsol
+         der_wfr_irr => Scatter(id)%Solutions(ic,is)%irr_dsol
+         der_green => Scatter(id)%Solutions(ic,is)%der_green
+         der_green = CZERO
+      endif
 !
 !     ================================================================
 !     compute [i*S - C]^{-1} 
@@ -6411,7 +6580,6 @@ use MPPModule, only : MyPE, syncAllPEs
                   OmegaHat_mat, kmax_kkr, sin_t, kmax_phi, CZERO, mat, kmax_kkr)
 !     ----------------------------------------------------------------
 !
-      green = CZERO
 !     if ( SphericalSolver .or. isSphPotZeroOutsideRmt ) then
       if (isSphericalSolverOn) then
          do kl1 = 1, kmax_kkr_loc
@@ -6422,11 +6590,21 @@ use MPPModule, only : MyPE, syncAllPEs
                   do ir = 1, nr
                      green(ir,klg) = green(ir,klg) + cfac*wfr_reg(ir,kl1,kl1)*wfr_irr(ir,kl1,kl1)
                   enddo
+                  if (rad_deriv) then
+                     do ir = 1, nr
+                        der_green(ir,klg) = der_green(ir,klg)                  &
+                            + cfac*der_wfr_reg(ir,kl1,kl1)*wfr_irr(ir,kl1,kl1) &
+                            + cfac*wfr_reg(ir,kl1,kl1)*der_wfr_irr(ir,kl1,kl1)
+                     enddo
+                  endif
                endif
             enddo
          enddo
       else
          p_tmp => aliasArray2_c(wks_plhat,Scatter(id)%numrs,kmax_phi_loc)
+         if (rad_deriv) then
+            q_tmp => aliasArray2_c(wks_qlhat,Scatter(id)%numrs,kmax_phi_loc)
+         endif
          do kl2 = 1, kmax_kkr_loc
 !!          p_tmp = CZERO
 !!          do kl1 = 1, kmax_kkr_loc
@@ -6441,6 +6619,13 @@ use MPPModule, only : MyPE, syncAllPEs
                        CONE,wfr_reg,Scatter(id)%numrs*kmax_phi_loc,     &
                        mat(1:kmax_kkr_loc,kl2),1,CZERO,p_tmp,1)
 !           ----------------------------------------------------------
+            if (rad_deriv) then
+!              -------------------------------------------------------
+               call zgemv('n',Scatter(id)%numrs*kmax_phi_loc,kmax_kkr_loc, &
+                          CONE,der_wfr_reg,Scatter(id)%numrs*kmax_phi_loc, &
+                          mat(1:kmax_kkr_loc,kl2),1,CZERO,q_tmp,1)
+!              -------------------------------------------------------
+            endif
             m2 = mofk(kl2); kl2c = kl2-2*m2
             do kl2p = 1, kmax_phi_loc
                m2p = mofk(kl2p); kl2pc = kl2p-2*m2p
@@ -6453,15 +6638,25 @@ use MPPModule, only : MyPE, syncAllPEs
                         do ir = 1, nr
                            green(ir,klg) = green(ir,klg) + cfac*p_tmp(ir,kl1p)*wfr_irr(ir,kl2pc,kl2c)
                         enddo
+                        if (rad_deriv) then
+                           do ir = 1, nr
+                              der_green(ir,klg) = der_green(ir,klg) +          &
+                                  cfac*q_tmp(ir,kl1p)*wfr_irr(ir,kl2pc,kl2c) + &
+                                  cfac*p_tmp(ir,kl1p)*der_wfr_irr(ir,kl2pc,kl2c)
+                           enddo
+                        endif
                      endif
                   enddo
                enddo
             enddo
          enddo
-         nullify( p_tmp )
+         nullify( p_tmp, q_tmp )
       endif
       cfac = -SQRTm1*kappa
       green = cfac*green
+      if (rad_deriv) then
+         der_green = cfac*der_green
+      endif
 !
 !     ================================================================
 !     Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
@@ -6471,13 +6666,17 @@ use MPPModule, only : MyPE, syncAllPEs
          do klg = 1, kmax_green_loc
             if (green_flags(jofk(klg)) == 0) then
                green(:,klg) = CZERO
+               if (rad_deriv) then
+                  der_green(:,klg) = CZERO
+               endif
             endif
          enddo
       endif
 !     ================================================================
    enddo
 !
-   nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat, green, p_tmp )
+   nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat,                      &
+            green, der_green, der_wfr_reg, der_wfr_irr )
 !
    end subroutine computeGF0
 !  ===================================================================
@@ -6485,7 +6684,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeGF1(rvec,gf,spin,site,atom)
+   subroutine computeGF1(rvec,gf,spin,site,atom,dgf)
 !  ===================================================================
    use SphericalHarmonicsModule, only : calYlm
    use InterpolationModule, only : PolyInterp
@@ -6507,6 +6706,7 @@ use MPPModule, only : MyPE, syncAllPEs
    real (kind=RealKind), pointer :: xp(:)
 !
    complex (kind=CmplxKind), intent(out) :: gf
+   complex (kind=CmplxKind), intent(out), optional :: dgf
    complex (kind=CmplxKind) :: cmat, yic
    complex (kind=CmplxKind), pointer :: yp(:)
    complex (kind=CmplxKind), pointer :: wfr_reg(:,:,:)
@@ -6614,6 +6814,10 @@ use MPPModule, only : MyPE, syncAllPEs
    enddo
    gf = -SQRTm1*kappa*gf
 !
+   if (present(dgf)) then
+      call ErrorHandler('computeGF1','For calculating the Green function derivative, it is not implemented yet')
+   endif
+!
    nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat, ylmv, ylmvc, yp, xp, regf, irrf )
 !
    end subroutine computeGF1
@@ -6636,16 +6840,19 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    integer (kind=IntKind), intent(in), optional :: spin, site
    integer (kind=IntKind) :: id, is, ic
-   integer (kind=IntKind) :: ir, jl, kl, klc, l, m, kl1, kl1p, kl2, kl2c, kl2p, kl2pc, m1, m2, m2p, ma, i, l2
+   integer (kind=IntKind) :: jl, kl, klc, l, m, kl1, kl1p, kl2, kl2c, kl2p, kl2pc
+   integer (kind=IntKind) :: ir, m1, m2, m2p, ma, i, l2
    integer (kind=IntKind) :: js, ia, nr, lm, jm, sz, loc1, loc2
    integer (kind=IntKind) :: lmax_dos, jmax_dos, kmax_kkr_loc, kmax_phi_loc, np
    integer (kind=IntKind), pointer :: dos_flags(:)
 !
-   complex (kind=CmplxKind), pointer :: dos(:,:), p_tmp(:,:), sjm(:,:)
+   complex (kind=CmplxKind), pointer :: p_tmp(:,:), q_tmp(:,:), sjm(:,:)
+   complex (kind=CmplxKind), pointer :: dos(:,:), der_dos(:,:)
 !
    complex (kind=CmplxKind) :: cfac, cmat
-   complex (kind=CmplxKind), pointer :: green(:,:)
+   complex (kind=CmplxKind), pointer :: green(:,:), der_green(:,:)
    complex (kind=CmplxKind), pointer :: wfr_reg(:,:,:)
+   complex (kind=CmplxKind), pointer :: der_wfr_reg(:,:,:)
    complex (kind=CmplxKind), pointer :: Omega_mat(:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
 !
@@ -6683,6 +6890,22 @@ use MPPModule, only : MyPE, syncAllPEs
             enddo
          enddo
       enddo
+      if (rad_deriv) then
+         allocate( wks_ddos(sz) )
+         loc1 = 0
+         do ia = 1, LocalNumSites
+            nr = Scatter(ia)%numrs_cs
+            lm = Scatter(ia)%lmax_green
+            jm = (lm+1)*(lm+2)/2
+            do js = 1, NumSpins
+               do ic = 1, Scatter(ia)%NumSpecies
+                  loc2 = loc1 + nr*jm
+                  Scatter(ia)%Solutions(ic,js)%der_dos => aliasArray2_c(wks_ddos(loc1+1:loc2),nr,jm)
+                  loc1 = loc2
+               enddo
+            enddo
+         enddo
+      endif
    endif
 !
    lmax_dos = Scatter(id)%lmax_green
@@ -6694,11 +6917,18 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    do ic = 1, Scatter(id)%NumSpecies
       dos => Scatter(id)%Solutions(ic,is)%dos
+      if (rad_deriv) then
+         der_dos => Scatter(id)%Solutions(ic,is)%der_dos
+      endif
       Omega_mat => Scatter(id)%Solutions(ic,is)%Omega_mat
       OmegaHat_mat => Scatter(id)%Solutions(ic,is)%OmegaHat_mat
       if (abs(aimag(energy)) < TEN2m8) then
          wfr_reg => Scatter(id)%Solutions(ic,is)%reg_sol
          dos = CZERO
+         if (rad_deriv) then
+            der_wfr_reg => Scatter(id)%Solutions(ic,is)%reg_dsol
+            der_dos = CZERO
+         endif
 !        if ( SphericalSolver .or. isSphPotZeroOutsideRmt ) then
          if (isSphericalSolverOn) then
             do kl1 = 1, kmax_kkr_loc
@@ -6710,12 +6940,21 @@ use MPPModule, only : MyPE, syncAllPEs
                      do ir = 1, nr
                         dos(ir,jl) = dos(ir,jl) + cfac*wfr_reg(ir,kl1,kl1)**2
                      enddo
+                     if (rad_deriv) then
+                        do ir = 1, nr
+                           der_dos(ir,jl) = der_dos(ir,jl) +                &
+                               TWO*cfac*wfr_reg(ir,kl1,kl1)*der_wfr_reg(ir,kl1,kl1)
+                        enddo
+                     endif
                   endif
                enddo
             enddo
             cfac = kappa/PI
          else if (.false.) then
             p_tmp => aliasArray2_c(wks_plhat,Scatter(id)%numrs,kmax_phi_loc)
+            if (rad_deriv) then
+               q_tmp => aliasArray2_c(wks_qlhat,Scatter(id)%numrs,kmax_phi_loc)
+            endif
             do kl2 = 1, kmax_kkr_loc
 !              =======================================================
 !!             p_tmp = CZERO
@@ -6731,6 +6970,13 @@ use MPPModule, only : MyPE, syncAllPEs
                           CONE,wfr_reg,Scatter(id)%numrs*kmax_phi_loc,     &
                           OmegaHat_mat(1:kmax_kkr_loc,kl2),1,CZERO,p_tmp,1)
 !              -------------------------------------------------------
+               if (rad_deriv) then
+!                 ----------------------------------------------------
+                  call zgemv('n',Scatter(id)%numrs*kmax_phi_loc,kmax_kkr_loc, &
+                             CONE,der_wfr_reg,Scatter(id)%numrs*kmax_phi_loc, &
+                             OmegaHat_mat(1:kmax_kkr_loc,kl2),1,CZERO,q_tmp,1)
+!                 ----------------------------------------------------
+               endif
                m2 = mofk(kl2); kl2c = kl2-2*m2
                do kl2p = 1, kmax_phi_loc
                   m2p = mofk(kl2p); kl2pc = kl2p-2*m2p
@@ -6744,13 +6990,20 @@ use MPPModule, only : MyPE, syncAllPEs
                            do ir = 1, nr
                               dos(ir,jl) = dos(ir,jl) + cfac*p_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c)
                            enddo
+                           if (rad_deriv) then
+                              do ir = 1, nr
+                                 der_dos(ir,jl) = der_dos(ir,jl) +                &
+                                     cfac*q_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c) + &
+                                     cfac*p_tmp(ir,kl1p)*der_wfr_reg(ir,kl2pc,kl2c)
+                              enddo
+                           endif
                         endif
                      enddo
                   enddo
                enddo
             enddo
             cfac = kappa/PI
-            nullify( p_tmp )
+            nullify( p_tmp, q_tmp )
          else
             sjm => aliasArray2_c(wks_mtx1,kmax_kkr_loc,kmax_kkr_loc)
             do kl2 = 1, kmax_kkr_loc
@@ -6759,6 +7012,9 @@ use MPPModule, only : MyPE, syncAllPEs
                enddo
             enddo
             p_tmp => aliasArray2_c(wks_plhat,Scatter(id)%numrs,kmax_phi_loc)
+            if (rad_deriv) then
+               q_tmp => aliasArray2_c(wks_qlhat,Scatter(id)%numrs,kmax_phi_loc)
+            endif
             np = mod(kmax_kkr_loc,NumPEsInGroup)
             do kl2 = MyPEinGroup+1, kmax_kkr_loc-np, NumPEsInGroup
 !           do kl2 = 1, kmax_kkr_loc
@@ -6767,6 +7023,13 @@ use MPPModule, only : MyPE, syncAllPEs
                           CONE,wfr_reg,Scatter(id)%numrs*kmax_phi_loc,     &
                           sjm(1,kl2),1,CZERO,p_tmp,1)
 !              -------------------------------------------------------
+               if (rad_deriv) then
+!                 ----------------------------------------------------
+                  call zgemv('n',Scatter(id)%numrs*kmax_phi_loc,kmax_kkr_loc, &
+                             CONE,der_wfr_reg,Scatter(id)%numrs*kmax_phi_loc, &
+                             sjm(1,kl2),1,CZERO,q_tmp,1)
+!                 ----------------------------------------------------
+               endif
                m2 = mofk(kl2); kl2c = kl2-2*m2
                do kl2p = 1, kmax_phi_loc
                   m2p = mofk(kl2p); kl2pc = kl2p-2*m2p
@@ -6780,6 +7043,13 @@ use MPPModule, only : MyPE, syncAllPEs
                            do ir = 1, nr
                               dos(ir,jl) = dos(ir,jl) + cfac*p_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c)
                            enddo
+                           if (rad_deriv) then
+                              do ir = 1, nr
+                                 der_dos(ir,jl) = der_dos(ir,jl) +                &
+                                     cfac*q_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c) + &
+                                     cfac*p_tmp(ir,kl1p)*der_wfr_reg(ir,kl2pc,kl2c)
+                              enddo
+                           endif
                         endif
                      enddo
                   enddo
@@ -6789,6 +7059,11 @@ use MPPModule, only : MyPE, syncAllPEs
 !              -------------------------------------------------------
                call GlobalSumInGroup(kGID,dos,nr,jmax_dos)
 !              -------------------------------------------------------
+               if (rad_deriv) then
+!                 ----------------------------------------------------
+                  call GlobalSumInGroup(kGID,der_dos,nr,jmax_dos)
+!                 ----------------------------------------------------
+               endif
             endif
             do kl2 = kmax_kkr_loc-np+1, kmax_kkr_loc
 !              -------------------------------------------------------
@@ -6796,6 +7071,13 @@ use MPPModule, only : MyPE, syncAllPEs
                           CONE,wfr_reg,Scatter(id)%numrs*kmax_phi_loc,     &
                           sjm(1,kl2),1,CZERO,p_tmp,1)
 !              -------------------------------------------------------
+               if (rad_deriv) then
+!                 ----------------------------------------------------
+                  call zgemv('n',Scatter(id)%numrs*kmax_phi_loc,kmax_kkr_loc, &
+                             CONE,der_wfr_reg,Scatter(id)%numrs*kmax_phi_loc, &
+                             sjm(1,kl2),1,CZERO,q_tmp,1)
+!                 ----------------------------------------------------
+               endif
                m2 = mofk(kl2); kl2c = kl2-2*m2
                do kl2p = 1, kmax_phi_loc
                   m2p = mofk(kl2p); kl2pc = kl2p-2*m2p
@@ -6809,19 +7091,29 @@ use MPPModule, only : MyPE, syncAllPEs
                            do ir = 1, nr
                               dos(ir,jl) = dos(ir,jl) + cfac*p_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c)
                            enddo
+                           if (rad_deriv) then
+                              do ir = 1, nr
+                                 der_dos(ir,jl) = der_dos(ir,jl) +                &
+                                     cfac*q_tmp(ir,kl1p)*wfr_reg(ir,kl2pc,kl2c) + &
+                                     cfac*p_tmp(ir,kl1p)*der_wfr_reg(ir,kl2pc,kl2c)
+                              enddo
+                           endif
                         endif
                      enddo
                   enddo
                enddo
             enddo
             cfac = sqrtm1/PI2
-            nullify( p_tmp, sjm )
+            nullify( p_tmp, q_tmp, sjm )
          endif
       else if ( isIrrSolOn ) then
 !        -------------------------------------------------------------
          call computeGF0()
 !        -------------------------------------------------------------
          green => Scatter(id)%Solutions(ic,is)%green
+         if (rad_deriv) then
+            der_green => Scatter(id)%Solutions(ic,is)%der_green
+         endif
          do jl = 1, jmax_dos
             kl = kofj(jl)
             m = mofj(jl)
@@ -6829,6 +7121,11 @@ use MPPModule, only : MyPE, syncAllPEs
             do ir = 1, nr
                dos(ir,jl) = green(ir,kl) - m1m(m)*conjg(green(ir,klc))
             enddo
+            if (rad_deriv) then
+               do ir = 1, nr
+                  der_dos(ir,jl) = der_green(ir,kl) - m1m(m)*conjg(der_green(ir,klc))
+               enddo
+            endif
          enddo
          cfac = sqrtm1/PI2
       else
@@ -6836,6 +7133,9 @@ use MPPModule, only : MyPE, syncAllPEs
       endif
 !
       dos = cfac*dos
+      if (rad_deriv) then
+         der_dos = cfac*der_dos
+      endif
 !
       if ( present(add_highl_fec) ) then
          if (add_highl_fec) then
@@ -6849,6 +7149,17 @@ use MPPModule, only : MyPE, syncAllPEs
             do ir = 1, nr
                dos(ir,1) = dos(ir,1) + cfac*(Grid%r_mesh(ir)**2-TmpSpace(ir))
             enddo
+            if (rad_deriv) then
+               TmpSpace = CZERO
+               do l = lofk(kmax_kkr_loc), 0, -1
+                  do ir = 1, nr
+                     TmpSpace(ir) = TmpSpace(ir) + (2*l+1)*dbjl(ir,l)**2/kappa**2
+                  enddo
+               enddo
+               do ir = 1, nr
+                  der_dos(ir,1) = der_dos(ir,1) - cfac*TmpSpace(ir)
+               enddo
+            endif
          endif
       endif
 !
@@ -6860,13 +7171,17 @@ use MPPModule, only : MyPE, syncAllPEs
          do jl = 1, jmax_dos
             if (dos_flags(jl) == 0) then
                dos(:,jl) = CZERO
+               if (rad_deriv) then
+                  der_dos(:,jl) = CZERO
+               endif
             endif
          enddo
       endif
 !     ================================================================
    enddo
 !
-   nullify( wfr_reg, dos, OmegaHat_mat, Omega_mat, green, p_tmp )
+   nullify( wfr_reg, der_wfr_reg, dos, der_dos, OmegaHat_mat, Omega_mat )
+   nullify( green, der_green, p_tmp, q_tmp )
 !
    end subroutine computeDOS
 !  ===================================================================

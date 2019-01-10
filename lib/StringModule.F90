@@ -77,11 +77,13 @@ private
 !
 contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initString_str(str)
+   subroutine initString_str(str,separator,separators)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: str
+   character (len=1), intent(in), optional :: separator
+   character (len=1), intent(in), optional :: separators(:)
 !
    if (Initialized) then
       call ErrorHandler('initString','String module is already initialized')
@@ -90,7 +92,13 @@ contains
    nstr = len(str)
    allocate( c_str(1:nstr), TokenIndex(1:nstr), TokenLen(1:nstr) )
 !
-   call processString(str)
+   if (present(separator)) then
+      call processString(str,sp=separator)
+   else if (present(separators)) then
+      call processString(str,sps=separators)
+   else
+      call processString(str)
+   endif
 !
    Initialized = .true.
 !
@@ -121,11 +129,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setString(str)
+   subroutine setString(str,separator,separators)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: str
+   character (len=1), intent(in), optional :: separator
+   character (len=1), intent(in), optional :: separators(:)
 !
    integer (kind=IntKind) :: n
 !
@@ -142,7 +152,13 @@ contains
       TokenIndex(1:nstr) = 0; TokenLen(1:nstr) = 0
    endif
 !
-   call processString(str)
+   if (present(separator)) then
+      call processString(str,sp=separator)
+   else if (present(separators)) then
+      call processString(str,sps=separators)
+   else
+      call processString(str)
+   endif
 !
    Initialized = .true.
 !
@@ -152,15 +168,25 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine processString(str)
+   subroutine processString(str,sp,sps)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: str
+   character (len=1), intent(in), optional :: sp
+   character (len=1), intent(in), optional :: sps(:)
 !
    logical :: isSep, wasSep
 !
-   integer (kind=IntKind) :: i, j, n
+   integer (kind=IntKind) :: i, j, n, nsp
+!
+   if (present(sp)) then
+      nsp = 0
+   else if (present(sps)) then
+      nsp = size(sps)
+   else
+      nsp = -1
+   endif
 !
    n = len_trim(str)
    do i=1,n
@@ -184,6 +210,20 @@ contains
                exit LOOP_j
             endif
          enddo LOOP_j
+         if (.not.isSep) then
+            if (nsp == 0) then
+               if (c_str(i) == sp) then
+                  isSep = .true.
+               endif
+            else
+               LOOP_jp: do j=1,nsp
+                  if (c_str(i) == sps(j)) then
+                     isSep = .true.
+                     exit LOOP_jp
+                  endif
+               enddo LOOP_jp
+            endif
+         endif
       endif
       if (.not.isSep .and. wasSep) then
          NumTokens = NumTokens + 1
@@ -242,15 +282,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine readToken(i,s,n)
+   subroutine readToken(i,s,nt)
 !  ===================================================================
    implicit none
 !
    character (len=*) :: s
 !
    integer (kind=IntKind), intent(in) :: i
-   integer (kind=IntKind), intent(out) :: n
-   integer (kind=IntKind) :: m, j, j0
+   integer (kind=IntKind), intent(out), optional :: nt
+   integer (kind=IntKind) :: m, j, j0, n
 !
    if (.not.Initialized) then
       call ErrorHandler('readToken','String module not initialized')
@@ -265,6 +305,9 @@ contains
       s(j:j) = c_str(j0+j)
    enddo
    s(m+1:)=' '
+   if (present(nt)) then
+      nt = n
+   endif
 !
    end subroutine readToken
 !  ===================================================================

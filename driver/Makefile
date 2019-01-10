@@ -132,7 +132,8 @@ TEST_CASES = $(ODIR)/testStrConst \
              $(ODIR)/testCoreStates \
              $(ODIR)/findBoundStates \
              $(ODIR)/testPolyFermi \
-             $(ODIR)/testBandStructure
+             $(ODIR)/testBandStructure \
+             $(ODIR)/testExchCorr
 
 TEST_CASES_O = $(ODIR)/testStrConst.o \
                $(ODIR)/tst_SurfElements.o \
@@ -330,3 +331,6 @@ $(ODIR)/testPolyFermi: testPolyFermi.o $(SRC_OBJS)
 
 $(ODIR)/testBandStructure: testBandStructure.o $(SRC_OBJS)
 	$(LD) -o $(ODIR)/testBandStructure testBandStructure.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
+
+$(ODIR)/testExchCorr: testExchCorr.o $(SRC_OBJS) $(ODIR)/ExchCorrFunctionalModule.o
+	$(LD) -o $(ODIR)/testExchCorr testExchCorr.o $(BASE_ROUTINES) $(SRC_OBJS) $(ODIR)/ExchCorrFunctionalModule.o $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
