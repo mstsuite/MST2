@@ -362,8 +362,10 @@ contains
                   if (AtomName(ka) == atn(jb)) then
                      AtomName(ka) = atn(ib)
                      AtomType(ka) = ib
-                     NumAtomsOfType(ib) = NumAtomsOfType(ib) + 1
-                     NumAtomsOfType(jb) = NumAtomsOfType(jb) - 1
+                     if (NumAtomsOfType(jb) > 1) then
+                        NumAtomsOfType(ib) = NumAtomsOfType(ib) + 1
+                        NumAtomsOfType(jb) = NumAtomsOfType(jb) - 1
+                     endif
                   else
                      ka = -1
                   endif
@@ -374,10 +376,12 @@ contains
                   r = ran2(iseed)
                   ka = floor(r*NumAtoms)+1
                   if (AtomName(ka) == atn(ib)) then
-                     NumAtomsOfType(ib) = NumAtomsOfType(ib) - 1
-                     NumAtomsOfType(jb) = NumAtomsOfType(jb) + 1
-                     AtomName(ka) = atn(jb)
-                     AtomType(ka) = jb
+                     if (NumAtomsOfType(ib) > 1) then
+                        NumAtomsOfType(ib) = NumAtomsOfType(ib) - 1
+                        NumAtomsOfType(jb) = NumAtomsOfType(jb) + 1
+                        AtomName(ka) = atn(jb)
+                        AtomType(ka) = jb
+                     endif
                   else
                      ka = -1
                   endif
@@ -387,7 +391,7 @@ contains
       endif
    enddo
 
-   write(6,'(11x,a,t30,a,5i8)')'Atom number','=',NumAtomsOfType(1:NumTypes)
+   write(6,'(/,11x,a,t30,a,5i8)')'Atom number','=',NumAtomsOfType(1:NumTypes)
 !
    deallocate( bins)
 !
@@ -584,7 +588,15 @@ contains
       enddo LOOP_ns
    enddo
 !
-   r2max=sr_pairs(NumShell)%rpair2
+   if (NumShell < 1) then
+      write(6,'(/,5x,a)') "Given the small size of the unit cell sample, the SROP is not calculated ..."
+      return
+   endif
+!
+   r2max = ZERO
+   do i=1,NumShell      
+      r2max = max(r2max,sr_pairs(NumShell)%rpair2)
+   enddo
 !
    nmax=0
    do n3=-max_shifts,max_shifts
@@ -607,7 +619,7 @@ contains
             rij2= (xshift(k)+atom_position_x(i)-atom_position_x(j))**2+    &
                   (yshift(k)+atom_position_y(i)-atom_position_y(j))**2+    &
                   (zshift(k)+atom_position_z(i)-atom_position_z(j))**2
-            if (rij2 > rtol .and. rij2 < r2max) then
+            if (rij2 > rtol .and. rij2 < r2max+rtol) then
                do jp=1,NumShell
                   if (abs(sqrt(rij2)-sqrt(sr_pairs(jp)%rpair2)) <= dr_shell) then
                      sr_pairs(jp)%npairs=sr_pairs(jp)%npairs+1
@@ -648,7 +660,7 @@ contains
                rij2= (xshift(k)+atom_position_x(ia)-atom_position_x(ja))**2+    &
                      (yshift(k)+atom_position_y(ia)-atom_position_y(ja))**2+    &
                      (zshift(k)+atom_position_z(ia)-atom_position_z(ja))**2
-               if (rij2 > rtol .and. rij2 < r2max) then
+               if (rij2 > rtol .and. rij2 < r2max+rtol) then
                   if (abs(sqrt(rij2)-sqrt(sr_pairs(jp)%rpair2)) <= dr_shell) then
                      id = id + 1
                      sr_pairs(jp)%i_of_pair(id)=ia
@@ -712,13 +724,13 @@ contains
       if (lprint) then
          write(6,'(/,a,t70,a,2i8)')' calSROP:: the (max/required) no. of shells and SRO for each shell', &
                '=',NumShell, NumTypes*(NumTypes-1)/2
-         write(6,'(/,11x,55(''=''))')
+         write(6,'(/,10x,60(''=''))')
          if (NumTypes == 1) then
             write(6,'(10x,a)')'ishell   npairs    pair    naa'
          else
             write(6,'(10x,a)')'ishell   npairs    pair      naa     nab     nbb      srop'
          endif
-         write(6,'(11x,55(''-''))')
+         write(6,'(10x,60(''-''))')
          do ip=1,NumShell
            if (NumTypes == 1) then
              write(6,'(11x,1i5,1i8,$)')ip,sr_pairs(ip)%npairs
@@ -739,10 +751,10 @@ contains
              enddo
            endif
         enddo
-        if (NumTypes > 2) then
-          write(6,'(a)')' '
-        endif
-        write(6,'(11x,55(''=''))')
+!       if (NumTypes > 2) then
+!         write(6,'(a)')' '
+!       endif
+        write(6,'(10x,60(''=''))')
 !        do i=1,NumAtoms
 !          write(6,'(a5,3f10.5)')AtomName(i),AtomPosition(i,1:3)*0.529177208
 !        enddo
