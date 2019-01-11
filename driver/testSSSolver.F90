@@ -64,7 +64,7 @@ program testSSSolver
    use InputModule, only : getKeyValue
 !
    use MPPModule, only : packMessage, unpackMessage, sendPackage, recvPackage, AnyPE, MyPE
-   use MPPModule, only : setCommunicator, resetCommunicator, GlobalMax, bcastMessage
+   use MPPModule, only : setCommunicator, resetCommunicator, GlobalMax, bcastMessage, syncAllPEs
    use GroupCommModule, only : getMyPEinGroup,  getGroupID, getNumPEsInGroup, getGroupCommunicator
 !
 !  ===================================================================
@@ -662,9 +662,6 @@ program testSSSolver
    allocate( fint(0:lmax_kkr_max), gint(kmax_kkr,kmax_kkr) )
    allocate( diags(1:kmax_kkr) )
 !
-   comm = getGroupCommunicator(eGID)
-   NumPEsInGroup = getNumPEsInGroup(eGID)
-   call setCommunicator(comm,getMyPEinGroup(eGID),NumPEsInGroup)
    do is = 1, n_spin_pola
       do ie_loc = 1, NumEsOnMyProc
          ie_glb = getEnergyIndex(ie_loc)
@@ -950,6 +947,9 @@ program testSSSolver
       enddo
    enddo
 !
+   comm = getGroupCommunicator(eGID)
+   NumPEsInGroup = getNumPEsInGroup(eGID)
+   call setCommunicator(comm,getMyPEinGroup(eGID),NumPEsInGroup)
    if (getMyPEinGroup(eGID) == 0) then
       do i = 2, NumPEsInGroup
          call recvPackage(101,AnyPE)
@@ -1224,6 +1224,9 @@ program testSSSolver
 !
       write(6,'(/,a,f12.5,a)') 'Compute time: ',getTime() - t1,' sec.'
    endif
+!
+   call syncAllPEs()
+!
 !  ===================================================================
 !  clean up the allocated spaces.
 !  ===================================================================

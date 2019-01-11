@@ -57,7 +57,7 @@ program testNeighbor
    use ScfDataModule, only : isKKR, isKKRCPA, isLSMS
    use ScfDataModule, only : getPotentialTypeParam
    use ScfDataModule, only : isChargeMixing
-   use ScfDataModule, only : excorr, eftol, etol, ptol, rmstol
+   use ScfDataModule, only : eftol, etol, ptol, rmstol
 !
    use PotentialTypeModule, only : initPotentialType, endPotentialType,      &
                                    isASAPotential, isMuffinTinPotential,     &
