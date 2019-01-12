@@ -22,11 +22,11 @@ program testExchCorr
    integer (kind=IntKind) :: i, is
    integer (kind=IntKind) :: iprint = 0
 !
-   real (kind=RealKind) :: rho(5) = (/0.1, 0.2, 0.3, 0.4, 0.5/)
-   real (kind=RealKind) :: der_rho(5) = (/0.2, 0.3, 0.4, 0.5, 0.6/)
-   real (kind=RealKind) :: mag(5) = (/0.0, 0.0, 0.0, 0.0, 0.0/)
-   real (kind=RealKind) :: der_mag(5) = (/0.0, 0.0, 0.0, 0.0, 0.0/)
-   real (kind=RealKind) :: vxc(5,2), exc(5,2)
+   real (kind=RealKind) :: rho(5) = (/0.2, 0.3, 0.4, 0.5, 0.6/)
+   real (kind=RealKind) :: der_rho(5) = (/0.1, 0.2, 0.3, 0.4, 0.0/)
+   real (kind=RealKind) :: mag(5) = (/0.1, 0.2, 0.3, 0.4, 0.0/)
+   real (kind=RealKind) :: der_mag(5) = (/0.3, 0.4, 0.5, 0.0, 0.0/)
+   real (kind=RealKind) :: vxc(5,2), exc(5)
    real (kind=RealKind), pointer :: p_vxc(:), p_exc(:)
 !
 !  -------------------------------------------------------------------
@@ -69,13 +69,13 @@ program testExchCorr
       do is = 1, n_spin_pola
 !        -------------------------------------------------------------
          vxc(i,is) = getExchCorrPot(is)
-         exc(i,is) = getExchCorrEnDen(is)
+         exc(i) = getExchCorrEnDen()
 !        -------------------------------------------------------------
       enddo
    enddo
    do is = 1, n_spin_pola
       do i = 1, 5
-         write(6,'(a,2i3,2x,2f15.8)')'i, is, vxc,exc = ',i,is,vxc(i,is),exc(i,is)
+         write(6,'(a,2i3,2x,2f15.8)')'i, is, vxc,exc = ',i,is,vxc(i,is),exc(i)
       enddo
    enddo
    write(6,'(/)')
@@ -86,10 +86,11 @@ program testExchCorr
    do is = 1, n_spin_pola
 !     ----------------------------------------------------------------
       p_vxc => getExchCorrPot(5,is)
-      p_exc => getExchCorrEnDen(5,is)
+      p_exc => getExchCorrEnDen(5)
 !     ----------------------------------------------------------------
       do i = 1, 5
-         write(6,'(a,2i3,2x,3f15.8)')'i, is, rho, vxc,exc = ',i,is,rho(i),p_vxc(i),p_exc(i)
+         write(6,'(a,2i3,2x,4f15.8)')'i, is, rho, mom, vxc,exc = ',i,is, &
+                                      rho(i),mag(i),p_vxc(i),p_exc(i)
       enddo 
    enddo
 !

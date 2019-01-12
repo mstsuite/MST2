@@ -62,9 +62,9 @@ private
    character (len=6), parameter :: Null_String = ' '
 !
    real (kind=RealKind) ::    Vexc_s(2)
-   real (kind=RealKind) ::    Eexc_s(2)
+   real (kind=RealKind) ::    Eexc_s
    real (kind=RealKind), allocatable, target :: Vexc_v(:,:)
-   real (kind=RealKind), allocatable, target :: Eexc_v(:,:)
+   real (kind=RealKind), allocatable, target :: Eexc_v(:)
 !
    integer (kind=IntKind) :: NumFunctionals = 0
    integer (kind=IntKind) :: nV, nE
@@ -439,22 +439,18 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getExchCorrEnDen_s(is) result(E)
+   function getExchCorrEnDen_s() result(E)
 !  ===================================================================
    implicit none
-!
-   integer (kind=IntKind), intent(in) :: is 
 !
    real (kind=RealKind) :: E
 !
    if (.not.Initialized) then
       call ErrorHandler('getExchCorrEnDen_s',                         &
                         'ExchCorrFunctional is not initialized')
-   else if ( is < 1 .or. is > n_spin_pola ) then
-      call ErrorHandler("getExchCorrEnDen_s","Wrong spin index",is)
    endif
 !
-   E = Eexc_s(is)
+   E = Eexc_s
 !
    end function getExchCorrEnDen_s
 !  ===================================================================
@@ -462,24 +458,22 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getExchCorrEnDen_v(n_Rpts,is) result(pE)
+   function getExchCorrEnDen_v(n_Rpts) result(pE)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: is, n_Rpts
+   integer (kind=IntKind), intent(in) :: n_Rpts
 !
    real (kind=RealKind), pointer :: pE(:)
 !
    if (.not.Initialized) then
       call ErrorHandler('getExchCorrEnDen_v',                         &
                         'ExchCorrFunctional is not initialized')
-   else if ( is < 1 .or. is > n_spin_pola ) then
-      call ErrorHandler("getExchCorrEnDen_v","Wrong spin index",is)
    else if ( n_Rpts < 1 .or. n_Rpts > nE ) then
       call ErrorHandler("getExchCorrEnDen_v","Num of points out of range",n_RptS)
    endif
 !
-   pE => Eexc_v(1:n_Rpts,is)
+   pE => Eexc_v(1:n_Rpts)
 !
    end function getExchCorrEnDen_v
 !  ===================================================================
@@ -548,7 +542,7 @@ contains
    real (kind=RealKind), intent(in), optional :: der_mag_den
 !
 #ifdef LIBXC
-   real (kind=RealKind) :: rho(2), exc(2), vxc(2)
+   real (kind=RealKind) :: rho(2), exc(1), vxc(2)
    real (kind=RealKind) :: sigma(3), vsig(3)
    TYPE(xc_f90_pointer_t), pointer :: xc_func_p
 #endif
@@ -615,8 +609,8 @@ contains
          endif
          do is = 1, n_spin_pola
             Vexc_s(is) = Vexc_s(is) + vxc(is)
-            Eexc_s(is) = Eexc_s(is) + exc(is)
          enddo
+         Eexc_s = Eexc_s + exc(1)
       enddo
       Vexc_s = energy_units_conv*Vexc_s
       Eexc_s = energy_units_conv*Eexc_s
@@ -664,7 +658,7 @@ contains
       deallocate( Eexc_v )
    endif
    if ( .not.allocated(Eexc_v) ) then
-      allocate( Eexc_v(n_Rpts,n_spin_pola) )
+      allocate( Eexc_v(n_Rpts) )
       nE = n_Rpts
    endif
 !
@@ -691,7 +685,14 @@ contains
 #ifdef LIBXC
    else 
       allocate( rho(n_Rpts*n_spin_pola) )
-      allocate( vxc(n_Rpts*n_spin_pola), exc(n_Rpts*n_spin_pola) )
+      allocate( vxc(n_Rpts*n_spin_pola), exc(n_Rpts) )
+      if (FunctionalType == GGA) then
+         if (n_spin_pola == 1) then
+            allocate(sigma(n_Rpts), vsig(n_Rpts))
+         else
+            allocate(sigma(3*n_Rpts), vsig(3*n_Rpts))
+         endif
+      endif
       if (n_spin_pola == 1) then
          rho = rho_den
       else
@@ -713,13 +714,11 @@ contains
 !           ---------------------------------------------------------
          else if (FunctionalType == GGA) then
             if (n_spin_pola == 1 .and. present(der_rho_den)) then
-               allocate(sigma(n_Rpts), vsig(n_Rpts))
                do i = 1, n_Rpts
                   sigma(i) = der_rho_den(i)*der_rho_den(i)
                enddo
             else if (n_spin_pola == 2 .and.                           &
                      present(der_rho_den) .and.  present(der_mag_den)) then
-               allocate(sigma(3*n_Rpts), vsig(3*n_Rpts))
                do i = 1, n_Rpts
                   sigma(3*i-2) = HALF*(der_rho_den(i)+der_mag_den(i))*HALF*(der_rho_den(i)+der_mag_den(i))
                   sigma(3*i-1) = HALF*(der_rho_den(i)+der_mag_den(i))*HALF*(der_rho_den(i)-der_mag_den(i))
@@ -733,7 +732,6 @@ contains
 !           ---------------------------------------------------------
             call xc_f90_gga_exc_vxc(xc_func_p, n_Rpts, rho(1), sigma(1), exc(1), vxc(1), vsig(1))
 !           ---------------------------------------------------------
-            deallocate(sigma,vsig)
          else
             call ErrorHandler('calSphExchangeCorrelation_s',         &
                  'Evauation of the functionals other LDA and GGA has not been implemented yet.')
@@ -742,13 +740,18 @@ contains
             js = n_spin_pola - is
             do i = 1, n_Rpts
                Vexc_v(i,is) = Vexc_v(i,is) + vxc(n_spin_pola*i-js)
-               Eexc_v(i,is) = Eexc_v(i,is) + exc(n_spin_pola*i-js)
             enddo
          enddo
+         do i = 1, n_Rpts
+            Eexc_v(i) = Eexc_v(i) + exc(i)
+          enddo
       enddo
       Vexc_v = energy_units_conv*Vexc_v
       Eexc_v = energy_units_conv*Eexc_v
       deallocate( rho, vxc, exc )
+      if (FunctionalType == GGA) then
+         deallocate(sigma,vsig)
+      endif
 #else
    else
       call ErrorHandler( "calSphExchangeCorrelation_v",               &
@@ -776,7 +779,7 @@ contains
    real (kind=RealKind), intent(in), optional :: grad_mag_den(3)
 !
 #ifdef LIBXC
-   real (kind=RealKind) :: rho(2), exc(2), vxc(2)
+   real (kind=RealKind) :: rho(2), exc(1), vxc(2)
    real (kind=RealKind) :: sigma(3), vsig(3)
    TYPE(xc_f90_pointer_t), pointer :: xc_func_p
 #endif
@@ -848,8 +851,8 @@ contains
          endif
          do is = 1, n_spin_pola
             Vexc_s(is) = Vexc_s(is) + vxc(is)
-            Eexc_s(is) = Eexc_s(is) + exc(is)
          enddo
+         Eexc_s = Eexc_s + exc(1)
       enddo
       Vexc_s = energy_units_conv*Vexc_s
       Eexc_s = energy_units_conv*Eexc_s
@@ -898,7 +901,7 @@ contains
       deallocate( Eexc_v )
    endif
    if ( .not.allocated(Eexc_v) ) then
-      allocate( Eexc_v(n_Rpts,n_spin_pola) )
+      allocate( Eexc_v(n_Rpts) )
       nE = n_Rpts
    endif
 !
@@ -925,7 +928,7 @@ contains
 #ifdef LIBXC
    else 
       allocate( rho(n_Rpts*n_spin_pola) )
-      allocate( vxc(n_Rpts*n_spin_pola), exc(n_Rpts*n_spin_pola) )
+      allocate( vxc(n_Rpts*n_spin_pola), exc(n_Rpts) )
       if (n_spin_pola == 1) then
          rho = rho_den
       else
@@ -984,8 +987,10 @@ contains
             js = n_spin_pola - is
             do i = 1, n_Rpts
                Vexc_v(i,is) = Vexc_v(i,is) + vxc(n_spin_pola*i-js)
-               Eexc_v(i,is) = Eexc_v(i,is) + exc(n_spin_pola*i-js)
             enddo
+         enddo
+         do i = 1, n_Rpts
+            Eexc_v(i) = Eexc_v(i) + exc(i)
          enddo
       enddo
       Vexc_v = energy_units_conv*Vexc_v
@@ -1054,11 +1059,11 @@ contains
       endif
       r_s = (THREE/(PI4*rho_den))**THIRD
 !     ----------------------------------------------------------------
-      call LDAfunctional( r_s, dz, sp, Eexc_s(is), Vexc_s(is) )
+      call LDAfunctional( r_s, dz, sp, Eexc_s, Vexc_s(is) )
 !     ----------------------------------------------------------------
    else
       Vexc_s(is) = ZERO
-      Eexc_s(is) = ZERO
+      Eexc_s = ZERO
    endif
 !
    end subroutine calExchCorr_s 
@@ -1120,11 +1125,11 @@ contains
          endif
          r_s = (THREE/(PI4*rho_den(ir)))**THIRD
 !        -------------------------------------------------------------
-         call LDAfunctional( r_s, dz, sp, Eexc_v(ir,is), Vexc_v(ir,is) )
+         call LDAfunctional( r_s, dz, sp, Eexc_v(ir), Vexc_v(ir,is) )
 !        -------------------------------------------------------------
       else
          Vexc_v(ir,is) = ZERO
-         Eexc_v(ir,is) = ZERO
+         Eexc_v(ir) = ZERO
       endif
    enddo
 !

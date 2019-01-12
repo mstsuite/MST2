@@ -3559,7 +3559,7 @@ endif
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
          enddo
          V_exc => Potential(id)%enL_Exch(1:jend,1,is)
-         V_tmp => getExchCorrEnDen(jend,is)
+         V_tmp => getExchCorrEnDen(jend)
          do ir = 1,jend
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
          enddo
@@ -3658,7 +3658,7 @@ endif
             do is = 1,n_spin_pola
 !              -------------------------------------------------------
                pXC_rtp = getExchCorrPot(is)
-               eXC_rtp = getExchCorrEnDen(is)
+               eXC_rtp = getExchCorrEnDen()
 !              -------------------------------------------------------
                chgmom_data(is,1,it0,ip0,ir) = pXC_rtp
                chgmom_data(is,2,it0,ip0,ir) = eXC_rtp

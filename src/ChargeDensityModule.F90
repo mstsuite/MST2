@@ -2598,6 +2598,17 @@ contains
                                   p_CDL%der_rhoSph_Total(:,ia),       &
                                   den_r(1:))
 !              -------------------------------------------------------
+               if (n_spin_pola == 2) then
+                  file_den = 'SphMomDensity'//'_'//denFlag//specFlag
+!                 ----------------------------------------------------
+                  call derv5(p_CDL%momSph_Total(:,ia),den_r(1:),r_mesh,nr)
+!                 ----------------------------------------------------
+                  call writeFunction(file_den,nr,r_mesh,                 &
+                                     p_CDL%momSph_Total(:,ia),           &
+                                     p_CDL%der_momSph_Total(:,ia),       &
+                                     den_r(1:))
+!                 ----------------------------------------------------
+               endif
 !
                if ( .not.isSphericalCharge ) then
                   do jl = 1,jmax
@@ -2614,6 +2625,18 @@ contains
                                            real(p_CDL%der_rhoL_Total(:,jl,ia)),&
                                            den_r(1:))
 !                       ----------------------------------------------
+                        if (n_spin_pola == 2) then
+                           file_den = 'FullMomDensity'//'_'//denFlag//specFlag//jlFlag
+                           den_r1(1:) = real(p_CDL%momL_Total(:,jl,ia))
+!                          -------------------------------------------
+                           call derv5(den_r1(1:),den_r(1:),r_mesh,nr)
+!                          -------------------------------------------
+                           call writeFunction(file_den,nr,r_mesh,        &
+                                              den_r1(1:),                &
+                                              real(p_CDL%der_momL_Total(:,jl,ia)),&
+                                              den_r(1:))
+!                          -------------------------------------------
+                        endif
                      endif
                   enddo
                endif

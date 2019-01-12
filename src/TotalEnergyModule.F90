@@ -909,7 +909,7 @@ contains
             valden_rho => getSphRho(na,ia,is)
 !
             vx => getExchCorrPot(jmt,is)
-            enxc => getExchCorrEnDen(jmt,is)
+            enxc => getExchCorrEnDen(jmt)
 !
             deepcore => getDeepCoreDensity(na,ia,is)
             semicore => getSemiCoreDensity(na,ia,is)
@@ -1027,8 +1027,8 @@ contains
       endif
       do is = 1,n_spin_pola
          fac = sfac*(qint+(3-2*is)*mint)
-         emad = emad + fac*getExchCorrEnDen(is)
-         emadp= emadp + fac*THREE*(getExchCorrPot(is)-getExchCorrEnDen(is))
+         emad = emad + fac*getExchCorrEnDen()
+         emadp= emadp + fac*THREE*(getExchCorrPot(is)-getExchCorrEnDen())
       enddo
       do na = 1, LocalNumAtoms
          SiteEnPres(1,na) = SiteEnPres(1,na) + emad/GlobalNumAtoms
