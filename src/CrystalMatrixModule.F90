@@ -199,7 +199,7 @@ contains
    integer (kind=IntKind), intent(in) :: lmax_kkr(nla)
    integer (kind=IntKind), intent(in) :: iprint(nla)
 !
-   character (len=10) :: sname = "initCrystalMatrix"
+   character (len=20) :: sname = "initCrystalMatrix"
 !
    integer (kind=IntKind) :: i, j, ig, na, n, k, nk
    integer (kind=IntKind) :: lmaxi, kmaxi, kmaxj, t0size, nsize
@@ -735,7 +735,7 @@ contains
    logical, intent(in), optional :: tau_needed
    logical :: calculate_tau = .false.
 !
-   character (len=12) :: sname = "calCrystalMatrix"
+   character (len=20) :: sname = "calCrystalMatrix"
 !
    integer (kind=IntKind) :: k_loc, k, i, row, col, MyPEinKGroup
    integer (kind=IntKind) :: NumKs, kGID, aGID, NumKsOnMyProc, NumRedunKs
@@ -869,7 +869,7 @@ contains
    logical, intent(in), optional :: tau_needed
    logical :: calculate_tau
 !
-   character (len=12) :: sname = "calCrystalMatrix"
+   character (len=20) :: sname = "calCrystalMatrix"
 !
    integer (kind=IntKind) :: row, col
 !
@@ -1707,7 +1707,7 @@ contains
 !
    implicit none
 !
-   character (len=12) :: sname = "calBandStructure"
+   character (len=20) :: sname = "calBandStructure"
 !
    integer (kind=IntKind), intent(in) :: is, ne, nk
    integer (kind=IntKind) :: ik, col, row, ie, id, js, ns

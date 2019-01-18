@@ -2762,8 +2762,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelTMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelTMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelTMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2784,8 +2783,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2806,8 +2804,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2828,8 +2825,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2850,8 +2846,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2872,8 +2867,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2894,8 +2888,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2916,8 +2909,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelSinMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelSinMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelSinMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
 
@@ -2956,8 +2948,8 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelRegSolutionSine', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelRegSolutionSine', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelRegSolutionSine', 'invalid number of local atoms', &
+                        LocalNumAtoms)
    endif
 
    ss_mat_r => Scatter(atom)%ss_mat_r
@@ -2976,8 +2968,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelRegSolutionSine', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelRegSolutionSine', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelRegSolutionSine', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    cc_mat_r => Scatter(atom)%cc_mat_r
@@ -3131,8 +3122,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelDOS', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelDOS', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelDOS', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if ( is >1 .and. (.not.is_Bxyz_max) ) then
@@ -3170,8 +3160,7 @@ include '../lib/arrayTools.F90'
         if (.not.Initialized) then
                 call ErrorHandler('getRelGreen', 'module not initialized')
         else if (atom < 1 .or. atom > LocalNumAtoms) then
-                call ErrorHandler('getRelGreen', 'invalid number of &
-                                 local atoms', LocalNumAtoms)
+                call ErrorHandler('getRelGreen', 'invalid number of local atoms', LocalNumAtoms)
         endif
 
         if ( is >1 .and. (.not.is_Bxyz_max) ) then
@@ -3229,8 +3218,7 @@ include '../lib/arrayTools.F90'
    if (.not. Initialized) then
       call ErrorHandler('getRelSSGreenOut','module not initialized')
    else if (ia < 1 .or. ia > LocalNumAtoms) then
-      call ErrorHandler('getRelGreenOut', 'invalid number of &
-                       local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelGreenOut', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    nr=Scatter(ia)%numrs_cs

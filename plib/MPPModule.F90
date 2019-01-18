@@ -3864,7 +3864,7 @@
             PackedBuffer(NumPacks)%DataType=MPI_INTEGER
             allocate( PackedBuffer(NumPacks)%iBuf(2) )
             PackedBuffer(NumPacks)%iBuf(1)=int(a/1000000000,kind=IntKind)
-            PackedBuffer(NumPacks)%iBuf(2)=mod(a,1000000000)
+            PackedBuffer(NumPacks)%iBuf(2)=mod(a,1000000000_LongIntKind)
 #endif
          end subroutine pack_longint0
 !=====================================================================
@@ -3886,7 +3886,7 @@
             allocate( PackedBuffer(NumPacks)%iBuf(2*n) )
             do i = 1, n
                PackedBuffer(NumPacks)%iBuf(2*i-1)=int(a(i)/1000000000,kind=IntKind)
-               PackedBuffer(NumPacks)%iBuf(2*i)=mod(a(i),1000000000)
+               PackedBuffer(NumPacks)%iBuf(2*i)=mod(a(i),1000000000_LongIntKind)
             enddo
 #endif
          end subroutine pack_longint1
@@ -3911,7 +3911,7 @@
                j=2*(i-1)*n
                do k = 1, n
                   PackedBuffer(NumPacks)%iBuf(j+2*k-1)=int(a(k,i)/1000000000,kind=IntKind)
-                  PackedBuffer(NumPacks)%iBuf(j+2*k)=mod(a(k,i),1000000000)
+                  PackedBuffer(NumPacks)%iBuf(j+2*k)=mod(a(k,i),1000000000_LongIntKind)
                enddo
             enddo
 #endif

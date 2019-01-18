@@ -367,8 +367,8 @@ contains
          call xc_f90_info_name(xc_info_p,func_name)
          write(6,'(/,"Functional name: ",a)')fname
          write(6,'("This functional ''", a, "'' is ",a,               &
-                   ", it belongs to the ''",a,                        &
-                   "'' family and is defined in the reference(s):")') &
+        &          ", it belongs to the ''",a,                        &
+        &          "'' family and is defined in the reference(s):")') &
                trim(func_name), trim(func_kind), trim(func_family)
          i = 0
          call xc_f90_info_refs(xc_info_p, i, ref)

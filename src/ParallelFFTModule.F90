@@ -102,10 +102,15 @@ contains
    type (UniformGridStruct), pointer :: pUG
 !
    comm = getCommunicator()
-   if (comm <= 0) then
-      call ErrorHandler('initParallelFFT','comm <= 0',                &
-                        'Code PotentialGenerationModule needs to be redesigned')
-   endif
+!  ===================================================================
+!  The following lines are commented out since IBM MPI library appears
+!  giving negative comm value. So, this check is not reliable.
+!  ===================================================================
+!  if (comm <= 0) then
+!     call ErrorHandler('initParallelFFT','comm <= 0',                &
+!                       'Code PotentialGenerationModule needs to be redesigned')
+!  endif
+!  ===================================================================
 #ifdef P3DFFT
    MyPE_comm = getMyPE()
    NumPEs_comm = getNumPEs()

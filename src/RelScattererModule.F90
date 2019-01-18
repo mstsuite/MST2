@@ -180,11 +180,9 @@ include '../lib/arrayTools.F90'
    end interface
 
    if (Initialized) then
-      call WarningHandler('initRelScatterer', 'relScatterer has &
-                           already been initialized')
+      call WarningHandler('initRelScatterer', 'relScatterer has already been initialized')
    else if (num_latoms < 1) then
-      call ErrorHandler('initRelScatterer', 'num_latoms < 1', &
-                         num_latoms)
+      call ErrorHandler('initRelScatterer', 'num_latoms < 1', num_latoms)
    endif
 
 #ifdef DEBUG
@@ -273,8 +271,7 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind) :: ia
 
    if (.not.Initialized) then
-      call ErrorHandler('endRelScatterer', 'module has &
-                         not been initialized')
+      call ErrorHandler('endRelScatterer', 'module has not been initialized')
    endif
 
 #ifdef DEBUG
@@ -421,8 +418,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelTmat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelTmat', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('getRelTmat', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('getRelTmat', 'solveRelSST must be called first')
    endif
@@ -444,8 +440,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getGZ', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getGZ', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('getGZ', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('getGZ', 'solveRelSST must be called first')
    endif
@@ -467,8 +462,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getFZ', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getFZ', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('getFZ', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('getFZ', 'solveRelSST must be called first')
    endif
@@ -491,8 +485,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getGJ', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getGJ', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('getGJ', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('getGJ', 'solveRelSST must be called first')
    endif
@@ -514,8 +507,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getFJ', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getFJ', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('getFJ', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('getFJ', 'solveRelSST must be called first')
    endif
@@ -537,8 +529,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('get_Nuz', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('get_Nuz', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('get_Nuz', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('get_Nuz', 'solveRelSST must be called first')
    endif
@@ -560,8 +551,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('get_Indz', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('get_Indz', 'invalid number of local &
-                         atoms', LocalNumAtoms)
+      call ErrorHandler('get_Indz', 'invalid number of local atoms', LocalNumAtoms)
    else if (.not.SSTFlag) then
       call ErrorHandler('get_Indz', 'solveRelSST must be called first')
    endif

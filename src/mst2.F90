@@ -263,6 +263,7 @@ program mst2
    logical :: initSystemMovie=.true.
    logical :: IsoParamVINT = .false.
    logical :: FrozenCoreFileExist = .false.
+   logical :: StandardInputExist = .false.
    logical :: isDOSCalculationOnly = .false.
 !
    character (len=12) :: str_stdin= 'i_lsms_stdin'
@@ -457,9 +458,11 @@ program mst2
    call initInput()
 !  -------------------------------------------------------------------
    FileName = 'None'
-   inquire(unit=5,name=FileName,named=FileNamed)
+!  inquire(unit=5,name=FileName,named=FileNamed)
+   inquire(unit=5,name=FileName,exist=StandardInputExist)
 !   write(6,*) "main:: Input file open: ",trim(FileName)
-   if (FileNamed) then
+!  if (FileNamed) then
+   if (StandardInputExist) then
 !     ----------------------------------------------------------------
       call readInputData(5,def_id)
 !     ----------------------------------------------------------------

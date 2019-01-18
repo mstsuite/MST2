@@ -1,23 +1,23 @@
 CUDA_PATH =
-LIBXC_PATH = /ccs/proj/mat020/libxc-4.2.3/Titan
-ODIR = $(PWD)/bin_Titan
+LIBXC_PATH = /ccs/proj/mat020/libxc-4.2.3/Summit_PGI
+ODIR = $(PWD)/bin_Summit
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
-FC=ftn
+FC=mpif90
 #F77=$(FC)
-F77=ftn
-CC=gcc
-CXX=gcc
+F77=mpif90
+CC=pgcc
+CXX=pgcc
 PREPROC = $(FC)
-EXEC_NAME = mst2_titan_accel
+EXEC_NAME = mst2_summit_pgi
 
 #=====================================================================
-# Set Acceleration to 1 for using Accelerator
+# Set Acceleration to 0 if Accelerator is not used.
 #=====================================================================
-Acceleration = 1
+Acceleration = 0
 
-CUDA_CXX = nvcc -arch=sm_35
+CUDA_CXX = nvcc -arch=sm_70
 # CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -Xcompiler "-Warray-bounds -O2 -Woverlength-strings"
 CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -O3
 
@@ -37,10 +37,10 @@ LD=$(FC)
 #=====================================================================
 #FFLAGS=-I. -assume byterecl -openmp -O3 -axSSE4.2
 #FFLAGS=-I. -assume byterecl -openmp -g -C -traceback -check all -check nopointer -check noshape #-warn all
-FFLAGS=-I. -Mfree -fastsse -fast -mp
-F77FLAGS=-I. -Mfixed -fastsse -fast -mp
+FFLAGS=-I. -O3
+F77FLAGS=$(FFLAGS)
 FPPDEFS=-Mpreprocess
-CFLAGS= -O3 -DMAX_GPU_THREADS=12 -Warray-bounds -Woverlength-strings
+CFLAGS= -fastsse
 CPPDEFS=-Mpreprocess
 CPPFLAGS=-DUnderscore
 
@@ -48,7 +48,7 @@ CPPFLAGS=-DUnderscore
 # Math library (Lapack, Blas, Scalapck) linking flags
 #=====================================================================
 #ADDLIBS = -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++
-ADDLIBS = -lm -lcudart -lcuda -lcublas -lstdc++
+ADDLIBS = -llapack -lblas
 
 ifdef LIBXC_PATH
 ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
@@ -88,7 +88,7 @@ endif
 #    Use_ScaLapack = -DUSE_SCALAPACK    - Use ScaLapack in KKR method
 #    Use_ScaLapack =                    - DO NOT use ScaLapack in KKR method
 #=====================================================================
-  Use_ScaLapack = -DUSE_SCALAPACK
+  Use_ScaLapack =
 
 #=====================================================================
 # 4. SuperLU flag 
@@ -107,9 +107,9 @@ endif
 #=====================================================================
 Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
-   FFTW_INC = /opt/cray/fftw/3.3.8.1/interlagos/include
-   FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/ccs/proj/mat020/p3dfft-2.7.6/Titan/include
-   ADDLIBS += -L/opt/cray/fftw/3.3.8.1/interlagos/lib -lfftw3_mpi -lfftw3 -L/ccs/proj/mat020/p3dfft-2.7.6/Titan/lib -lp3dfft
+   FFTW_INC = $(OLCF_FFTW_ROOT)/include
+   FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/ccs/proj/mat020/p3dfft-2.7.6/Summit_PGI/include
+   ADDLIBS += -L$(OLCF_FFTW_ROOT)/lib -lfftw3_mpi -lfftw3 -L/ccs/proj/mat020/p3dfft-2.7.6/Summit_PGI/lib -lp3dfft
 endif
 
 #=====================================================================

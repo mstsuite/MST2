@@ -1,5 +1,6 @@
 CUDA_PATH =
-#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
+LIBXC_PATH = /ccs/proj/mat020/libxc-4.2.3/Titan
+ODIR = $(PWD)/bin_Titan
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -9,7 +10,7 @@ F77=ftn
 CC=gcc
 CXX=gcc
 PREPROC = $(FC)
-EXEC_NAME = mst2_cpu
+EXEC_NAME = mst2_titan
 
 #=====================================================================
 # Set Acceleration to 0 if Accelerator is not used.
@@ -106,9 +107,9 @@ endif
 #=====================================================================
 Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
-   FFTW_INC = /opt/cray/fftw/3.3.4.8/interlagos/include
-   FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/ccs/home/wangy/p3dfft-2.7.6/include
-   ADDLIBS += -L/opt/cray/fftw/3.3.4.8/interlagos/lib -lfftw3_mpi -lfftw3 -L/ccs/home/wangy/p3dfft-2.7.6/lib -lp3dfft
+   FFTW_INC = /opt/cray/fftw/3.3.8.1/interlagos/include
+   FFT_FLAG = -DFFTW -I$(FFTW_INC) -DP3DFFT -I/ccs/proj/mat020/p3dfft-2.7.6/Titan/include
+   ADDLIBS += -L/opt/cray/fftw/3.3.8.1/interlagos/lib -lfftw3_mpi -lfftw3 -L/ccs/proj/mat020/p3dfft-2.7.6/Titan/lib -lp3dfft
 endif
 
 #=====================================================================

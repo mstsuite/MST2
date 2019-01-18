@@ -3,15 +3,22 @@
 #=====================================================================
 # SystemName is the filename found under ./compilation_new/arch
 #=====================================================================
-SystemName = muir_xeon
+SystemName = titan_accel
 
 #=====================================================================
 # Paths and internal libraries setup - This unlikely needs to be changed
 #=====================================================================
+WORK_DIR = $(PWD)
+ODIR=$(WORK_DIR)/bin
+
+#=====================================================================
+# No need to change following settings, unless it is necessary
+#=====================================================================
+include ./compilation_new/arch/$(SystemName)
+
 ifndef EXEC_NAME
 EXEC_NAME = mst2
 endif
-WORK_DIR = $(PWD)
 MST2_DIR_LINK = MST-2
 MSTLIB = $(ODIR)/libmst.a
 MPPLIB = $(ODIR)/libmpp.a
@@ -19,12 +26,6 @@ IOLIB  = $(ODIR)/iolib.a
 IODIR  = $(WORK_DIR)/iolib 
 SLULIB = $(ODIR)/slulib.a
 ACCLIB = $(ODIR)/libMatAcc.a
-ODIR=$(WORK_DIR)/bin
-
-#=====================================================================
-# No need to change following settings, unless it is necessary
-#=====================================================================
-include ./compilation_new/arch/$(SystemName)
 
 ifeq "$(SuperLU)" "0"
    SLULIB =
@@ -113,4 +114,7 @@ clear_src:
 	cd $(ODIR); make "ODIR=$(ODIR)" "EXEC_NAME=$(EXEC_NAME)" clear -f ../src/Makefile
 
 clean:
+	rm -f $(ODIR)/*.o $(ODIR)/*.mod $(ODIR)/*.a
+
+deepclean:
 	rm -f $(ODIR)/*

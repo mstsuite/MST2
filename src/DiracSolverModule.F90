@@ -2264,8 +2264,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getRelTMat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelTMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getRelTMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2294,8 +2293,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getGReg', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getGReg', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getGReg', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2324,8 +2322,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getFReg', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getFReg', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getFReg', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2354,8 +2351,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getGIrr', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getGIrr', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getGIrr', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2384,8 +2380,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getFIrr', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getFIrr', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getFIrr', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2414,8 +2409,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getnuz', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getnuz', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getnuz', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2444,8 +2438,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getindz', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getindz', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getindz', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    if(abs(e-last_energy) > TEN2m12) then
@@ -2472,8 +2465,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getSizeOfRmesh', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getSizeOfRmesh', 'invalid number &
-                         of local atoms', LocalNumAtoms)
+      call ErrorHandler('getSizeOfRmesh', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    nr = Scatter(atom)%NumRs
@@ -2493,8 +2485,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getDmat', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getDMat', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getDMat', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    dmat => Scatter(atom)%d_mat
@@ -2514,8 +2505,7 @@ include '../lib/arrayTools.F90'
    if (.not.Initialized) then
       call ErrorHandler('getDmatP', 'module not initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getDMatP', 'invalid number of &
-                         local atoms', LocalNumAtoms)
+      call ErrorHandler('getDMatP', 'invalid number of local atoms', LocalNumAtoms)
    endif
 
    dmatp => Scatter(atom)%d_matp

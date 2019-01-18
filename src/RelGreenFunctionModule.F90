@@ -167,8 +167,8 @@ contains
    integer (kind=IntKind), parameter :: lamp=1, lammp=2*(lamp+1)*(lamp+1)
 
    if(pola.ne.2 .or. cant.ne.2) then
-      call ErrorHandler('initRelGreenFunction', 'pola and cant &
-                        must equal 2 for relativistic calculations')
+      call ErrorHandler('initRelGreenFunction', &
+                        'pola and cant must equal 2 for relativistic calculations')
    endif
 
    allocate( done(na) )
@@ -239,8 +239,8 @@ contains
                         lmaxphi, lmaxgreen,  posi,   &
                         pola, cant, 2, i_stop, i_print)
    else
-      call ErrorHandler('initRelGreenFunction', 'Relativistic calculations &
-                         only support LSMS and KKR methods')
+      call ErrorHandler('initRelGreenFunction', &
+            'Relativistic calculations only support LSMS and KKR methods')
    endif
 
    Energy = CZERO
@@ -259,8 +259,7 @@ contains
    implicit none
 
    if (.not.Initialized) then
-      call ErrorHandler('endRelGreen', 'module has not &
-                         been initialized')
+      call ErrorHandler('endRelGreen', 'module has not been initialized')
    endif
 
    Initialized = .false.
@@ -391,11 +390,9 @@ contains
 !  complex (kind=CmplxKind), allocatable :: dens_orb(:,:) ! Output
 
    if (.not.Initialized) then
-      call ErrorHandler('getRelGreenFunction', 'Module has &
-                         not been initialized')
+      call ErrorHandler('getRelGreenFunction', 'Module has not been initialized')
    else if (atom < 1 .or. atom > LocalNumAtoms) then
-      call ErrorHandler('getRelGreenFunction', 'Invalid local &
-                         atom index', atom)
+      call ErrorHandler('getRelGreenFunction', 'Invalid local atom index', atom)
    else if ( abs(e-Energy) > TEN2m10 ) then
       call ErrorHandler('getRelGreenFunction','Need to call to call calRelGreenFunction first')
    endif
@@ -692,14 +689,11 @@ stop 'Under construction...'
    complex (kind=CmplxKind), pointer :: integral(:)
 
    if (.not.Initialized) then
-      call ErrorHandler('getRelGreenIntegral', 'Module has &
-                         not been initialized')
+      call ErrorHandler('getRelGreenIntegral', 'Module has not been initialized')
    else if (ia < 1 .or. ia > LocalNumAtoms) then
-      call ErrorHandler('getRelGreenIntegral', 'Invalid atom &
-                         index', ia)
+      call ErrorHandler('getRelGreenIntegral', 'Invalid atom index', ia)
    else if (.not.done(ia)) then
-      call ErrorHandler('getRelGreenIntegral', 'Must call &
-                         RelGreenFunction for this atom first')
+      call ErrorHandler('getRelGreenIntegral', 'Must call RelGreenFunction for this atom first')
    else if (abs(e-Energy) > TEN2m10) then
       call ErrorHandler('getRelGreenIntegral','Need to call to call calRelGreenFunction first')
    endif
@@ -742,14 +736,11 @@ stop 'Under construction...'
    complex (kind=CmplxKind), pointer :: integral(:)
 
    if (.not.Initialized) then
-      call ErrorHandler('getRelGreenIntegralMT', 'Module has &
-                         not been initialized')
+      call ErrorHandler('getRelGreenIntegralMT', 'Module has not been initialized')
    else if (ia < 1 .or. ia > LocalNumAtoms) then
-      call ErrorHandler('getRelGreenIntegralMT', 'Invalid atom &
-                         index', ia)
+      call ErrorHandler('getRelGreenIntegralMT', 'Invalid atom index', ia)
    else if (.not.done(ia)) then
-      call ErrorHandler('getRelGreenIntegralMT', 'Must call &
-                         RelGreenFunction for this atom first')
+      call ErrorHandler('getRelGreenIntegralMT', 'Must call RelGreenFunction for this atom first')
    else if (abs(e-Energy) > TEN2m10) then
       call ErrorHandler('getRelGreenIntegralMT','Need to call calRelGreenFunction first')
    endif
@@ -784,8 +775,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getSpinTorqueMomentR', 'Invalid local atom &
-                         index', id)
+      call ErrorHandler('getSpinTorqueMomentR', 'Invalid local atom index', id)
    endif
 
    td(1) = ZERO
@@ -805,8 +795,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getStonerParamMoment','Invalid local atom &
-                         index', id)
+      call ErrorHandler('getStonerParamMoment','Invalid local atom index', id)
    endif
 
    st(1) = ZERO
@@ -826,8 +815,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getOneSiteStonerParamMoment', 'Invalid &
-                         local atom index', id)
+      call ErrorHandler('getOneSiteStonerParamMoment', 'Invalid local atom index', id)
    endif
 
    os = ZERO
@@ -846,8 +834,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getOneSiteSusceptibilityMoment', 'Invalid &
-                         local atom index',id)
+      call ErrorHandler('getOneSiteSusceptibilityMoment', 'Invalid local atom index',id)
    endif
 
    os(0) = ZERO
@@ -868,8 +855,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getOneSiteExchangeParamMoment', 'Invalid &
-                         local atom index', id)
+      call ErrorHandler('getOneSiteExchangeParamMoment', 'Invalid local atom index', id)
    endif
 
    osex = ZERO
@@ -892,8 +878,7 @@ stop 'Under construction...'
    complex (kind=CmplxKind), intent(in) :: de
 
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getPairExchangeParamMoment', 'Invalid &
-                         local atom index', id)
+      call ErrorHandler('getPairExchangeParamMoment', 'Invalid local atom index', id)
    endif
 
    jid = 0
