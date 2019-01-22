@@ -2,15 +2,16 @@
 ! Original code was written by X-G Zhang and his student.
 ! It is modified and integrated into MST package by Yang Wang
 ! ********************************************************************
-! T - Temperature (input)
-! xg - Gaussian points (output)
-! wg - Gaussian quadrature weights (output)
+! Temp - Temperature in Kelvin (input)
+! xg - Gaussian points in Ryd units (output)
+! wg - Gaussian quadrature weights in Ryd units (output)
 ! ne - number of terms (input)
 ! 
-      subroutine polyfermi(T,xg,wg,ne,npoles)   
+      subroutine polyfermi(Temp,xg,wg,ne,npoles,mu)   
 !
       use KindParamModule, only : IntKind, RealKind, CmplxKind
-      use MathParamModule, only : PI, SQRTm1, CONE
+      use MathParamModule, only : PI, SQRTm1, CONE, PI2
+      use PhysParamModule, only : Boltzmann
       use ErrorHandlerModule, only : ErrorHandler
       implicit none
 !
@@ -29,9 +30,12 @@
 !
       integer (kind=IntKind), intent(in) :: ne
       integer (kind=IntKind), intent(in), optional :: npoles
-      real (kind=RealKind), intent(in) :: T
+      real (kind=RealKind), intent(in) :: Temp
+      real (kind=RealKind), intent(in), optional :: mu
+      real (kind=RealKind) :: T
       complex (kind=CmplxKind), intent(out) :: xg(ne),wg(ne)
 !      
+      T = Temp*Boltzmann  ! Change to Rydberg units. Add by Yang Wang
       gamma=3.d0-sqrt(8.d0)
 !
       if (ne.gt.nem) then
@@ -42,7 +46,7 @@
       if (present(npoles)) then
          n = npoles
       else 
-         n = 5000
+         n=max(2+int(0.5+0.1d0/T),ne+1)   ! ywg
       endif
 !
       if (n.gt.ntm .or. ne.gt.n) then
@@ -160,5 +164,13 @@
             wg(nz)=w*we(nz)*T    ! changed
          enddo ! nz
       endif ! ne
+!
+!     ================================================================
+!     The following lines are added by Yang Wang
+!     ================================================================
+      wg = wg*PI2  ! added by Yang Wang
+      if (present(mu)) then
+         xg = xg + mu
+      endif
 !
       end subroutine polyfermi

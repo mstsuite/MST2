@@ -11,6 +11,7 @@ F77=mpiifort
 CC=mpiicc
 CXX=mpiicc
 PREPROC = $(FC)
+EXEC_NAME = mst2_intel
 
 CUDA_CXX = nvcc -arch=sm_35
 CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -DCUDA

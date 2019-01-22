@@ -20,7 +20,7 @@ program testProcMapping
    use ScfDataModule, only : isReadKmesh, getKmeshFileName
    use ScfDataModule, only : NumEs, ContourType, eGridType
    use ScfDataModule, only : NumKMeshs, kGenScheme, Kdiv, Symmetrize
-   use ScfDataModule, only : isScreenKKR_LSMS, isKKR
+   use ScfDataModule, only : isScreenKKR_LSMS, isKKR, Temperature
 !
    use PotentialTypeModule, only : initPotentialType, endPotentialType, &
                                    isFullPotential
@@ -63,7 +63,7 @@ program testProcMapping
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, 'none', -1)
+      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', -1)
 !     ----------------------------------------------------------------
    endif
 !  

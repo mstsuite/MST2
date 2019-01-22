@@ -479,7 +479,7 @@ contains
 !  -------------------------------------------------------------------
    call initSpinRotation(LocalNumAtoms,evec)
 !  -------------------------------------------------------------------
-!  call setupContour( ErBottom, Efermi, EiBottom, EiTop, Temperature)
+!  call setupContour( ErBottom, Efermi, EiBottom, EiTop )
 !  -------------------------------------------------------------------
 !
 !  EPoint => getEPoint()

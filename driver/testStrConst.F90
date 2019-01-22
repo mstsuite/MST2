@@ -109,13 +109,13 @@ program testStrConst
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, 'none', -1)
+      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', -1)
 !     ----------------------------------------------------------------
       if (ErTop <= ErBottom) then
          ErTop = ErBottom + ONE
       endif
 !     ----------------------------------------------------------------
-      call setupContour( ErBottom, ErTop, EiBottom, EiTop, Temperature)
+      call setupContour( ErBottom, ErTop, EiBottom, EiTop )
 !     ----------------------------------------------------------------
    endif
 !  

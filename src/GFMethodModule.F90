@@ -1368,6 +1368,8 @@ contains
 !  ===================================================================
    use PublicParamDefinitionsModule, only : ButterFly
 !
+   use PhysParamModule, only : Boltzmann
+!
    use MPPModule, only : endMPP
 !
    use GroupCommModule, only : GlobalMaxInGroup
@@ -1397,7 +1399,7 @@ contains
    integer (kind=IntKind), parameter :: MaxIterations = 20
 !
    real (kind=RealKind), intent(inout) :: efermi
-   real (kind=RealKind) :: efermi_old, dosmt, dosws
+   real (kind=RealKind) :: efermi_old, dosmt, dosws, kBT
    real (kind=RealKind) :: Lloyd_factor(n_spin_pola), ssDOS, msDOS(2)
    real (kind=RealKind) :: int_dos(n_spin_cant*n_spin_pola,LocalNumAtoms)
    real (kind=RealKind) :: last_dos(n_spin_cant*n_spin_pola,LocalNumAtoms)
@@ -1408,6 +1410,8 @@ contains
 !  Determine if using Z*Tau*Z - Z*J formula for the Green function
 !  ===================================================================
    useIrregularSolution = isSSIrregularSolOn() .and. .not.(isFullPotential()) 
+!
+   kBT = Temperature*Boltzmann
 !
 !  ===================================================================
 !  Initialize the enegy contour module
@@ -1425,8 +1429,8 @@ contains
       endif
    else if (.not.isSingleSiteCluster .or. useIrregularSolution) then
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, stop_routine,  &
-                        maxval(print_level(1:LocalNumAtoms)), .true. )
+      call initContour( ContourType, eGridType, NumEs, Temperature,   &
+                        stop_routine, maxval(print_level(1:LocalNumAtoms)), .true. )
 !     ----------------------------------------------------------------
       isContourInitialized = .true.
 !
@@ -1436,7 +1440,7 @@ contains
 !     grids on arectangular contour.
 !     New feature: No extra last energy point is added!
 !     ----------------------------------------------------------------
-      call setupContour( ErBottom, efermi, EiBottom, EiTop, Temperature)
+      call setupContour( ErBottom, efermi, EiBottom, EiTop )
 !     ----------------------------------------------------------------
       if (node_print_level >= 0) then
 !        -------------------------------------------------------------
@@ -1535,8 +1539,13 @@ contains
 !        -------------------------------------------------------------
       enddo
 !!    if (NumSS_IntEs > 1 .and. efermi > ZERO) then
+!        =============================================================
+!        For finite temperature, extend the integration to efermi+6*log(10)*kB*T
+!        where 6*log(10)*kB*T is a result of the fact that at energy = efermi+13.82*kB*T
+!        FD(energy,T) = 1.0d-6.
 !        -------------------------------------------------------------
-         call calSingleScatteringIDOS(Ebegin=0.00001d0,Eend=efermi)
+         call calSingleScatteringIDOS(Ebegin=0.00001d0,               &
+                                      Eend=efermi+6.0d0*log(10.0d0)*kBT)
 !        -------------------------------------------------------------
 !!    else
 !        -------------------------------------------------------------
@@ -6256,6 +6265,8 @@ contains
 !  ===================================================================
 !   use PublicParamDefinitionsModule, only : ButterFly
 !
+   use PhysParamModule, only : Boltzmann
+!
    use MPPModule, only : endMPP
 !
    use GroupCommModule, only : GlobalMaxInGroup
@@ -6286,7 +6297,7 @@ contains
    integer (kind=IntKind), parameter :: MaxIterations = 20
    !
    real (kind=RealKind), intent(inout) :: efermi
-   real (kind=RealKind) :: efermi_old
+   real (kind=RealKind) :: efermi_old, kBT
    real (kind=RealKind) :: Lloyd_factor(n_spin_pola), ssDOS, msDOS(2)
    real (kind=RealKind) :: int_dos(n_spin_cant*n_spin_pola,LocalNumAtoms)
    real (kind=RealKind) :: last_dos(n_spin_cant*n_spin_pola,LocalNumAtoms)
@@ -6295,7 +6306,9 @@ contains
    if (isLloydOn()) then
       call ErrorHandler("calRelIntegratedDOS","isLloydOn=.ture., unimplemented case")
    endif
-
+!
+   kBT = Temperature*Boltzmann
+!
 !  ===================================================================
 !  Initialize the enegy contour module
 !  ===================================================================
@@ -6305,8 +6318,8 @@ contains
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, stop_routine,  &
-                       maxval(print_level(1:LocalNumAtoms)), .true. )
+      call initContour( ContourType, eGridType, NumEs, Temperature,   &
+                        stop_routine, maxval(print_level(1:LocalNumAtoms)), .true. )
 !      ----------------------------------------------------------------
 !
 !     ================================================================
@@ -6315,7 +6328,7 @@ contains
 !     grids on arectangular contour.
 !     New feature: No extra last energy point is added!
 !     ----------------------------------------------------------------
-      call setupContour( ErBottom, efermi, EiBottom, EiTop, Temperature)
+      call setupContour( ErBottom, efermi, EiBottom, EiTop )
 !     ----------------------------------------------------------------
    endif
 
@@ -6368,7 +6381,9 @@ contains
          call zeroElectroStruct(ssIntegrValue(id))
 !        -------------------------------------------------------------
       enddo
-      call calSingleScatteringIDOS(Ebegin=0.00001d0,Eend=efermi, relativity=.true.)
+      call calSingleScatteringIDOS(Ebegin=0.00001d0,                  &
+                                   Eend=efermi+6.0d0*log(10.0d0)*kBT, &
+                                   relativity=.true.)
       if ( node_print_level >= 0) then
          write(6,'(/,a)')'Rel: IDOS of the MS term'
          do id =  1,LocalNumAtoms 

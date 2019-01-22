@@ -22,7 +22,7 @@ subroutine startProcess(ss_mode)
    use ScfDataModule, only : NumKMeshs, kGenScheme, Kdiv, Symmetrize
    use ScfDataModule, only : isReadEmesh, getEmeshFileName
    use ScfDataModule, only : isReadKmesh, getKmeshFileName
-   use ScfDataModule, only : eGridType, NumEs, ContourType, NumSS_IntEs
+   use ScfDataModule, only : eGridType, NumEs, ContourType, NumSS_IntEs, Temperature
 !
    use PotentialTypeModule, only : initPotentialType, printPotentialType, &
                                    isFullPotential
@@ -86,7 +86,7 @@ subroutine startProcess(ss_mode)
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, 'none', -1)
+      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', -1)
 !     ----------------------------------------------------------------
    endif
    ne = getNumEs()

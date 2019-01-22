@@ -2,7 +2,9 @@ module ContourModule
    use KindParamModule, only : IntKind, RealKind, CmplxKind
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
    use PublicParamDefinitionsModule, only : HalfCircle, RectBox, HorizLine, VertLine, &
-                                            ButterFly, EqualInterval, GaussianPoints, LogInterval
+                                            ButterFly, MatsubaraPoles
+   use PublicParamDefinitionsModule, only : EqualInterval, GaussianPoints, &
+                                            LogInterval, NicholsonPoints
 !
 public :: initContour,      &
           endContour,       &
@@ -17,6 +19,7 @@ public :: initContour,      &
           getContourKPoint, &
           isHorizontalContour, &
           isNotSearchingEf, &
+          isMatsubaraContour, &
           printContour, &
           eGridType_Lloyd_Ef_search
 !
@@ -237,11 +240,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initContour1(ctype,eg,ne,istop,iprint,nle)
+   subroutine initContour1(ctype,eg,ne,Temp,istop,iprint,nle)
 !  ===================================================================
-   use MathParamModule, only : CZERO
+   use MathParamModule, only : ZERO, CZERO, ONE, TEN2m6
    use ScfDataModule, only : OffsetE, NumExtraEs
 !   use ScfDataModule, only : isLloyd,getLloydMode
+   use MatsubaraModule, only : initMatsubara, getNumMatsubaraPoles
+!
    implicit none
 !
    character (len=*), intent(in) :: istop
@@ -251,19 +256,55 @@ contains
    integer (kind=IntKind), intent(in) :: eg
    integer (kind=IntKind), intent(in) :: ne
 !
+   real (kind=RealKind), intent(in) :: Temp
+!
    logical, intent(in), optional :: nle
 !
-   ContourType = ctype
-!
-   if (ContourType == ReadEmesh) then
-      call ErrorHandler('initContour','Invalid contour type')
+   if (ne < 1) then
+      call ErrorHandler('initContour1','invalid no. of energies',ne)
+   else if (Temp < ZERO) then
+      call ErrorHandler('initContour1','Temperature < 0',Temp)
    endif
 !
-   eGridType = eg
-   NumEs = ne
+   if (ctype == ReadEmesh) then
+      call ErrorHandler('initContour1','Invalid contour type')
+   endif
 !
-   if (NumEs < 1) then
-      call ErrorHandler('initContour1','invalid no. of energies',NumEs)
+   Temperature = Temp
+!
+   if (Temperature < TEN2m6) then
+      ContourType = ctype
+   else
+      ContourType = MatsubaraPoles
+   endif
+!
+   if (ContourType == MatsubaraPoles) then
+!     ================================================================
+!     If temperature is too low, e.g. less than 300.0 Kevin, while contour
+!     type is determined to be Matsubara poles, the XG Zhang's Gaussian
+!     points scheme is used so to avoid generating too many poles in
+!     using Nicholson's scheme.
+!     ================================================================
+      if (Temperature > 299.0d0 .and. eg == NicholsonPoints) then
+         eGridType = NicholsonPoints
+!        -------------------------------------------------------------
+         call initMatsubara(eGridType,Temperature,eWidth=1.5d0)
+!        -------------------------------------------------------------
+      else
+         eGridType = GaussianPoints
+!        -------------------------------------------------------------
+         call initMatsubara(eGridType,Temperature,NumPs=ne)
+!        -------------------------------------------------------------
+      endif
+      NumEs = getNumMatsubaraPoles()
+   else if (eg == NicholsonPoints) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('initContour1',                               &
+                        'Inconsistent contour type and energy point type')
+!     ----------------------------------------------------------------
+   else
+      eGridType = eg
+      NumEs = ne
    endif
 !
    NumContours = 0
@@ -275,7 +316,7 @@ contains
                     ! Due to the legacy code, by default, it is set to be false.
    endif
 !
-   if (eGridType == GaussianPoints) then
+   if (eGridType == GaussianPoints .or. eGridType == NicholsonPoints) then
       if (.not.NoLastE) then
          NumEs = NumEs + 1
       endif
@@ -283,7 +324,7 @@ contains
 !         NumEs = NumEs + 1
 !      end if
    endif
-   !
+!
    if (OffsetE > NumEs) then
       call ErrorHandler('initContour1','OffsetE > NumEs',OffsetE, NumEs)
    endif
@@ -317,27 +358,34 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupContour(erb,ert,eib,eit,temp)
+   subroutine setupContour(erb,ert,eib,eit,core_top)
 !  ===================================================================
    use MathParamModule, only : ZERO, CONE, CZERO
    use ScfDataModule, only : NumExtraEs
+   use MatsuBaraModule, only : calMatsubaraPoles
    implicit none
 !
-   real (kind=RealKind), intent(in) :: temp
    real (kind=RealKind), intent(in) :: erb
    real (kind=RealKind), intent(in) :: ert
    real (kind=RealKind), intent(in) :: eib
    real (kind=RealKind), intent(in) :: eit
+   real (kind=RealKind), intent(in), optional :: core_top
+   real (kind=RealKind) :: etopcor
 !
    if (.not.Initialized) then
       call ErrorHandler('setupContour','ContourModule is not initialized')
    endif
 !
-   Temperature = temp
    ErBottom = erb
    ErTop = ert
    EiBottom = eib
    EiTop = eit
+!
+   if (present(core_top)) then
+      etopcor = core_top
+   else
+      etopcor = -2.5d0
+   endif
 !
    if (ContourType == ButterFly) then
       NumEs_sc1 = max(DefaultNumEsOfSmallContour,NumExtraEs)
@@ -364,26 +412,37 @@ contains
       return
    endif
 !
-   if (eGridType == EqualInterval) then
+   if (ContourType == MatsubaraPoles) then
 !     ----------------------------------------------------------------
-      call setupEqlGrid()
+      call calMatsubaraPoles(ErBottom,ErTop,EnergyMesh,EnergyWght,    &
+                             core_top=etopcor)
 !     ----------------------------------------------------------------
-   else if (eGridType == GaussianPoints) then
-!     ----------------------------------------------------------------
-      call setupGauGrid()
-!     ----------------------------------------------------------------
-   else if (eGridType == LogInterval) then
-!     ----------------------------------------------------------------
-      call setupLogGrid()
-!     ----------------------------------------------------------------
-   else if (eGridType == eGridType_Lloyd_Ef_search) then
-!     ----------------------------------------------------------------
-      call setupLloyd_Grid_Ef_search()
-!     ----------------------------------------------------------------
+      if (.not.NoLastE) then
+         EnergyMesh(NumEs) = cmplx(ErTop,EiBottom,CmplxKind)
+         EnergyWght(NumEs) = CZERO
+      endif
    else
-!     ----------------------------------------------------------------
-      call ErrorHandler('setupContour','Invalid eGridType',eGridType)
-!     ----------------------------------------------------------------
+      if (eGridType == EqualInterval) then
+!        -------------------------------------------------------------
+         call setupEqlGrid()
+!        -------------------------------------------------------------
+      else if (eGridType == GaussianPoints) then
+!        -------------------------------------------------------------
+         call setupGauGrid()
+!        -------------------------------------------------------------
+      else if (eGridType == LogInterval) then
+!        -------------------------------------------------------------
+         call setupLogGrid()
+!        -------------------------------------------------------------
+      else if (eGridType == eGridType_Lloyd_Ef_search) then
+!        -------------------------------------------------------------
+         call setupLloyd_Grid_Ef_search()
+!        -------------------------------------------------------------
+      else
+!        -------------------------------------------------------------
+         call ErrorHandler('setupContour','Invalid eGridType',eGridType)
+!        -------------------------------------------------------------
+      endif
    endif
 !
    end subroutine setupContour
@@ -893,6 +952,8 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine endContour()
 !  ===================================================================
+   use MatsubaraModule, only : endMatsubara
+!
    implicit none
 !
    integer (kind=IntKind) :: ik
@@ -911,6 +972,12 @@ contains
    if ( allocated(EnergyOffset) ) then
       deallocate(EnergyOffset)
       Offset = -1
+   endif
+!
+   if (ContourType == MatsubaraPoles) then
+!     ----------------------------------------------------------------
+      call endMatsubara()
+!     ----------------------------------------------------------------
    endif
 !
    end subroutine endContour
@@ -1334,5 +1401,21 @@ contains
    ef = .not.SearchingFermiEnergy
 !
    end function isNotSearchingEf
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isMatsubaraContour() result(y)
+!  ===================================================================
+   implicit none
+!
+   logical :: y
+!
+   if ( ContourType == MatsubaraPoles ) then
+      y = .true.
+   else
+      y = .false.
+   endif
+!
+   end function isMatsubaraContour
 !  ===================================================================
 end module ContourModule

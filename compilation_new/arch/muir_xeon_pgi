@@ -1,7 +1,7 @@
 CUDA_PATH = /lvol/cuda
 MPI_ROOT = /opt/pgi/linux86-64/14.10/mpi/mpich
 MATH_ROOT = /opt/pgi/linux86-64/14.10/lib
-#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
+LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3/PGI
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -11,6 +11,7 @@ F77=pgfortran
 CC=pgcc
 CXX=pgcc
 PREPROC = $(FC)
+EXEC_NAME = mst2_pgi
 
 CUDA_CXX = nvcc -arch=sm_35
 CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -DCUDA

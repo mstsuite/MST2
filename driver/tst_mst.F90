@@ -312,7 +312,7 @@ program main
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour(ContourType,eGridType,NumEs,istop,print_level)
+      call initContour(ContourType,eGridType,NumEs,Temperature,istop,print_level)
 !     ----------------------------------------------------------------
    endif
 !

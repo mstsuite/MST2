@@ -27,6 +27,7 @@ ScfDataModule.o \
 PotentialTypeModule.o \
 SystemModule.o \
 BZoneModule.o \
+MatsubaraModule.o \
 ContourModule.o \
 ProcMappingModule.o \
 Atom2ProcModule.o \
@@ -114,6 +115,7 @@ convertGijToRel.o \
 gaspari_gyorffy_formula.o \
 printMomentVsCoreSplit.o \
 polyfermi.o \
+calNicholsonPoles.o \
 fetchVisualDomainParameters.o \
 printDensityOnGrid.o \
 printPotentialOnGrid.o

@@ -45,6 +45,7 @@ $(ODIR)/buildSendTable.o \
 $(ODIR)/BZoneModule.o \
 $(ODIR)/IBZRotationModule.o \
 $(ODIR)/ChemElementModule.o \
+$(ODIR)/MatsubaraModule.o \
 $(ODIR)/ContourModule.o \
 $(ODIR)/CoreStatesModule.o \
 $(ODIR)/GauntFactorsModule.o \
@@ -88,6 +89,7 @@ $(ODIR)/SystemSymmetryModule.o \
 $(ODIR)/SystemVolumeModule.o \
 $(ODIR)/TestPotentialModule.o \
 $(ODIR)/TriangleModule.o \
+$(ODIR)/calNicholsonPoles.o \
 $(ODIR)/polyfermi.o \
 $(ODIR)/VPI_main.o
 

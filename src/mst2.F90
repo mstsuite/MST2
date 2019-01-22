@@ -548,7 +548,8 @@ program mst2
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, istop, -1, .true.)
+      call initContour( ContourType, eGridType, NumEs, Temperature,   &
+                        istop, -1, .true.)
 !     ----------------------------------------------------------------
    endif
 !

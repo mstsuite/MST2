@@ -161,10 +161,15 @@ Potential Type (>= 0)      ::  3
      6. Mathieu Potential  ----------
      7. Coulomb Potential  ----------
 Exch-Corr. LDA Type (>= 0) ::  0
+   Note: The input can be either one of the following numbers or, e.g.,
+         LDA_X+LDA_C_HL for Hedin-Lundqvist LDA functional, or GGA_X_PBE+GGA_C_PBE
+         for PBE GGA function, etc.. The naming convention here follows the definition
+         given in LibXC.
      0. Barth-Hedin        ---------
      1. Vosk-Wilk-Nusair   ---------
      2. Perdew-Zunger      ---------
      3. Perdew-Wang GGA    ---------
+     4. PBE                ---------
 LDA Improvement Scheme     ::  0
      0. No improvement     ----------
      1. LDA + U            ----------
@@ -205,6 +210,7 @@ Energy Grid Type (>= 0)    ::  1
      0. Equal Interval     ---------
      1. Gaussian Points    ---------
      2. Log Interval       ---------
+     3. Nicholson Points   ---------
 No. Energy Grids           ::  30
 No. Extra Energy Points    ::  6
 Offset Energy Point        ::  0 

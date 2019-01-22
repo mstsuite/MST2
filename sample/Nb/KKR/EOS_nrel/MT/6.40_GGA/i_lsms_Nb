@@ -197,6 +197,7 @@ Energy Grid Type (>= 0)    ::  1
      0. Equal Interval     ---------
      1. Gaussian Points    ---------
      2. Log Interval       ---------
+     3. Nicholson Points   ---------
 No. Energy Grids           ::  30 
 No. Extra Energy Points    ::  5
 Offset Energy Point        ::  0 

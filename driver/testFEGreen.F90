@@ -72,7 +72,7 @@ program testFEGreen
 !
 !  -------------------------------------------------------------------
    call startProcess()
-   call setupContour( ErBottom, ErTop, EiBottom, EiTop, Temperature)
+   call setupContour( ErBottom, ErTop, EiBottom, EiTop )
    ne = getNumEs()
    e_mesh => getEPoint()
    NumAtoms = getNumAtoms()

@@ -1698,7 +1698,7 @@ endif
             enddo
          enddo
       enddo
-      v_shift = V0_inter
+      v_shift(1:n_spin_pola) = V0_inter(1:n_spin_pola)
 !
 #ifdef POT_DEBUG
       call GlobalSumInGroup(GroupID,vol_int,6)
