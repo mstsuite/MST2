@@ -7,7 +7,7 @@ program testPolyFermi
 !
    use ScfDataModule, only : n_spin_pola, n_spin_cant, Temperature, NumEs
    use ScfDataModule, only : istop, EvBottom, isNonRelativisticCore
-   use ScfDataModule, only : eGridType
+   use ScfDataModule, only : eGridType, Contourtype
 !
    use PublicParamDefinitionsModule, only : NicholsonPoints
 !
@@ -45,13 +45,14 @@ program testPolyFermi
 !
    use ContourModule, only : setupContour, isMatsubaraContour
    use ContourModule, only : getEPoint, getEWeight, getNumEs
+   use ContourModule, only : initContour, endContour
 !
    implicit   none
 !
    integer (kind=IntKind) :: iprint = 0
    integer (kind=IntKind) :: NumAtoms, LocalNumAtoms
    integer (kind=IntKind) :: lmax_max
-   integer (kind=IntKind) :: id, ig, ne, ie, NumEs_don
+   integer (kind=IntKind) :: i, id, ig, ne, ie, NumEs_don
    integer (kind=IntKind), parameter :: MaxNumEs_don = 100000
 !
    integer (kind=IntKind), allocatable :: atom_print_level(:)
@@ -228,6 +229,10 @@ program testPolyFermi
 !  Test the new ContourModule, which uses MatsubaraModule
 !  ===================================================================
    if (isMatsubaraContour()) then
+do i = 1, 10
+      call endContour()
+      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', &
+                        maxval(atom_print_level))
 !     ----------------------------------------------------------------
       call setupContour( Chempot-1.5d0, Chempot, 0.0d0, 0.0d0 )
 !     ----------------------------------------------------------------
@@ -271,6 +276,7 @@ program testPolyFermi
       write(6,'(/,a,d15.8)')"Band energy = ",E_band
       write(6,'(  a,d15.8)')"No. of elec = ",N_band
 !
+enddo
       nullify(ep,ew)
    endif
 !

@@ -12,6 +12,7 @@ private
 !
    integer (kind=IntKind) :: NumPoles
    integer (kind=IntKind) :: PoleType
+   integer (kind=IntKind) :: print_level
 !
    real (kind=RealKind) :: Chempot
    real (kind=RealKind) :: Temperature
@@ -22,14 +23,14 @@ private
 contains
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initMatsubara(eGrid,Temp,eWidth,NumPs)
+   subroutine initMatsubara(eGrid,Temp,eWidth,NumPs,iprint)
 !  ===================================================================
    use MathParamModule, only : ZERO, ONE, TWO, TEN2m6
    use PhysParamModule, only : Boltzmann
    implicit none
 !
    integer (kind=IntKind), intent(in) :: eGrid
-   integer (kind=IntKind), intent(in), optional :: NumPs
+   integer (kind=IntKind), intent(in), optional :: NumPs, iprint
    integer (kind=IntKind) :: nume
    integer (kind=IntKind), parameter :: nkbts = 5
 !
@@ -47,6 +48,10 @@ contains
          call ErrorHandler('initMatsubara','Number energy points < 1',NumPs)
 !        -------------------------------------------------------------
       endif
+   else if (present(iprint)) then
+      print_level = iprint
+   else
+      print_level = -1
    endif
 !
    Temperature = Temp
@@ -156,7 +161,8 @@ contains
 !
    if (PoleType == NicholsonPoints) then
 !     ----------------------------------------------------------------
-      call calNicholsonPoles(etopcor,ebot,etop,NumPoles,epole,weight,0,'none')
+      call calNicholsonPoles(etopcor,ebot,etop,NumPoles,epole,weight, &
+                             print_level,'none')
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
@@ -334,7 +340,7 @@ contains
 !  ******************************************************************* 
 !  subroutine polyfermi(Temp,xg,wg,ne,nterms,mu)   
 !
-   use MathParamModule, only : PI, SQRTm1, CONE, PI2
+   use MathParamModule, only : PI, SQRTm1, CONE, PI2, ZERO
    use PhysParamModule, only : Boltzmann
 !
    implicit none
@@ -377,6 +383,7 @@ contains
       call ErrorHandler('calPolyFermi','n > ntm or n <= ne',n,ntm,ne)
    endif
 !
+   pe = ZERO
    sum(0)=0.d0
    sum1=0.d0
    r=(1.d0+gamma)/(2.d0*n)
@@ -471,7 +478,8 @@ contains
             endif
          endif
       enddo  ! i
-      we(nz)=0.d0
+!     we(nz)=0.d0
+      we = ZERO
       we(1)=sum(0)
 !
       call dgesv(ne,1,pe(0,1),nem+1,ipvt,we,nem,info)

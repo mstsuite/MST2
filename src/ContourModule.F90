@@ -243,6 +243,7 @@ contains
    subroutine initContour1(ctype,eg,ne,Temp,istop,iprint,nle)
 !  ===================================================================
    use MathParamModule, only : ZERO, CZERO, ONE, TEN2m6
+   use MPPModule, only : MyPE
    use ScfDataModule, only : OffsetE, NumExtraEs
 !   use ScfDataModule, only : isLloyd,getLloydMode
    use MatsubaraModule, only : initMatsubara, getNumMatsubaraPoles
@@ -288,20 +289,24 @@ contains
       if (Temperature > 299.0d0 .and. eg == NicholsonPoints) then
          eGridType = NicholsonPoints
 !        -------------------------------------------------------------
-         call initMatsubara(eGridType,Temperature,eWidth=1.5d0)
+         call initMatsubara(eGridType,Temperature,eWidth=1.5d0,iprint=iprint)
 !        -------------------------------------------------------------
       else
          eGridType = GaussianPoints
 !        -------------------------------------------------------------
-         call initMatsubara(eGridType,Temperature,NumPs=ne)
+         call initMatsubara(eGridType,Temperature,NumPs=ne,iprint=iprint)
 !        -------------------------------------------------------------
       endif
       NumEs = getNumMatsubaraPoles()
    else if (eg == NicholsonPoints) then
-!     ----------------------------------------------------------------
-      call ErrorHandler('initContour1',                               &
-                        'Inconsistent contour type and energy point type')
-!     ----------------------------------------------------------------
+      if (MyPE == 0) then
+!        -------------------------------------------------------------
+         call WarningHandler('initContour1',                          &
+                             'Energy grid type is set to Gaussian')
+!        -------------------------------------------------------------
+      endif
+      eGridType = GaussianPoints
+      NumEs = ne
    else
       eGridType = eg
       NumEs = ne
