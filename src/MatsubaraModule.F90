@@ -41,6 +41,12 @@ contains
 !     ----------------------------------------------------------------
       call ErrorHandler('initMatsubara','Temperature < 0',Temp)
 !     ----------------------------------------------------------------
+   else if (present(NumPs)) then
+      if (NumPs < 1) then
+!        -------------------------------------------------------------
+         call ErrorHandler('initMatsubara','Number energy points < 1',NumPs)
+!        -------------------------------------------------------------
+      endif
    endif
 !
    Temperature = Temp
@@ -57,21 +63,21 @@ contains
       else
          w = ONE
       endif
-      kbt = Temperature*Boltzmann
-      NumPoles = 0
-      sigma=TWO*NumPoles*kbt
-      do while (TWO*sigma < w+nkbts*kbt)
-         NumPoles=NumPoles+1
+      if (present(NumPs)) then
+         NumPoles = NumPs
          sigma=TWO*NumPoles*kbt
-      enddo
+      else
+         kbt = Temperature*Boltzmann
+         NumPoles = 0
+         sigma=TWO*NumPoles*kbt
+         do while (TWO*sigma < w+nkbts*kbt)
+            NumPoles=NumPoles+1
+            sigma=TWO*NumPoles*kbt
+         enddo
+      endif
       FD_Width = TWO*sigma+nkbts*kbt
    else if (eGrid == GaussianPoints) then
       if (present(NumPs)) then
-         if (NumPs < 1) then
-!           ----------------------------------------------------------
-            call ErrorHandler('initMatsubara','Number energy points < 1',NumPs)
-!           ----------------------------------------------------------
-         endif
          NumPoles = NumPs
       else
          NumPoles = 30

@@ -2246,7 +2246,11 @@ contains
 !
 !  In the no-spin-polarized case, a factor of 2 is included in dos.
 !  ===================================================================
+   use PhysParamModule, only : Boltzmann
+!
    use GroupCommModule, only : GlobalSumInGroup
+!
+   use ScfDataModule, only : Temperature
 !
    use RadialGridModule, only : getGrid
 !
@@ -2283,6 +2287,7 @@ contains
 !
    is = info(1); id = info(2); print_dos = info(3)
    sfac= TWO/real(n_spin_pola,kind=RealKind)
+   sfac = sfac*getFermiDiracFunc(adjustEnergy(is,e),chempot,Boltzmann*Temperature)
 !
    if (present(rfac)) then
       rmul = rfac
@@ -2926,9 +2931,9 @@ contains
                   call ErrorHandler('calSingleScatteringIDOS',&
                                     'relativistic AdaptiveIntegration not implemented')
                else if (isPole_plus) then
-                  ssdos_int =getWeightedIntegration(NumSS_IntEs,&
-                  ebot,etop,info,returnRelSingleSiteDOS,&
-                  NumPoles_plus(id,1),Poles_plus(:,id,1))
+                  ssdos_int = getWeightedIntegration(NumSS_IntEs,ebot,etop,info, &
+                                                     returnRelSingleSiteDOS,     &
+                                                     NumPoles_plus(id,1),Poles_plus(:,id,1))
                   nm=NumSS_IntEs
                else
                   ssdos_int = getUniFormIntegration(NumSS_IntEs,ebot,etop,info,returnRelSingleSiteDOS,nm)
@@ -2942,7 +2947,7 @@ contains
                p_aux => getAuxDataAdaptIntegration()
 !              -------------------------------------------------------
                if (is_Bxyz) then
-                   call calElectroStruct(info,4,p_aux,ssLastValue(id),.true.)
+                  call calElectroStruct(info,4,p_aux,ssLastValue(id),.true.)
                else
                   call calElectroStruct(info,1,p_aux,ssLastValue(id),.true.)
                endif
@@ -5681,6 +5686,8 @@ contains
 !
 !  In the no-spin-polarized case, a factor of 2 is included in dos.
 !  ===================================================================
+   use PhysParamModule, only : Boltzmann
+   use ScfDataModule, only : Temperature
    use GroupCommModule, only : GlobalSumInGroup
    use RadialGridModule, only : getGrid
    use StepFunctionModule, only : getVolumeIntegration
@@ -5712,6 +5719,7 @@ contains
 !
    is = info(1); id = info(2); print_dos = info(3)
    sfac= ONE !TWO/real(n_spin_pola,kind=RealKind)
+   sfac = sfac*getFermiDiracFunc(e,chempot,Boltzmann*Temperature)
 !
    if (present(rfac)) then
       rmul = rfac
@@ -7332,4 +7340,26 @@ contains
    deallocate( s0, s1, s2 )
 !
    end subroutine calQuadraticPoles_cmplx
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getFermiDiracFunc(z,mu,kBT) result(fd)
+!  ===================================================================
+   implicit none
+!
+   real (kind=RealKind), intent(in) :: mu
+   real (kind=RealKind), intent(in) :: kBT
+   real (kind=RealKind), parameter :: temp_tol = TEN2m5
+!
+   real (kind=RealKind), intent(in) :: z
+   real (kind=RealKind) :: fd
+!
+   if (kBT < temp_tol) then
+      fd = ONE
+   else
+      fd = ONE/(ONE+exp((z-mu)/kBT))
+   endif
+!
+   end function getFermiDiracFunc
+!  ===================================================================
 end module GFMethodModule
