@@ -7355,7 +7355,11 @@ contains
    real (kind=RealKind) :: fd
 !
    if (kBT < temp_tol) then
-      fd = ONE
+      if (z > mu) then
+         fd = ZERO
+      else
+         fd = ONE
+      endif
    else
       fd = ONE/(ONE+exp((z-mu)/kBT))
    endif
