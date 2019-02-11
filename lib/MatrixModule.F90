@@ -13,7 +13,9 @@ public :: setupUnitMatrix, &
           computeUAU,      & ! compute B = U1 * A * U2
           computeUAUt,     & ! compute B = U1 * A * U2^{T}
           computeUAUts,    & ! compute B = U1 * A * U2^{Tdot}
-          computeUAUtc       ! compute B = U1 * A * conjg[U2^{T}]
+          computeUAUtc,    & ! compute B = U1 * A * conjg[U2^{T}]
+          computeAprojB      ! compute C = [1 + A * B]^{-1} * A or
+                             !         C = A * [1 + B * A]^{-1}
 !
    interface setupUnitMatrix
       module procedure setupUMr1, setupUMc1, setupUMr12, setupUMc12,  &
@@ -27,7 +29,7 @@ contains
    include '../lib/arrayTools.F90'
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMr1(n,a)
+   subroutine setupUMr1(n,a,d)
 !  ===================================================================
    implicit none
 !
@@ -35,17 +37,25 @@ contains
    integer (kind=IntKind) :: i
 !
    real (kind=RealKind), intent(out) :: a(n*n)
+   real (kind=RealKind), intent(in), optional :: d
+   real (kind=RealKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = ONE
+   endif
 !
    a = ZERO
    do i = 1, n
-      a(i+(i-1)*n) = ONE
+      a(i+(i-1)*n) = fac
    enddo
 !
    end subroutine setupUMr1
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMc1(n,a)
+   subroutine setupUMc1(n,a,d)
 !  ===================================================================
    implicit none
 !
@@ -53,17 +63,25 @@ contains
    integer (kind=IntKind) :: i
 !
    complex (kind=CmplxKind), intent(out) :: a(n*n)
+   complex (kind=CmplxKind), intent(in), optional :: d
+   complex (kind=CmplxKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = CONE
+   endif
 !
    a = CZERO
    do i = 1, n
-      a(i+(i-1)*n) = CONE
+      a(i+(i-1)*n) = fac
    enddo
 !
    end subroutine setupUMc1
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMr12(n,m,a)
+   subroutine setupUMr12(n,m,a,d)
 !  ===================================================================
    implicit none
 !
@@ -71,18 +89,26 @@ contains
    integer (kind=IntKind) :: i, k
 !
    real (kind=RealKind), intent(out) :: a(n*m)
+   real (kind=RealKind), intent(in), optional :: d
+   real (kind=RealKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = ONE
+   endif
 !
    a = ZERO
    k = min(n,m)
    do i = 1, k
-      a(i+(i-1)*n) = ONE
+      a(i+(i-1)*n) = fac
    enddo
 !
    end subroutine setupUMr12
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMc12(n,m,a)
+   subroutine setupUMc12(n,m,a,d)
 !  ===================================================================
    implicit none
 !
@@ -90,18 +116,26 @@ contains
    integer (kind=IntKind) :: i, k
 !
    complex (kind=CmplxKind), intent(out) :: a(n*m)
+   complex (kind=CmplxKind), intent(in), optional :: d
+   complex (kind=CmplxKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = CONE
+   endif
 !
    a = CZERO
    k = min(n,m)
    do i = 1, k
-      a(i+(i-1)*n) = CONE
+      a(i+(i-1)*n) = fac
    enddo
 !
    end subroutine setupUMc12
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMr2(n,a)
+   subroutine setupUMr2(n,a,d)
 !  ===================================================================
    implicit none
 !
@@ -109,17 +143,25 @@ contains
    integer (kind=IntKind) :: i
 !
    real (kind=RealKind), intent(out) :: a(n,n)
+   real (kind=RealKind), intent(in), optional :: d
+   real (kind=RealKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = ONE
+   endif
 !
    a = ZERO
    do i = 1, n
-      a(i,i) = ONE
+      a(i,i) = fac
    enddo
 !
    end subroutine setupUMr2
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMc2(n,a)
+   subroutine setupUMc2(n,a,d)
 !  ===================================================================
    implicit none
 !
@@ -127,17 +169,25 @@ contains
    integer (kind=IntKind) :: i
 !
    complex (kind=CmplxKind), intent(out) :: a(n,n)
+   complex (kind=CmplxKind), intent(in), optional :: d
+   complex (kind=CmplxKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = CONE
+   endif
 !
    a = CZERO
    do i = 1, n
-      a(i,i) = CONE
+      a(i,i) = fac
    enddo
 !
    end subroutine setupUMc2
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMr3(n,m,a)
+   subroutine setupUMr3(n,m,a,d)
 !  ===================================================================
    implicit none
 !
@@ -145,18 +195,26 @@ contains
    integer (kind=IntKind) :: i, k
 !
    real (kind=RealKind), intent(out) :: a(n,m)
+   real (kind=RealKind), intent(in), optional :: d
+   real (kind=RealKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = ONE
+   endif
 !
    a = ZERO
    k = min(n,m)
    do i = 1, k
-      a(i,i) = ONE
+      a(i,i) = fac
    enddo
 !
    end subroutine setupUMr3
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupUMc3(n,m,a)
+   subroutine setupUMc3(n,m,a,d)
 !  ===================================================================
    implicit none
 !
@@ -164,11 +222,19 @@ contains
    integer (kind=IntKind) :: i, k
 !
    complex (kind=CmplxKind), intent(out) :: a(n,m)
+   complex (kind=CmplxKind), intent(in), optional :: d
+   complex (kind=CmplxKind) :: fac
+!
+   if (present(d)) then
+      fac = d
+   else
+      fac = CONE
+   endif
 !
    a = CZERO
    k = min(n,m)
    do i = 1, k
-      a(i,i) = CONE
+      a(i,i) = fac
    enddo
 !
    end subroutine setupUMc3
@@ -483,5 +549,55 @@ contains
    endif
 !
    end subroutine computeAStarTInv
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine computeAprojB(p,n,A,B,C)
+!  ===================================================================
+!
+!  If p = 'L' or 'l', compute C = [1 + A * B]^{-1} * A
+!
+!  If p = 'R' or 'r', compute C = A * [1 + B * A]^{-1}
+!
+!  *******************************************************************
+   use MatrixInverseModule, only : MtxInv_LU
+!
+   implicit none
+!
+   character (len=1), intent(in) :: p
+!
+   integer (kind=IntKind), intent(in) :: n
+!
+   complex (kind=CmplxKind), intent(in) :: A(n,n), B(n,n)
+   complex (kind=CmplxKind), intent(out) :: C(n,n)
+   complex (kind=CmplxKind) :: D(n,n)
+!
+!  -------------------------------------------------------------------
+   call setupUMc1(n,D)
+!  -------------------------------------------------------------------
+!
+   if (p == 'L' .or. p == 'l') then
+!     ----------------------------------------------------------------
+      call zgemm('n','n',n,n,n,CONE,A,n,B,n,CONE,D,n)
+!     ----------------------------------------------------------------
+      call MtxInv_LU(D,n)
+!     ----------------------------------------------------------------
+      call zgemm('n','n',n,n,n,CONE,D,n,A,n,CZERO,C,n)
+!     ----------------------------------------------------------------
+   else if (p == 'R' .or. p == 'r') then
+!     ----------------------------------------------------------------
+      call zgemm('n','n',n,n,n,CONE,B,n,A,n,CONE,D,n)
+!     ----------------------------------------------------------------
+      call MtxInv_LU(D,n)
+!     ----------------------------------------------------------------
+      call zgemm('n','n',n,n,n,CONE,A,n,D,n,CZERO,C,n)
+!     ----------------------------------------------------------------
+   else
+!     ----------------------------------------------------------------
+      call ErrorHandler('computeAprojB','invalid projection type',p)
+!     ----------------------------------------------------------------
+   endif
+!
+   end subroutine computeAprojB
 !  ===================================================================
 end module MatrixModule

@@ -244,7 +244,8 @@ contains
 !
    if ( isLSMS() ) then
 !     ----------------------------------------------------------------
-      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi,cant,rel,istop,iprint)
+      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi, &
+                             cant,rel,istop,iprint)
 !     ----------------------------------------------------------------
       isRealSpace = .true.
    else if ( isScreenKKR() ) then
@@ -261,14 +262,21 @@ contains
       isRealSpace = .false.
    else if ( isKKRCPA() ) then
 !     ----------------------------------------------------------------
-      call initCPAMedium(cant=cant, rel=rel, mix_type=2, max_iter = 30, &
-                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,             &
-                         istop=istop, iprint=maxval(iprint))
+      call initCPAMedium(cant=cant, lmax_kkr=lmaxkkr, rel=rel,        &
+                         mix_type=2, max_iter = 30,                   &
+                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,           &
+                         istop=istop, iprint=iprint)
 !     ----------------------------------------------------------------
       isRealSpace = .false.
    else if (isEmbeddedCluster()) then
 !     ----------------------------------------------------------------
-      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi,cant,rel,istop,iprint)
+      call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi, &
+                             cant,rel,istop,iprint)
+!     ----------------------------------------------------------------
+      call initCPAMedium(cant=cant, lmax_kkr=lmaxkkr, rel=rel,        &
+                         mix_type=2, max_iter = 30,                   &
+                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,           &
+                         istop=istop, iprint=iprint)
 !     ----------------------------------------------------------------
       isRealSpace = .false.
    else
@@ -634,7 +642,9 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine computeMSTMatrix(is,e)
 !  ===================================================================
-   use ScfDataModule, only : isScreenKKR, isKKRCPA, isKKR, isEmbeddedCluster
+   use ScfDataModule, only : isLSMS, isScreenKKR, isKKRCPA, isKKR, isEmbeddedCluster
+!
+   use SSSolverModule, only : getScatteringMatrix
 !
    use ClusterMatrixModule, only : calClusterMatrix
 !
@@ -652,9 +662,9 @@ contains
 !  call calClusterMatrix or calCrystalMatrix to calculate the TAU(0,0) matrix
 !  NOTE: Needs to be checked for is = 2 and n_spin_cant = 2
 !  ===================================================================
-   if ( isRealSpace ) then
+   if ( isLSMS() ) then
 !     ----------------------------------------------------------------
-      call calClusterMatrix(e)
+      call calClusterMatrix(e,getScatteringMatrix)
 !     ----------------------------------------------------------------
    else if (isScreenKKR()) then
 !     ----------------------------------------------------------------
@@ -663,7 +673,7 @@ contains
 !     ----------------------------------------------------------------
    else if (isKKR()) then
 !     ----------------------------------------------------------------
-      call calCrystalMatrix(e)
+      call calCrystalMatrix(e,getScatteringMatrix)
 !     ----------------------------------------------------------------
    else if (isKKRCPA()) then
 !     ----------------------------------------------------------------
@@ -671,7 +681,7 @@ contains
 !     ----------------------------------------------------------------
    else if (isEmbeddedCluster()) then  ! Needs further work.....
 !     ----------------------------------------------------------------
-      call calClusterMatrix(e)
+      call calClusterMatrix(e,getScatteringMatrix)
 !     ----------------------------------------------------------------
       call computeCPAMedium(e)
 !     ----------------------------------------------------------------
@@ -814,9 +824,9 @@ contains
       kmaxp = kmax_phi(id)
       kmaxg = (mst(id)%lmax+1)**2
       if (isRealSpace) then
-         kau00 => getClusterKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
       else
-         kau00 => getCrystalKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
       endif
 !     ================================================================
       irmax = getSolutionRmeshSize(id)
@@ -1228,9 +1238,9 @@ contains
       kmaxg = (mst(id)%lmax+1)**2
       jmaxg = (mst(id)%lmax+1)*(mst(id)%lmax+2)/2
       if (isRealSpace) then
-         kau00 => getClusterKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
       else
-         kau00 => getCrystalKau(id)   ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
       endif
 !     ================================================================
       irmax = getSolutionRmeshSize(id)

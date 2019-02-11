@@ -1545,7 +1545,7 @@ contains
 !        FD(energy,T) = 1.0d-6.
 !        -------------------------------------------------------------
          call calSingleScatteringIDOS(Ebegin=0.00001d0,               &
-                                      Eend=efermi+6.0d0*log(10.0d0)*kBT)
+                                      Eend=efermi+8.0d0*log(10.0d0)*kBT)
 !        -------------------------------------------------------------
 !!    else
 !        -------------------------------------------------------------
@@ -6390,7 +6390,7 @@ contains
 !        -------------------------------------------------------------
       enddo
       call calSingleScatteringIDOS(Ebegin=0.00001d0,                  &
-                                   Eend=efermi+6.0d0*log(10.0d0)*kBT, &
+                                   Eend=efermi+8.0d0*log(10.0d0)*kBT, &
                                    relativity=.true.)
       if ( node_print_level >= 0) then
          write(6,'(/,a)')'Rel: IDOS of the MS term'
@@ -7349,16 +7349,16 @@ contains
 !
    real (kind=RealKind), intent(in) :: mu
    real (kind=RealKind), intent(in) :: kBT
-   real (kind=RealKind), parameter :: temp_tol = TEN2m5
+   real (kind=RealKind), parameter :: temp_tol = TEN2m6
 !
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind) :: fd
 !
    if (kBT < temp_tol) then
-      if (z > mu) then
-         fd = ZERO
-      else
+      if (z <= mu) then
          fd = ONE
+      else
+         fd = ZERO
       endif
    else
       fd = ONE/(ONE+exp((z-mu)/kBT))

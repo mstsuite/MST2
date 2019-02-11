@@ -408,7 +408,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine exchangeSSSMatrix()
+   subroutine exchangeSSSMatrix(getSingleScatteringMatrix)
 !  ===================================================================
    use MPPModule, only : AnyPE, MyPE
    use MPPModule, only : nbsendMessage, nbrecvMessage
@@ -423,8 +423,6 @@ contains
 !
    use SpinRotationModule, only : rotateLtoG
 !
-   use SSSolverModule, only : getJostInvMatrix, getSineMatrix
-!
    implicit none
 !
    integer (kind=IntKind) :: comm
@@ -437,6 +435,16 @@ contains
 #ifdef OpenMPI
    complex (kind=CmplxKind), pointer :: p_trecv(:,:)
 #endif
+!
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
 !
    if (.not.Initialized) then
 !     ----------------------------------------------------------------
@@ -469,21 +477,21 @@ contains
 !        =============================================================
          t0size_ns = t0size*n_spin_cant*n_spin_cant
          kkri_ns =  kmax_kkr(i)*n_spin_cant
-         jm1 => getJostInvMatrix(1,i)
-         jm2 => getJostInvMatrix(2,i)
+         jm1 => getSingleScatteringMatrix('JostInv-Matrix',spin=1,site=i)
+         jm2 => getSingleScatteringMatrix('JostInv-Matrix',spin=2,site=i)
          gmat => aliasArray2_c(jinv_g,kkri_ns,kkri_ns)
 !        -------------------------------------------------------------
          call rotateLtoG(i, kmax_kkr(i), kmax_kkr(i), jm1, jm2, gmat)
 !        -------------------------------------------------------------
-         sm1 => getSineMatrix(1,i)
-         sm2 => getSineMatrix(2,i)
+         sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=i)
+         sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=2,site=i)
          gmat => aliasArray2_c(sine_g(1:t0size_ns),kkri_ns,kkri_ns)
 !        -------------------------------------------------------------
          call rotateLtoG(i, kmax_kkr(i), kmax_kkr(i), sm1, sm2, gmat)
 !        -------------------------------------------------------------
       else
-         jm1 => getJostInvMatrix(1,i)
-         sm1 => getSineMatrix(1,i)
+         jm1 => getSingleScatteringMatrix('JostInv-Matrix',spin=1,site=i)
+         sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=i)
 !        -------------------------------------------------------------
          call zcopy( t0size, jm1, 1, jinv_g, 1 )
          call zcopy( t0size, sm1, 1, sine_g, 1 )
@@ -622,7 +630,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calClusterMatrix(energy,tau_needed)
+   subroutine calClusterMatrix(energy,getSingleScatteringMatrix,tau_needed)
 !  ===================================================================
    use TimerModule, only : getTime
 use MPPModule, only : MyPE, syncAllPEs
@@ -634,8 +642,6 @@ use MPPModule, only : MyPE, syncAllPEs
    use MatrixModule, only : setupUnitMatrix, computeUAUts
 !
    use MatrixBlockInversionModule, only : invertMatrixBlock
-!
-   use SSSolverModule, only : getOmegaHatMatrix, getSineMatrix, getTMatrix
 !
    implicit none
 !
@@ -666,6 +672,16 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: kau_l(:,:), tau_l(:,:)
 !
    interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
+!
+   interface
       subroutine convertGijToRel(gij, bgij, kkr1, kkr2, ce)
          use KindParamModule, only : IntKind, RealKind, CmplxKind
          implicit none
@@ -681,7 +697,7 @@ use MPPModule, only : MyPE, syncAllPEs
    endif
 !
 !  -------------------------------------------------------------------
-   call exchangeSSSMatrix()
+   call exchangeSSSMatrix(getSingleScatteringMatrix)
 !  -------------------------------------------------------------------
 !
    kappa = sqrt(energy)
@@ -953,7 +969,7 @@ use MPPModule, only : MyPE, syncAllPEs
          ns = 0
          do js = 1, n_spin_cant
 !           ----------------------------------------------------------
-            OmegaHat => getOmegaHatMatrix(js,my_atom)
+            OmegaHat => getSingleScatteringMatrix('OmegaHat-Matrix',spin=js,site=my_atom)
 !           ----------------------------------------------------------
             do is = 1, n_spin_cant
                ns = ns + 1
@@ -987,10 +1003,10 @@ use MPPModule, only : MyPE, syncAllPEs
          do my_atom = 1, LocalNumAtoms
             ns = 0
             do js = 1, n_spin_cant
-               sm2 => getSineMatrix(js,my_atom)
-               tm => getTMatrix(js,my_atom)
+               sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=js,site=my_atom)
+               tm => getSingleScatteringMatrix('T-Matrix',spin=js,site=my_atom)
                do is = 1, n_spin_cant
-                  sm1 => getSineMatrix(is,my_atom)
+                  sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=is,site=my_atom)
                   ns = ns + 1
                   kau_l => Tau00(my_atom)%kau_l(:,:,ns)
                   tau_l => Tau00(my_atom)%tau_l(:,:,ns)
@@ -1017,44 +1033,49 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getTau(id,i,j) result(ptau)
+   function getTau(local_id,global_i,global_j,dsize) result(ptau)
 !  ===================================================================
 !
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(in), optional :: i, j
+   integer (kind=IntKind), intent(in) :: local_id
+   integer (kind=IntKind), intent(in), optional :: global_i, global_j
+   integer (kind=IntKind), intent(out), optional :: dsize
 !
    integer (kind=IntKind) :: n, k
    complex (kind=CmplxKind), pointer :: ptau(:,:,:)
 !
    if (.not.Initialized) then
       call ErrorHandler('getTau','Module not initialized')
-   else if ( id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getTau','invalid local atom index',id)
+   else if ( local_id < 1 .or. local_id > LocalNumAtoms) then
+      call ErrorHandler('getTau','invalid local atom index',local_id)
    endif
 !
-   if (.not.present(i) .and. .not.present(j)) then
-      ptau => Tau00(id)%tau_l
+   if (present(dsize)) then
+      dsize = Tau00(local_id)%isize
+   endif
+!
+   if (.not.present(global_i) .and. .not.present(global_j)) then
+      ptau => Tau00(local_id)%tau_l
       return
-   else if (.not.present(j)) then
+   else if (.not.present(global_j)) then
       call ErrorHandler('getTau','both i and j indeces need to be specified')
-   else if (i /= 1 .and. j /= 1) then
-      call ErrorHandler('getTau','One of i or j needs to be 1',i,j)
+   else if (global_i /= 1 .and. global_j /= 1) then
+      call ErrorHandler('getTau','One of i or j needs to be 1',global_i,global_j)
    endif
 !
-   Neighbor => getNeighbor(id)
+   Neighbor => getNeighbor(local_id)
 !
-   if (j == 1 .and. i == 1) then
+   if (global_j == 1 .and. global_i == 1) then
       call ErrorHandler('getTau','It is needs to be implemented for calculating tau00')
-      ptau => Tau00(id)%tau_l
+      ptau => Tau00(local_id)%tau_l
       return
-   else if (i < 1 .or. i > Neighbor%NumAtoms) then
-      call ErrorHandler('getTau','i index is out of range',i)
-   else if (j < 1 .or. j > Neighbor%NumAtoms) then
-      call ErrorHandler('getTau','j index is out of range',j)
+   else if (global_i < 1 .or. global_i > Neighbor%NumAtoms) then
+      call ErrorHandler('getTau','i index is out of range',global_i)
+   else if (global_j < 1 .or. global_j > Neighbor%NumAtoms) then
+      call ErrorHandler('getTau','j index is out of range',global_j)
    else
-      call ErrorHandler('getTau','Only Tau00 is implemented.',i,j)
+      call ErrorHandler('getTau','Only Tau00 is implemented.',global_i,global_j)
    endif
 !
    end function getTau
@@ -1063,33 +1084,39 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKau(id,i,j) result(pkau)
+   function getKau(local_id,global_i,global_j,dsize) result(pkau)
 !  ===================================================================
 !
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(in), optional :: i, j
+   integer (kind=IntKind), intent(in) :: local_id
+   integer (kind=IntKind), intent(in), optional :: global_i, global_j
+   integer (kind=IntKind), intent(out), optional :: dsize
 !
    integer (kind=IntKind) :: n, k
    complex (kind=CmplxKind), pointer :: pkau(:,:,:)
 !
    if (.not.Initialized) then
       call ErrorHandler('getKau','Module not initialized')
-   else if ( id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getKau','invalid local atom index',id)
+   else if ( local_id < 1 .or. local_id > LocalNumAtoms) then
+      call ErrorHandler('getKau','invalid local atom index',local_id)
    endif
 !
-   if (.not.present(i) .and. .not.present(j)) then
-      pkau => Tau00(id)%kau_l
+   if (present(dsize)) then
+      dsize = Tau00(local_id)%isize
+   endif
+!
+   if (.not.present(global_i) .and. .not.present(global_j)) then
+      pkau => Tau00(local_id)%kau_l
       return
-   else if (.not.present(j)) then
+   else if (.not.present(global_j)) then
       call ErrorHandler('getKau','both i and j indeces need to be specified')
-   else if (i /= 1 .and. j /= 1) then
-      call ErrorHandler('getKau','Not implemented for i<>1 and/or j<>1.',i,j)
+   else if (global_i /= 1 .and. global_j /= 1) then
+      call ErrorHandler('getKau','Not implemented for i<>1 and/or j<>1.', &
+                        global_i,global_j)
    endif
 !
-   pkau => Tau00(id)%kau_l
+   pkau => Tau00(local_id)%kau_l
 !
    end function getKau
 !  ====================================================================

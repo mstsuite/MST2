@@ -216,7 +216,7 @@ $(ODIR)/tst_read: tst_read.o
 $(ODIR)/testNeighbor: testNeighbor.o
 	$(LD) -o $(ODIR)/testNeighbor testNeighbor.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB)  $(MPPLIB) $(MSTLIB) $(ADDLIBS)
 
-$(ODIR)/testMadelung: testMadelung.o
+$(ODIR)/testMadelung: testMadelung.o $(ODIR)/MadelungModule.o
 	$(LD) -o $(ODIR)/testMadelung testMadelung.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
 
 $(ODIR)/madpot: madpot.o
@@ -331,8 +331,9 @@ $(ODIR)/findBoundStates: findBoundStates.o $(SRC_OBJS)
 $(ODIR)/testPolyFermi: testPolyFermi.o $(SRC_OBJS)
 	$(LD) -o $(ODIR)/testPolyFermi testPolyFermi.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
 
-$(ODIR)/testBandStructure: testBandStructure.o $(SRC_OBJS)
-	$(LD) -o $(ODIR)/testBandStructure testBandStructure.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
+$(ODIR)/testBandStructure: testBandStructure.o $(SRC_OBJS) $(ODIR)/BandStructureModule.o
+	$(LD) -o $(ODIR)/testBandStructure testBandStructure.o $(ODIR)/BandStructureModule.o $(BASE_ROUTINES) $(SRC_OBJS) \
+$(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
 
 $(ODIR)/testExchCorr: testExchCorr.o $(SRC_OBJS) $(ODIR)/ExchCorrFunctionalModule.o
 	$(LD) -o $(ODIR)/testExchCorr testExchCorr.o $(BASE_ROUTINES) $(SRC_OBJS) $(ODIR)/ExchCorrFunctionalModule.o $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)

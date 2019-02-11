@@ -40,7 +40,7 @@ subroutine giterat(niter,mdim,pmix,x,n,t,u,m,k,p,ppq,pq,w0,tp,tolerance)
   implicit none
 !io............................................................................
   integer (kind=IntKind) :: niter,mdim,n,m,k
-  real (kind=RealKind) :: x(*),t(*),pmix,u,p,ppq,pq,w0,tp,tolerance
+  real (kind=RealKind) :: x(:),t(:),pmix,u,p,ppq,pq,w0,tp,tolerance
 !local.........................................................................
   integer (kind=IntKind) :: i,m1,mm1,nu,nu2,nn,na,nb,i1,i2,ju,j,ju2,indef,iu
   real (kind=RealKind) :: err,tm,q,s,uu,ux

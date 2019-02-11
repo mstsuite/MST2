@@ -82,8 +82,9 @@ ClusterMatrixModule.o \
 CrystalMatrixModule.o \
 AccelerateCPAModule.o \
 MediumHostModule.o \
-MediumMatrixModule.o \
+EmbeddedClusterModule.o \
 CPAMediumModule.o \
+BandStructureModule.o \
 MSSolverModule.o \
 RelMSSolverModule.o \
 RelGreenFunctionModule.o \

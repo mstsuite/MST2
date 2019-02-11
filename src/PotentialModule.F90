@@ -2909,7 +2909,7 @@ contains
 !
    implicit none
 !
-   character (len=240) :: aflag
+   character (len=9*Potential(id)%jmax) :: aflag
 !
    integer (kind=IntKind), intent(in) :: id, ia
 !

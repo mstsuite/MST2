@@ -11,8 +11,8 @@ public :: initMediumHost,    &
           getSitePosition,   &
           getLmaxKKR,        &
           getLmaxPhi,        &
-          getBravaisLattice, &
-          getGlobalIndex,    &
+          getMediumLattice,  &
+          getGlobalSiteIndex,&
           getLocalNumSites,  &
           getNumSpecies,     &
           getSpeciesContent, &
@@ -50,10 +50,12 @@ contains
    use ScfDataModule, only : isKKRCPA, isEmbeddedCluster
 !
    use SystemModule, only : getNumAtoms, getLmaxKKR, getLmaxPhi,      &
+                            getBravaisLattice,                        &
                             getAtomPosition, getNumAlloyElements,     &
                             getAlloyElementContent, getAlloyElementName
 !
-   use Atom2ProcModule, only : getLocalNumAtoms, getMaxLocalNumAtoms
+   use Atom2ProcModule, only : getLocalNumAtoms, getMaxLocalNumAtoms, &
+                               getGlobalIndex
 !
    implicit none
 !
@@ -221,7 +223,7 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getBravaisLattice() result(bra)
+   function getMediumLattice() result(bra)
 !  ===================================================================
    implicit none
 !
@@ -229,11 +231,11 @@ contains
 !
    bra = bravais_lattice
 !
-   end function getBravaisLattice
+   end function getMediumLattice
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getGlobalIndex(i,pe) result(j)
+   function getGlobalSiteIndex(i,pe) result(j)
 !  ===================================================================
    implicit none
 !
@@ -243,7 +245,7 @@ contains
 !
    if (present(pe)) then
       if (pe < 0 .or. pe > NumPEsInGroup-1) then
-         call ErrorHandler('getGlobalIndex','The PE index is out of range', &
+         call ErrorHandler('getGlobalSiteIndex','The PE index is out of range', &
                            pe,NumPEsInGroup-1)
       endif
       n = pe + 1
@@ -252,13 +254,13 @@ contains
    endif
 !
    if (i < 1 .or. i > NumLocalSites(n)) then
-      call ErrorHandler('getGlobalIndex','Medium atom local index is out of range', &
+      call ErrorHandler('getGlobalSiteIndex','Medium atom local index is out of range', &
                         i,NumLocalSites(n))
    endif
 !
    j = global_index(i,n)
 !
-   end function getGlobalIndex
+   end function getGlobalSiteIndex
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -395,7 +397,7 @@ contains
                                        species_content(ia,ig)
       enddo
    enddo
-   write(6,'(a)')'========================================'
+   write(6,'(a,/)')'========================================'
 !
    end subroutine printData
 !  ===================================================================

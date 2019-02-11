@@ -9,6 +9,12 @@ module ExchCorrFunctionalModule
 #ifdef LIBXC
    use xc_f90_types_m
    use xc_f90_lib_m
+!  use xc_f03_lib_m
+! #define xc_f90_pointer_t xc_f03_func_t
+! #define xc_f90_func_init xc_f03_func_init
+! #define xc_f90_info_number xc_f03_info_number
+! #define xc_f90_info_family xc_f03_info_family
+! #define xc_f90_functional_get_number xc_f03_functional_get_number
 #endif
 !
 public :: initExchCorrFunctional,         &

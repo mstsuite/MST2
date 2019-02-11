@@ -102,7 +102,7 @@ program testBandStructure
 !
    use ScfDataModule, only : pole_step
 !
-   use CrystalMatrixModule, only : initCrystalMatrix, endCrystalMatrix, &
+   use BandStructureModule, only : initBandStructure, endBandStructure, &
                                    calBandStructure
 !
    implicit none
@@ -187,7 +187,7 @@ program testBandStructure
                      lmax_kkr, lmax_phi, lmax_pot, lmax_step, lmax_green,     &
                      n_spin_pola, n_spin_cant, RelativisticFlag, istop, atom_print_level)
 !  -------------------------------------------------------------------
-   call initCrystalMatrix( LocalNumAtoms, n_spin_cant, lmax_kkr, RelativisticFlag, &
+   call initBandStructure( LocalNumAtoms, n_spin_cant, lmax_kkr, RelativisticFlag, &
                            istop, atom_print_level)
 !  -------------------------------------------------------------------
 !
@@ -268,7 +268,7 @@ program testBandStructure
 !  ===================================================================
    deallocate(kpts)
 !
-   call endCrystalMatrix()
+   call endBandStructure()
    call endSSSolver()
 !
 !  ===================================================================

@@ -105,6 +105,7 @@ public :: initRelSSSolver, &
           getRelOmegaHatInvMatrix,  &
           getRelTMatrix,            &
           getRelSMatrix,            &
+          getRelScatteringMatrix,   &
           getRelSolutionRmeshSize,  &
           getRelRegSolutionSine,       &
           getRelRegSolutionCosine,  &
@@ -2748,6 +2749,76 @@ include '../lib/arrayTools.F90'
 
    end subroutine get_midM
 
+
+   ! This function has the same interface as the non-relativistic case
+   !=================================================================
+   function getRelScatteringMatrix(sm_type,spin,site,atom,dsize) result(sm)
+   !=================================================================
+
+   implicit none
+ 
+   character (len=*), intent(in) :: sm_type
+
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
+   integer (kind=IntKind), intent(out), optional :: dsize
+   integer (kind=IntKind) :: id
+
+   complex (kind=CmplxKind), pointer :: sm(:,:)
+
+   interface
+      function nocaseCompare(s1,s2) result(t)
+         character (len=*), intent(in) :: s1
+         character (len=*), intent(in) :: s2
+         logical :: t
+      end function nocaseCompare
+   end interface
+
+   if (.not.Initialized) then
+      call ErrorHandler('getRelScatteringMatrix', 'module not initialized')
+   else if (atom < 1 .or. atom > LocalNumAtoms) then
+      call ErrorHandler('getRelScatteringMatrix',                    &
+                        'invalid number of local atoms', LocalNumAtoms)
+   endif
+
+!  This needs to be fixed for the CPA case
+   if (present(site) .and. present(atom)) then
+      id = max(site,atom) ! this is just a temporary fix
+   else if (present(site)) then
+      id = site
+   else if (present(atom)) then
+      id = atom
+   else
+      id = 1
+   endif
+!
+   if (nocaseCompare(sm_type,'T-Matrix')) then
+      sm => Scatter(id)%t_mat
+   else if (nocaseCompare(sm_type,'S-Matrix')) then
+      sm => Scatter(id)%S_mat
+   else if (nocaseCompare(sm_type,'Sine-Matrix')) then
+      sm => Scatter(id)%sin_mat
+   else if (nocaseCompare(sm_type,'Cosine-Matrix')) then
+      sm => Scatter(id)%cos_mat
+   else if (nocaseCompare(sm_type,'Jost-Matrix')) then
+      sm => Scatter(id)%jost_mat
+   else if (nocaseCompare(sm_type,'JostInv-Matrix')) then
+      sm => Scatter(id)%jinv_mat
+!  else if (nocaseCompare(sm_type,'Omega-Matrix')) then
+!     sm => Scatter(id)%Omega_mat
+   else if (nocaseCompare(sm_type,'OmegaHat-Matrix')) then
+      sm => Scatter(id)%OmegaHat_mat
+   else if (nocaseCompare(sm_type,'OmegaHatInv-Matrix')) then
+      sm => Scatter(id)%OmegaHatInv_mat
+   else
+      call ErrorHandler('getRelScatteringMatrix',                    &
+                        'Scattering matrix type is invalid',sm_type)
+   endif
+!
+   if (present(dsize)) then
+      dsize = size(sm,1)
+   endif
+
+   end function getRelScatteringMatrix
 
    !=================================================================
    function getRelTMatrix(atom) result(t_mat)

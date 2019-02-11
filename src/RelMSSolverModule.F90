@@ -303,7 +303,7 @@ contains
    subroutine computeRelMST(Ek)
    !=================================================================
    use CrystalMatrixModule, only : calCrystalMatrix,getTau
-   use RelSSSolverModule, only : SingleDiracScattering
+   use RelSSSolverModule, only : SingleDiracScattering, getRelScatteringMatrix
 
    implicit none
 
@@ -314,7 +314,7 @@ contains
    do id = 1, LocalNumAtoms
       call SingleDiracScattering (id,Ek)
    enddo
-   call calCrystalMatrix(Ek, tau_needed=.true.)
+   call calCrystalMatrix(Ek, getRelScatteringMatrix, tau_needed=.true.)
    !open (102,file="tau_matrix",action="write")
    !write (102,*) getTau(1,1) 
    !close (102)

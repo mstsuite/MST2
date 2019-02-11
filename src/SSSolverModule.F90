@@ -19,11 +19,11 @@ public :: initSSSolver,          &
           computeDOS,            &
           computePDOS,           &
           computeGreenFunction,  &
+          getScatteringMatrix,   &
           getSineMatrix,         &
           getCosineMatrix,       &
           getJostMatrix,         &
           getJostInvMatrix,      &
-          getOmegaMatrix,        &
           getOmegaHatMatrix,     &
           getOmegaHatInvMatrix,  &
           getTMatrix,            &
@@ -5785,6 +5785,80 @@ use MPPModule, only : MyPE, syncAllPEs
    endif
 !
    end function getTMatrix
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getScatteringMatrix(sm_type, spin, site, atom, dsize) result(sm)
+!  ===================================================================
+   implicit none
+!
+   character (len=*), intent(in) :: sm_type
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
+   integer (kind=IntKind), intent(out), optional :: dsize
+   integer (kind=IntKind) :: is, id, ic
+!
+   complex (kind=CmplxKind), pointer :: sm(:,:)
+!
+   interface
+      function nocaseCompare(s1,s2) result(t)
+         character (len=*), intent(in) :: s1
+         character (len=*), intent(in) :: s2
+         logical :: t
+      end function nocaseCompare
+   end interface
+!
+   if (.not.Initialized) then
+      call ErrorHandler('getScatteringMatrix','module not initialized')
+   endif
+!
+   if (present(spin)) then
+      is = min(NumSpins,spin)
+   else
+      is = LocalSpin
+   endif
+!
+   if (present(site)) then
+      id = site
+   else
+      id = LocalIndex
+   endif
+!
+   if (present(atom)) then
+      ic = atom
+   else
+      ic = 1
+   endif
+!
+   if (nocaseCompare(sm_type,'T-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%t_mat
+   else if (nocaseCompare(sm_type,'S-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%S_mat
+   else if (nocaseCompare(sm_type,'Sine-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%sin_mat
+   else if (nocaseCompare(sm_type,'Cosine-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%cos_mat
+   else if (nocaseCompare(sm_type,'Jost-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%jost_mat
+   else if (nocaseCompare(sm_type,'JostInv-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%jinv_mat
+   else if (nocaseCompare(sm_type,'Omega-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%Omega_mat
+   else if (nocaseCompare(sm_type,'OmegaHat-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%OmegaHat_mat
+   else if (nocaseCompare(sm_type,'OmegaHatInv-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%OmegaHatInv_mat
+   else
+      call ErrorHandler('getScatteringMatrix','Scattering matrix type is invalid', &
+                        sm_type)
+   endif
+!
+   if (present(dsize)) then
+      dsize = Scatter(id)%kmax_int
+   endif
+!
+   end function getScatteringMatrix
 !  ===================================================================
 !
 !  *******************************************************************

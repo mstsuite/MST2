@@ -27,27 +27,57 @@
 !  *  Purpose: deallocate the internal allocated arrays and clear    *
 !  *           the storage                                           *
 !  *                                                                 *
-!  *  calCrystalMatrix(e, tau)                                       *
+!  *  calCrystalMatrix(e,getSM,tau,use_tmat,configuration)           *
 !  *  Purpose: calculate k-space integration of the Tau matrix       *
 !  *  Input:   e  = the energy in Rydberg units                      *
-!  *           tau (logic) = whethere to calculate tau-matrix....    *
+!  *           getSM (interface) = function interface to get single  *
+!  *                               scattering matrix.                *
+!  *           tau (logic) = whether to calculate tau-matrix....     *
+!  *           use_tmat (logic) = whether to use t-matrix formula to *
+!  *                              calculate tau                      *
+!  *           configuration = if case of using effective medium,    *
+!  *                           an atomic site may be probable to     *
+!  *                           have different atomic species. This   *
+!  *                           integer array specifies a particular  *
+!  *                           configuration of atoms on the atomic  *
+!  *                           sites mapped on the current process.  *
+!  *           Note: for atomic site i, configuration(i) = 0 is the  *
+!  *                 effective medium "atom"; configuration(i) = j   *
+!  *                 means that the site has the j'th atomic species *
 !  *                                                                 *
-!  *  calCrystalMatrix(e, kpts, tauk)                                *
+!  *  calCrystalMatrix(e,kpts,getSM,tauk,use_tmat,configuration)     *
 !  *  Purpose: calculate the Tau matrix for the given k-point        *
 !  *  Input:   e  = the energy in Rydberg units                      *
 !  *           kpts = the array defines the k-points                 *
-!  *           tau (logic) = whethere to calculate tau-matrix....    *
+!  *           getSM (interface) = function interface to get single  *
+!  !                               scattering matrix.                *
+!  *           tau (logic) = whether to calculate tau-matrix....     *
+!  *           use_tmat (logic) = whether to use t-matrix formula to *
+!  *                              calculate tau                      *
+!  *           configuration = if case of using effective medium,    *
+!  *                           an atomic site may be probable to     *
+!  *                           have different atomic species. This   *
+!  *                           integer array specifies a particular  *
+!  *                           configuration of atoms on the atomic  *
+!  *                           sites mapped on the current process.  *
+!  *           Note: for atomic site i, configuration(i) = 0 is the  *
+!  *                 effective medium "atom"; configuration(i) = j   *
+!  *                 means that the site has the j'th atomic species *
 !  *                                                                 *
-!  *  getTau(i,j)                                                    *
-!  *  Purpose: retrieve the {i,i} block of the big Tau matrix        *
-!  *  Input:   i   = the local index of atom i                       *
-!  *  Result:  pointer tau => Tau^{i,i}, in the local frame of       *
+!  *  getTau(id,i,j)                                                 *
+!  *  Purpose: retrieve the {i,j} block of the big Tau matrix        *
+!  *  Input:   id  = the local  index of atom                        *
+!  *           i   = the global index of atom i                      *
+!  *           j   = the global index of atom j                      *
+!  *  Result:  pointer tau => Tau^{i,j}, in the local frame of       *
 !  *                            reference in spin space              *
+!  *  Note:  the j-atom needs to be on the local process             *
 !  *                                                                 *
-!  *  getKau(i,j)                                                    *
+!  *  getKau(id,i,j)                                                 *
 !  *  Purpose: retrieve the {i,j} block of the big Kau matrix        *
-!  *  Input:   i   = the global index of atom i                      *
-!  *           i   = the global index of atom j                      *
+!  *  Input:   id  = the local  index of atom                        *
+!  *           i   = the global index of atom i                      *
+!  *           j   = the global index of atom j                      *
 !  *  Result:  pointer kau => Kau^{i,j}, in the local frame of       *
 !  *                            reference in spin space              *
 !  *  Note:  the j-atom needs to be on the local process             *
@@ -70,11 +100,11 @@ module CrystalMatrixModule
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler,        &
                                   StopHandler
    use PhysParamModule, only : LightSpeed !xianglin
+   use PublicTypeDefinitionsModule, only : MatrixBandStruct, ScmBlockStruct
 !
 public :: initCrystalMatrix, &
           endCrystalMatrix,  &
           calCrystalMatrix,  &
-          calBandStructure,  &
           getTau,            &
           getKau,            &
           printCrystalMatrix
@@ -84,27 +114,6 @@ public :: initCrystalMatrix, &
    end interface ! calCrystalMatrix
 !
 private
-!
-   type MatrixBlockStruct
-      integer (kind=IntKind) :: lmax_kkr
-      integer (kind=IntKind) :: kmax_kkr
-      integer (kind=IntKind) :: row_index
-      integer (kind=IntKind) :: global_index
-      complex (kind=CmplxKind), pointer :: tau_l(:,:,:)
-      complex (kind=CmplxKind), pointer :: kau_l(:,:,:)
-   end type MatrixBlockStruct
-!
-   type MatrixBandStruct
-      integer (kind=IntKind) :: global_index
-      integer (kind=IntKind) :: column_index  ! The column index in the band matrix, not the "big" KKR matrix
-      integer (kind=IntKind) :: lmax_kkr
-      integer (kind=IntKind) :: kmax_kkr
-      type (MatrixBlockStruct), pointer :: MatrixBlock(:)
-   end type MatrixBandStruct
-!
-   type ScmBlockStruct
-      complex (kind=CmplxKind), pointer :: strcon_matrix(:,:)
-   end type ScmBlockStruct
 !
    type (ScmBlockStruct), allocatable :: sc_blocks(:,:)
 !
@@ -146,10 +155,6 @@ private
    complex (kind=CmplxKInd), allocatable, target :: WORK(:)
 !
    integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, GroupID
-!
-   integer (kind=IntKind), parameter :: method = 0 ! Using method = 1, the numerical noise seems breaking the symmetry
-                                                   ! for lmax > 3 and gives rise to a non-zero force, even though
-                                                   ! very small, acting on each atom in a crystal.
 !
    complex (kind=CmplxKind) :: energy, kappa
 !
@@ -500,7 +505,8 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupSSMatrixBuf()
+   subroutine setupSSMatrixBuf(getSingleScatteringMatrix,method,      &
+                               site_config)
 !  ===================================================================
    use MPPModule, only : AnyPE, MyPE
    use MPPModule, only : nbsendMessage, nbrecvMessage
@@ -516,14 +522,9 @@ contains
 !
    use SpinRotationModule, only : rotateLtoG
 !
-   use SSSolverModule, only : getJostInvMatrix, getSineMatrix, getTMatrix
-   use SSSolverModule, only : getCosineMatrix
-!
-   use RelSSSolverModule, only : getRelJostInvMatrix, getRelSineMatrix, getRelTMatrix !xianglin
-   use RelSSSolverModule, only : getRelCosineMatrix !xianglin
-!
    implicit none
 !
+   integer (kind=IntKind), intent(in) :: method, site_config(:)
    integer (kind=IntKind) :: comm, t0size, kkri_ns, prev_pe, next_pe
    integer (kind=IntKind) :: i, n, nr, send_msgid, recv_msgid, kmax_kkr
 !
@@ -533,6 +534,45 @@ contains
    complex (kind=CmplxKind), pointer :: cm1(:,:), cm2(:,:)
    complex (kind=CmplxKind), pointer :: pm(:), gmat(:,:)
    complex (kind=CmplxKind), pointer :: send_buf(:,:), recv_buf(:,:)
+!
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
+!
+   if (method == 2) then ! Only the t-matrix is needed
+      do i = 1, LocalNumAtoms
+!        =============================================================
+!        Obtain the t-matrix in Global frame
+!        =============================================================
+         if (.not.isRelativistic .and. nSpinCant == 2) then
+            tm1 => getSingleScatteringMatrix('T-Matrix',site=i,       &
+                                             atom=site_config(i),spin=1,dsize=kmax_kkr)
+            tm2 => getSingleScatteringMatrix('T-Matrix',site=i,       &
+                                             atom=site_config(i),spin=2,dsize=kmax_kkr)
+            kkri_ns = kmax_kkr*nSpinCant
+            pm => tmat_g(:,i)
+            gmat => aliasArray2_c(pm,kkri_ns,kkri_ns)
+!           ----------------------------------------------------------
+            call rotateLtoG(i, kmax_kkr, kmax_kkr, tm1, tm2, gmat)
+!           ----------------------------------------------------------
+         else
+            tm1 => getSingleScatteringMatrix('T-Matrix',site=i,       &
+                                             atom=site_config(i),dsize=kkri_ns)
+         endif
+         t0size = kkri_ns*kkri_ns
+!        -------------------------------------------------------------
+         call zcopy(t0size,tm1,1,tmat_g(1,i),1)
+!        -------------------------------------------------------------
+      enddo
+      nullify(tm1,tm2,pm,gmat)
+      return
+   endif
 !
 !  -------------------------------------------------------------------
    comm = getGroupCommunicator(GroupID)
@@ -551,27 +591,30 @@ contains
          t0size = kmax_kkr*kmax_kkr*nSpinCant*nSpinCant
          n  = gid_array(getGlobalIndex(i)) 
             if (method == 0) then
-               jm1 => getRelJostInvMatrix(i)
+               jm1 => getSingleScatteringMatrix('JostInv-Matrix',site=i, &
+                                                atom=site_config(i))
             else
-               sm1 => getRelSineMatrix(i)
+               sm1 => getSingleScatteringMatrix('Sine-Matrix',site=i,    &
+                                                atom=site_config(i))
                jm1 => aliasArray2_c(WORK(1:t0size),kkri_ns,kkri_ns)
                jm1 = sm1
    !           ----------------------------------------------------------
    !            call computeAStar(sm1,kkri_ns,kkri_ns,jm1)                !not needed unless there is B_y
    !           ----------------------------------------------------------
             endif
-            sm1 => getRelSineMatrix(i)
+            sm1 => getSingleScatteringMatrix('Sine-Matrix',site=i,atom=site_config(i))
    !        -------------------------------------------------------------
             call zcopy( t0size, jm1, 1, jinv_g(1,n), 1 )   !save jinv(Method 0) or s^t(Method 1) into jinv_g 
             call zcopy( t0size, sm1, 1, sine_g(1,i), 1 )   !save s into sine_g
    !        -------------------------------------------------------------
-            tm1 => getRelTMatrix(i)
+            tm1 => getSingleScatteringMatrix('T-Matrix',site=i,atom=site_config(i))
             call zcopy( t0size, tm1, 1, tmat_g(1,i), 1 )
    !        -------------------------------------------------------------
    !        call writeMatrix('Jinvt',jm1,kkri_ns,kkri_ns)
    !        call writeMatrix('t-mat',tm1,kkri_ns,kkri_ns)
             if (method /= 0) then
-               cm1 => getRelCosineMatrix(i)
+               cm1 => getSingleScatteringMatrix('Cosine-Matrix',site=i,  &
+                                                atom=site_config(i))
    !           ----------------------------------------------------------
                call zgemm('t','n',kkri_ns,kkri_ns,kkri_ns,CONE,      &
                           jinv_g(1,n),kkri_ns,cm1,kkri_ns,CZERO,stcm_g(1,i),kkri_ns) !stcm_g=S^t*C
@@ -600,11 +643,15 @@ contains
 !           calculate jinv_g and sine_g in global frame of reference.
 !           =============================================================
             if (method == 0) then ! jinv_g contains (iS-C)^{-1}
-               jm1 => getJostInvMatrix(1,i)
-               jm2 => getJostInvMatrix(2,i)
+               jm1 => getSingleScatteringMatrix('JostInv-Matrix',spin=1, &
+                                                site=i,atom=site_config(i))
+               jm2 => getSingleScatteringMatrix('JostInv-Matrix',spin=2, &
+                                                site=i,atom=site_config(i))
             else                  ! jinv_g contains S^{*}
-               sm1 => getSineMatrix(1,i)
-               sm2 => getSineMatrix(2,i)
+               sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,    &
+                                                site=i,atom=site_config(i))
+               sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=2,    &
+                                                site=i,atom=site_config(i))
                jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
                jm2 => aliasArray2_c(WORK(t0size+1:2*t0size),kmax_kkr,kmax_kkr)
 !              ----------------------------------------------------------
@@ -617,23 +664,29 @@ contains
 !           -------------------------------------------------------------
             call rotateLtoG(i, kmax_kkr, kmax_kkr, jm1, jm2, gmat)
 !           -------------------------------------------------------------
-            sm1 => getSineMatrix(1,i)
-            sm2 => getSineMatrix(2,i)
+            sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=i,&
+                                             atom=site_config(i))
+            sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=2,site=i,&
+                                             atom=site_config(i))
             pm => sine_g(:,i)
             gmat => aliasArray2_c(pm,kkri_ns,kkri_ns)
 !           -------------------------------------------------------------
             call rotateLtoG(i, kmax_kkr, kmax_kkr, sm1, sm2, gmat)
 !           -------------------------------------------------------------
-            tm1 => getTMatrix(1,i)
-            tm2 => getTMatrix(2,i)
+            tm1 => getSingleScatteringMatrix('T-Matrix',spin=1,site=i,   &
+                                             atom=site_config(i))
+            tm2 => getSingleScatteringMatrix('T-Matrix',spin=2,site=i,   &
+                                             atom=site_config(i))
             pm => tmat_g(:,i)
             gmat => aliasArray2_c(pm,kkri_ns,kkri_ns)
 !           -------------------------------------------------------------
             call rotateLtoG(i, kmax_kkr, kmax_kkr, tm1, tm2, gmat)
 !           -------------------------------------------------------------
             if (method /= 0) then
-               cm1 => getCosineMatrix(1,i)
-               cm2 => getCosineMatrix(2,i)
+               cm1 => getSingleScatteringMatrix('Cosine-Matrix',spin=1,  &
+                                                site=i,atom=site_config(i))
+               cm2 => getSingleScatteringMatrix('Cosine-Matrix',spin=2,  &
+                                                site=i,atom=site_config(i))
                gmat => aliasArray2_c(WORK,kkri_ns,kkri_ns)
 !              ----------------------------------------------------------
                call rotateLtoG(i, kmax_kkr, kmax_kkr, cm1, cm2, gmat)
@@ -643,26 +696,31 @@ contains
             endif
          else
             if (method == 0) then
-               jm1 => getJostInvMatrix(1,i)
+               jm1 => getSingleScatteringMatrix('JostInv-Matrix',spin=1, &
+                                                site=i,atom=site_config(i))
             else
-               sm1 => getSineMatrix(1,i)
+               sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,    &
+                                                site=i,atom=site_config(i))
                jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
 !              ----------------------------------------------------------
                call computeAStar(sm1,kmax_kkr,kmax_kkr,jm1)
 !              ----------------------------------------------------------
             endif
-            sm1 => getSineMatrix(1,i)
+            sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=i,&
+                                             atom=site_config(i))
 !           -------------------------------------------------------------
             call zcopy( t0size, jm1, 1, jinv_g(1,n), 1 )
             call zcopy( t0size, sm1, 1, sine_g(1,i), 1 )
 !           -------------------------------------------------------------
-            tm1 => getTMatrix(1,i)
+            tm1 => getSingleScatteringMatrix('T-Matrix',spin=1,site=i,   &
+                                             atom=site_config(i))
             call zcopy( t0size, tm1, 1, tmat_g(1,i), 1 )
 !           -------------------------------------------------------------
 !           call writeMatrix('Jinvt',jm1,kmax_kkr,kmax_kkr)
 !           call writeMatrix('t-mat',tm1,kmax_kkr,kmax_kkr)
             if (method /= 0) then
-               cm1 => getCosineMatrix(1,i)
+               cm1 => getSingleScatteringMatrix('Cosine-Matrix',spin=1,  &
+                                                site=i,atom=site_config(i))
 !              ----------------------------------------------------------
                call zgemm('t','n',kmax_kkr,kmax_kkr,kmax_kkr,CONE,      &
                           jinv_g(1,n),kmax_kkr,cm1,kmax_kkr,CZERO,stcm_g(1,i),kmax_kkr)
@@ -718,7 +776,8 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calCrystalMatrix_sumk(e, tau_needed)
+   subroutine calCrystalMatrix_sumk(e,getSingleScatteringMatrix,      &
+                                    tau_needed,use_tmat,configuration)
 !  ===================================================================
    use MPPModule, only : MyPE
    use MatrixModule, only : computeAStarT
@@ -733,12 +792,15 @@ contains
    implicit none
 !
    logical, intent(in), optional :: tau_needed
+   logical, intent(in), optional :: use_tmat
    logical :: calculate_tau = .false.
 !
    character (len=20) :: sname = "calCrystalMatrix"
 !
-   integer (kind=IntKind) :: k_loc, k, i, row, col, MyPEinKGroup
+   integer (kind=IntKind), intent(in), optional :: configuration(:)
+   integer (kind=IntKind) :: k_loc, k, i, row, col, MyPEinKGroup, method
    integer (kind=IntKind) :: NumKs, kGID, aGID, NumKsOnMyProc, NumRedunKs
+   integer (kind=IntKind) :: site_config(LocalNumAtoms)
 !
    real (kind=RealKind), pointer :: kpts(:,:), weight(:)
    real (kind=RealKind) :: kfac, kaij
@@ -748,16 +810,63 @@ contains
    complex (kind=CmplxKind) :: wfac, efac
    complex (kind=CmplxKind), pointer :: rotmat(:,:), scm(:,:)
 !
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
 !
    energy = e
    if (isRelativistic) then !xianglin
       kappa = sqrt(2.d0*Me*e + e**2/LightSpeed**2)
    else
-         kappa = sqrt(e)
+      kappa = sqrt(e)
    endif
 !
+!  ===================================================================
+!  There are different ways to construct the KKR matrix or its modified
+!  form. A (modified) KKR Matrix (or the M-matrix) can be constructed 
+!  as follows.
+!  Method 0:
+!    p_MatrixBand = 
+!      [1 - OmegaHat(e) * S(e)^{T*} * (B(e,k)+i*kappa) * S(e)/kappa]^{-1} - 1
+!  where, OmegaHat(e) * S(e)^{T*} = Jost(e)^{-1}.
+!
+!  Method 1:
+!    p_MatrixBand =
+!      -[S(e)^{T*} * C(e) + S(e)^{T*} * B(k,e) * S(e)/kappa]^{-1}
+!
+!  Method 2:
+!    p_MatrixBand = [ 1 - (B(k,e)+i*kappa) * t(e) ]^{-1}
+!
+!  By default, set method = 0 so that both sine and Jost matrices are
+!  involved.
+!  Using method = 1, the numerical noise seems breaking the symmetry
+!  for lmax > 3 and gives rise to a non-zero force, even though
+!  very small, acting on each atom in a crystal.
+!  Using method = 2, calculting tau-matrix will only involve t-matrix.
+!  ===================================================================
+   method = 0
+   if (present(use_tmat)) then
+      if (use_tmat) then
+         method = 2 ! When constructing tau-matrix, only t-matrix used
+      endif
+   endif
+!
+   if (present(configuration)) then
+      site_config(1:LocalNumAtoms) = configuration(1:LocalNumAtoms)
+   else
+      site_config = 1
+   endif
+!
+!  ===================================================================
+!  Exchange single site scattering matrix among processes.
 !  -------------------------------------------------------------------
-   call setupSSMatrixBuf()   ! Exchange single site scattering matrix
+   call setupSSMatrixBuf(getSingleScatteringMatrix,method,site_config)
 !  -------------------------------------------------------------------
 !
    if ( present(tau_needed) ) then
@@ -809,7 +918,7 @@ contains
 !     ================================================================
 !     Compute the modified KKR matrix, which is stored in TMP_MatrixBand
 !     ----------------------------------------------------------------
-      call computeMatrixBand(TMP_MatrixBand)
+      call computeMatrixBand(TMP_MatrixBand,method)
 !     ----------------------------------------------------------------
 !     call checkMatrixBandRotation(kvec,TMP_MatrixBand)
 !     ----------------------------------------------------------------
@@ -835,8 +944,20 @@ contains
 !  -------------------------------------------------------------------
    call GlobalSumInGroup(kGID,KKR_MatrixBand,KKRMatrixSizeCant*BandSizeCant)
 !  -------------------------------------------------------------------
-   call computeKauMatrix(calculate_tau)
-!  -------------------------------------------------------------------
+!
+   if (method == 0 .or. method == 1) then
+!     ----------------------------------------------------------------
+      call computeKauMatrix(getSingleScatteringMatrix,method,calculate_tau,site_config)
+!     ----------------------------------------------------------------
+   else if (method == 2) then
+!     ----------------------------------------------------------------
+      call computeTauMatrix(getSingleScatteringMatrix,site_config)
+!     ----------------------------------------------------------------
+   else
+!     ----------------------------------------------------------------
+      call ErrorHandler('calCrystalMatrix_sumk','The method is invalid',method)
+!     ----------------------------------------------------------------
+   endif
 !
    if (getNumRotations() > 1) then
       if (isRelativistic) then
@@ -860,18 +981,22 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calCrystalMatrix_k(e, kpts, tau_needed)
+   subroutine calCrystalMatrix_k(e,kpts,getSingleScatteringMatrix,    &
+                                 tau_needed,use_tmat,configuration)
 !  ===================================================================
    use StrConstModule, only : getStrConstMatrix
 !
    implicit none
 !
    logical, intent(in), optional :: tau_needed
+   logical, intent(in), optional :: use_tmat
    logical :: calculate_tau
 !
    character (len=20) :: sname = "calCrystalMatrix"
 !
-   integer (kind=IntKind) :: row, col
+   integer (kind=IntKind), intent(in), optional :: configuration(:)
+   integer (kind=IntKind) :: row, col, method
+   integer (kind=IntKind) :: site_config(LocalNumAtoms)
 !
    real (kind=RealKind), intent(in) :: kpts(1:3)
 !
@@ -879,11 +1004,21 @@ contains
 !
    complex (kind=CmplxKind), pointer :: scm(:,:)
 !
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
+!
    energy = e
    if (isRelativistic) then !xianglin
       kappa = sqrt(2.d0*Me*e + e**2/LightSpeed**2)
    else
-         kappa = sqrt(e)
+      kappa = sqrt(e)
    endif
 !
    if ( present(tau_needed) ) then
@@ -892,8 +1027,46 @@ contains
       calculate_tau = .false.
    endif
 !
+!  ===================================================================
+!  There are different ways to construct the KKR matrix or its modified
+!  form. A (modified) KKR Matrix (or the M-matrix) can be constructed 
+!  as follows.
+!  Method 0:
+!    p_MatrixBand = 
+!      [1 - OmegaHat(e) * S(e)^{T*} * (B(e,k)+i*kappa) * S(e)/kappa]^{-1} - 1
+!  where, OmegaHat(e) * S(e)^{T*} = Jost(e)^{-1}.
+!
+!  Method 1:
+!    p_MatrixBand =
+!      -[S(e)^{T*} * C(e) + S(e)^{T*} * B(k,e) * S(e)/kappa]^{-1}
+!
+!  Method 2:
+!    p_MatrixBand = [ 1 - (B(k,e)+i*kappa) * t(e) ]^{-1}
+!
+!  By default, set method = 0 so that both sine and Jost matrices are
+!  involved.
+!  Using method = 1, the numerical noise seems breaking the symmetry
+!  for lmax > 3 and gives rise to a non-zero force, even though
+!  very small, acting on each atom in a crystal.
+!  Using method = 2, calculting tau-matrix will only involve t-matrix.
+!  ===================================================================
+   method = 0
+   if (present(use_tmat)) then
+      if (use_tmat) then
+         method = 2
+      endif
+   endif
+!
+   if (present(configuration)) then
+      site_config(1:LocalNumAtoms) = configuration(1:LocalNumAtoms)
+   else
+      site_config = 1
+   endif
+!
+!  ===================================================================
+!  Exchange single site scattering matrix among processes.
 !  -------------------------------------------------------------------
-   call setupSSMatrixBuf()   ! Exchange single site scattering matrix
+   call setupSSMatrixBuf(getSingleScatteringMatrix,method,site_config)
 !  -------------------------------------------------------------------
 !
 !  ===================================================================
@@ -912,10 +1085,22 @@ contains
 !  ===================================================================
 !  Compute the modified KKR matrix, which is stored in KKR_MatrixBand
 !  -------------------------------------------------------------------
-   call computeMatrixBand(KKR_MatrixBand)
+   call computeMatrixBand(KKR_MatrixBand,method)
 !  -------------------------------------------------------------------
-   call computeKauMatrix(calculate_tau)
-!  -------------------------------------------------------------------
+   if (method == 0. .or. method == 1) then
+!     ----------------------------------------------------------------
+      call computeKauMatrix(getSingleScatteringMatrix,method,         &
+                         calculate_tau,site_config)
+!     ----------------------------------------------------------------
+   else if (method == 2) then
+!     ----------------------------------------------------------------
+      call computeTauMatrix(getSingleScatteringMatrix,site_config)
+!     ----------------------------------------------------------------
+   else
+!     ----------------------------------------------------------------
+      call ErrorHandler('calCrystalMatrix_k','The method is invalid',method)
+!     ----------------------------------------------------------------
+   endif
 !
    end subroutine calCrystalMatrix_k
 !  ===================================================================
@@ -923,7 +1108,8 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeKauMatrix(calculate_tau)
+   subroutine computeKauMatrix(getSingleScatteringMatrix,method,      &
+                               calculate_tau,site_config)
 !  ===================================================================
    use MatrixModule, only : computeUAUts
 !
@@ -931,18 +1117,13 @@ contains
 !
    use SpinRotationModule, only : rotateGtoL
 !
-   use SSSolverModule, only : getSineMatrix, getTMatrix
-   use SSSolverModule, only : getOmegaHatMatrix, getOmegaHatInvMatrix
-!
-   use RelSSSolverModule, only : getRelSineMatrix, getRelTMatrix !xianglin
-   use RelSSSolverModule, only : getRelOmegaHatMatrix, getRelOmegaHatInvMatrix !xianglin
-!
    use StrConstModule, only : getStrConstMatrix
 !
    implicit none
 !
    logical, intent(in) :: calculate_tau
 !
+   integer (kind=IntKind), intent(in) :: method, site_config(:)
    integer (kind=IntKind) :: i, j, ig, np, ni, nj, kl, klp, is, js, ns
    integer (kind=IntKind) :: kmaxj, kmaxj_ns, t0size
 !
@@ -953,6 +1134,16 @@ contains
    complex (kind=CmplxKind), pointer :: tm(:,:), om(:,:), oim(:,:)
    complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:)
    complex (kind=CmplxKind),allocatable :: mat_tmp(:,:) , mat_tmp2(:,:)!xianglin
+!
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
 !
 !  ===================================================================
 !  calculate Kau, the modified KKR Matrix as follows:
@@ -996,7 +1187,8 @@ contains
       endif
 !
       if (isRelativistic) then !xianglin
-         om => getRelOmegaHatMatrix(j)
+         om => getSingleScatteringMatrix('OmegaHat-Matrix',site=j,       &
+                                         atom=site_config(j))
          kau_l => MatrixBand(j)%MatrixBlock(i)%kau_l(:,:,1)
          pw => wau_l(:,:,1)
 !   open(131,file="pw",action="write")
@@ -1017,7 +1209,8 @@ contains
       else
          ns = 0
          do js = 1, nSpinCant
-            om => getOmegaHatMatrix(js,j)
+            om => getSingleScatteringMatrix('OmegaHat-Matrix',spin=js,&
+                                            site=j,atom=site_config(j))
    !        call writeMatrix('Ohat-mat',om,kmaxj,kmaxj)
             do is = 1, nSpinCant
                ns = ns + 1
@@ -1030,7 +1223,8 @@ contains
    !              -------------------------------------------------------
    !              call writeMatrix('kau_l',kau_l,kmaxj,kmaxj)
                else
-                  oim => getOmegaHatInvMatrix(js,j)
+                  oim => getSingleScatteringMatrix('OmegaHatInv-Matrix', &
+                                                   spin=js,site=j,atom=site_config(j))
                   if (is == js) then
                      kau_l = kappa*(pw-om)  ! Warning: For large l component, 
                                             !          both pw and om are big numbers
@@ -1056,9 +1250,10 @@ contains
 !
       if (calculate_tau) then
          if (isRelativistic) then
-            sm2 => getRelSineMatrix(j) !by xianglin, need to be revised to use s_d when include B_y
-            sm1 => getRelSineMatrix(j)
-            tm => getRelTMatrix(j)
+!           by xianglin, need to be revised to use s_d when include B_y
+            sm2 => getSingleScatteringMatrix('Sine-Matrix',site=j,atom=site_config(j))
+            sm1 => getSingleScatteringMatrix('Sine-Matrix',site=j,atom=site_config(j))
+            tm => getSingleScatteringMatrix('T-Matrix',site=j,atom=site_config(j))
             kau_l => MatrixBand(j)%MatrixBlock(i)%kau_l(:,:,1)
             tau_l => MatrixBand(j)%MatrixBlock(i)%tau_l(:,:,1)
             allocate(mat_tmp(kmaxj_ns,kmaxj_ns))
@@ -1073,10 +1268,13 @@ contains
          else
             ns = 0
             do js = 1, nSpinCant
-               sm2 => getSineMatrix(js,j)
-               tm => getTMatrix(js,j)
+               sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=js,&
+                                                site=j,atom=site_config(j))
+               tm => getSingleScatteringMatrix('T-Matrix',spin=js,    &
+                                                site=j,atom=site_config(j))
                do is = 1, nSpinCant
-                  sm1 => getSineMatrix(is,j)
+                  sm1 => getSingleScatteringMatrix('Sine-Matrix',     &
+                                                   spin=is,site=j,atom=site_config(j))
                   ns = ns + 1
                   kau_l => MatrixBand(j)%MatrixBlock(i)%kau_l(:,:,ns)
                   tau_l => MatrixBand(j)%MatrixBlock(i)%tau_l(:,:,ns)
@@ -1095,8 +1293,8 @@ contains
 !  *********************
 !  test for L = 0 case *
 !  *********************
-!  sm2 => getSineMatrix(1,1)
-!  tm => getTMatrix(1,1)
+!  sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=1,atom=site_config(1))
+!  tm => getSingleScatteringMatrix('T-Matrix',spin=1,site=1,atom=site_config(1))
 !  kvec  = ZERO
 !  sm1 => getStrConstMatrix(kvec,kappa,1,1,0,0)
 !  kau_l => MatrixBand(1)%MatrixBlock(1)%kau_l(:,:,1)
@@ -1112,7 +1310,94 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeMatrixBand(p_MatrixBand)
+   subroutine computeTauMatrix(getSingleScatteringMatrix,site_config)
+!  ===================================================================
+   use WriteMatrixModule,  only : writeMatrix
+!
+   use SpinRotationModule, only : rotateGtoL
+!
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: site_config(:)
+   integer (kind=IntKind) :: i, j, ig, np, ni, nj, kl, klp, is, js, ns
+   integer (kind=IntKind) :: kmaxj, kmaxj_ns, t0size
+!
+   complex (kind=CmplxKind), pointer :: tau_l(:,:), pw(:,:), tm(:,:)
+   complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:)
+!
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
+!
+   do j = 1, LocalNumAtoms
+      ig = MatrixBand(j)%global_index
+      i = gid_array(ig)  ! Here, we only calculate wau_g for the diagonal components of the Tau matrices
+      kmaxj = MatrixBand(j)%MatrixBlock(i)%kmax_kkr
+      kmaxj_ns = kmaxj*nSpinCant
+      wau_g => aliasArray2_c(WORK,kmaxj_ns,kmaxj_ns)
+      nj = MatrixBand(j)%column_index-1
+      ni = MatrixBand(j)%MatrixBlock(i)%row_index-1
+      do kl = 1, kmaxj_ns
+         np = KKRMatrixSizeCant*(nj+kl-1)+ni
+         do klp = 1, kmaxj_ns
+            wau_g(klp,kl) = KKR_MatrixBand(np+klp)
+         enddo
+      enddo
+!
+!     ================================================================
+!     Determine wau_l which is wau_g in local frame.
+!     ================================================================
+      if (isRelativistic) then !xianglin
+         wau_l => aliasArray3_c(WORK,kmaxj_ns,kmaxj_ns,1)
+      else if ( nSpinCant == 2 ) then
+         t0size = kmaxj_ns*kmaxj_ns
+         wau_l => aliasArray3_c(WORK(t0size+1),kmaxj,kmaxj,nSpinCant*nSpinCant)
+!        -------------------------------------------------------------
+         call rotateGtoL(j, kmaxj, kmaxj, wau_g, wau_l)
+!        -------------------------------------------------------------
+      else
+         wau_l => aliasArray3_c(WORK,kmaxj,kmaxj,1) ! wau_l = wau_g
+      endif
+!
+      if (isRelativistic) then !xianglin
+         tm => getSingleScatteringMatrix('T-Matrix',site=j,atom=site_config(j))
+         tau_l => MatrixBand(j)%MatrixBlock(i)%tau_l(:,:,1)
+         pw => wau_l(:,:,1)
+!        -------------------------------------------------------------
+         call zgemm('n', 'n', kmaxj_ns, kmaxj_ns, kmaxj_ns, CONE,     &
+                    tm, kmaxj_ns, pw, kmaxj_ns, CZERO, tau_l, kmaxj_ns)
+!        -------------------------------------------------------------
+      else
+         ns = 0
+         do js = 1, nSpinCant
+            tm => getSingleScatteringMatrix('T-Matrix',spin=js,       &
+                                            site=j,atom=site_config(j))
+            do is = 1, nSpinCant
+               ns = ns + 1
+               tau_l => MatrixBand(j)%MatrixBlock(i)%tau_l(:,:,ns)
+               pw => wau_l(:,:,ns)
+!              -------------------------------------------------------
+               call zgemm('n', 'n', kmaxj, kmaxj, kmaxj, CONE,        &
+                          tm, kmaxj, pw, kmaxj, CZERO, tau_l, kmaxj)
+!              -------------------------------------------------------
+            enddo
+         enddo
+      endif
+   enddo
+!
+   end subroutine computeTauMatrix
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine computeMatrixBand(p_MatrixBand,method)
 !  ===================================================================
    use MatrixModule, only : setupUnitMatrix
 !
@@ -1122,6 +1407,7 @@ contains
 !
    implicit none
 !
+   integer (kind=IntKind), intent(in) :: method
    integer (kind=IntKind) :: kmaxj, kmaxj_ns, kmaxi, kmaxi_ns, t0size
    integer (kind=IntKind) :: j, nj, ni, i, is, ig, nc, kl, klp, n, nr
 !
@@ -1153,6 +1439,9 @@ contains
 !  Method 1:
 !    p_MatrixBand =
 !      -[S(e)^{T*} * C(e) + S(e)^{T*} * B(k,e) * S(e)/kappa]^{-1}
+!
+!  Method 2:
+!    p_MatrixBand = [ 1 - (B(k,e)+i*kappa) * t(e) ]^{-1}
 !  ===================================================================
    cfac = SQRTm1*kappa
    do j = 1, LocalNumAtoms
@@ -1180,6 +1469,7 @@ contains
 !           method 0: jinvB = i*kappa*OmegaHat(e) * S(e)^{T*}
 !                                    + OmegaHat(e) * S(e)^{T*} * B(e,k)
 !           method 1: jinvB = S(e)^{T*} * B(e,k)
+!           method 2: jinvB = i*kappa + B(e,k)
 !        =============================================================
          strcon => sc_blocks(i,j)%strcon_matrix(:,:)
 !        call writeMatrix('strcon',strcon,kmaxi,kmaxj)
@@ -1201,11 +1491,21 @@ contains
                              p_jinvi, kmaxi_ns, strcon, kmaxi_ns, CZERO, jinvB, kmaxi_ns)
 !                 ----------------------------------------------------
                endif
-            else
+            else if (method == 1) then
 !              -------------------------------------------------------
                call zgemm('t', 'n', kmaxi_ns, kmaxj_ns, kmaxi_ns, CONE, &
                           p_jinvi, kmaxi_ns, strcon, kmaxi_ns, CZERO, jinvB, kmaxi_ns)
 !              -------------------------------------------------------
+            else if (method == 2) then
+               w2 => aliasArray2_c(jinvB,kmaxi_ns,kmaxi_ns)
+               if (i == nc) then
+!                 ----------------------------------------------------
+                  call setupUnitMatrix(kmaxi_ns,w2,cfac)
+!                 ----------------------------------------------------
+                  w2 = w2 + strcon
+               else
+                  w2 = strcon
+               endif
             endif
          else
             if (method == 0) then
@@ -1227,7 +1527,7 @@ contains
 !                    -------------------------------------------------
                   enddo
                endif
-            else
+            else if (method == 1) then
                do is = 1, nSpinCant
 !                 ----------------------------------------------------
                   call zgemm('t', 'n', kmaxi_ns, kmaxj, kmaxi, CONE,    &
@@ -1235,6 +1535,16 @@ contains
                              strcon, kmaxi, CZERO, jinvB((is-1)*kmaxi_ns*kmaxj+1), kmaxi_ns)
 !                 ----------------------------------------------------
                enddo
+            else if (method == 2) then
+               w2 => aliasArray2_c(jinvB,kmaxi_ns,kmaxi_ns)
+               if (i == nc) then
+!                 ----------------------------------------------------
+                  call setupUnitMatrix(kmaxi_ns,w2,cfac)
+!                 ----------------------------------------------------
+                  w2 = w2 + strcon
+               else
+                  w2 = strcon
+               endif
             endif
          endif
 !
@@ -1243,9 +1553,14 @@ contains
 !          method 0: WORK = OmegaHat(e) * S(e)^{T*}
 !                                  * (B(e,k)+i*kappa) * S(e)/kappa
 !          method 1: WORK = S(e)^{T*} * B(e,k) * S(e)/kappa
+!          method 2: WORK = [B(e,k)+i*kappa] * t(e)
 !        =============================================================
          t0size = kmaxj_ns*kmaxj_ns
-         p_sinej => sine_g(:,j)
+         if (method == 0 .or. method == 1) then
+            p_sinej => sine_g(:,j)
+         else
+            p_sinej => tmat_g(:,j)
+         endif
          ni = MatrixBand(j)%MatrixBlock(i)%row_index-1
 !        -------------------------------------------------------------
          call zgemm('n', 'n', kmaxi_ns, kmaxj_ns, kmaxj_ns, CONE/kappa, &
@@ -1257,15 +1572,23 @@ contains
 !
    nullify(jinvB)
 !
-   if (method == 0) then
+   if (method == 0 .or. method == 2) then
 !     ================================================================
-!     WORK = (iS(e)-C(e))^{-1} * (B(k,e)+i*kappa) * S(e)/kappa
+!     For method = 0: 
+!        WORK = (iS(e)-C(e))^{-1} * (B(k,e)+i*kappa) * S(e)/kappa
 !
-!     p_MatrixBand = [1 - WORK]^{-1} - 1
-!     = [ 1 - (iS(e)-C(e))^{-1} * (B(k,e)+i*kappa) * S(e)/kappa ]^{-1} - 1
+!        p_MatrixBand = [1 - WORK]^{-1} - 1
+!        = [ 1 - (iS(e)-C(e))^{-1} * (B(k,e)+i*kappa) * S(e)/kappa ]^{-1} - 1
 !
-!     Will call ZGETRF and ZGETRI to calculate WORK^{-1} and then to
-!     solve p_MatrixBand.
+!        Will call ZGETRF and ZGETRI to calculate WORK^{-1} and then to
+!        solve p_MatrixBand.
+!
+!     For method = 2:
+!        WORK = (B(k,e)+i*kappa) * t(e)
+!
+!        p_MatrixBand = [1 - WORK]^{-1} = [ 1 - (B(k,e)+i*kappa) * t(e) ]^{-1}
+!
+!        Will call ZGETRF and ZGETRI to solve WORK * p_MatrixBand = 1
 !     ================================================================
 !     -WORK => p_MatrixBand
 !     p_MatrixBand = -WORK
@@ -1287,7 +1610,7 @@ contains
             endif
          enddo LOOP_n2
       enddo
-   else
+   else if (method == 1) then
 !     ================================================================
 !     WORK = S(e)^{T*} * B(k,e) * S(e)/kappa
 !
@@ -1403,7 +1726,6 @@ contains
             endif
          enddo LOOP_n1
       enddo
-   else
    endif
 !
    end subroutine computeMatrixBand
@@ -1457,7 +1779,9 @@ contains
             do irot = 1, nrot
                rotmat => getIBZRotationMatrix('c',irot)
 !              -------------------------------------------------------
-!              call checkScatteringMatrixSymmetry(jd,rotmat,kmb,kkrsz)
+!              call checkScatteringMatrixSymmetry(jd,rotmat,kmb,kkrsz, &
+!                                                 getSingleScatteringMatrix, &
+!                                                 site_config)
 !              -------------------------------------------------------
                call computeUAUtc(rotmat,kkrsz,kkrsz,rotmat,kkrsz,cfac, &
                                  kmb,kkrsz,CONE,w0,kkrsz,WORK)
@@ -1499,16 +1823,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine checkScatteringMatrixSymmetry(id,rotmatc,kmax_phi)
+   subroutine checkScatteringMatrixSymmetry(id,rotmatc,kmax_phi,      &
+                                            getSingleScatteringMatrix,&
+                                            site_config)
 !  ===================================================================
    use MatrixModule, only : computeUAUtc
-!
-   use SSSolverModule, only : getTMatrix, getOmegaHatMatrix, getOmegaHatInvMatrix
-   use SSSolverModule, only : getSineMatrix, getCosineMatrix
 !
    implicit none
 !
    integer (kind=IntKind), intent(in) :: id, kmax_phi
+   integer (kind=IntKind), intent(in) :: site_config(:)
    integer (kind=IntKind) :: kl, klp
 !
    real (kind=RealKind), parameter :: tol = ten2m10
@@ -1519,13 +1843,27 @@ contains
    complex (kind=CmplxKind), allocatable :: tmat_rot(:,:), OmegaHat_rot(:,:)
    complex (kind=CmplxKind), allocatable :: smat_rot(:,:), cmat_rot(:,:)
 !
+   interface
+      function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
+         integer (kind=IntKind), intent(out), optional :: dsize
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleScatteringMatrix
+   end interface
+!
    allocate(tmat_rot(kmax_phi,kmax_phi),OmegaHat_rot(kmax_phi,kmax_phi))
    allocate(smat_rot(kmax_phi,kmax_phi),cmat_rot(kmax_phi,kmax_phi))
 !
-   tmat => getTMatrix(1,id)
-   OmegaHat => getOmegaHatInvMatrix(1,id)
-   smat => getSineMatrix(1,id)
-   cmat => getCosineMatrix(1,id)
+   tmat => getSingleScatteringMatrix('T-Matrix',spin=1,site=id,       &
+                                     atom=site_config(id))
+   OmegaHat => getSingleScatteringMatrix('OmegaHatInv-Matrix',spin=1, &
+                                         site=id,atom=site_config(id))
+   smat => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=id,    &
+                                     atom=site_config(id))
+   cmat => getSingleScatteringMatrix('Cosine-Matrix',spin=1,site=id,  &
+                                     atom=site_config(id))
    call computeUAUtc(rotmatc,kmax_phi,kmax_phi,rotmatc,kmax_phi,CONE, &
                      tmat,kmax_phi,CZERO,tmat_rot,kmax_phi,WORK)
    call computeUAUtc(rotmatc,kmax_phi,kmax_phi,rotmatc,kmax_phi,CONE, &
@@ -1566,39 +1904,70 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getTau(i,j) result(tau)
+   function getTau(local_id,global_i,global_j,dsize) result(tau)
 !  ===================================================================
-   use Atom2ProcModule, only : getGlobalIndex
+!  local_i  = local site index
+!  global_i = global site index
+!  global_j = global site index
+!  *******************************************************************
    implicit none
 !
-   integer (kind=IntKind), intent(in), optional :: i, j
-   integer (kind=IntKind) :: ni, id, jd, ig
+   integer (kind=IntKind), intent(in), optional :: local_id
+   integer (kind=IntKind), intent(in), optional :: global_i, global_j
+   integer (kind=IntKind), intent(out), optional :: dsize
+   integer (kind=IntKind) :: ni, ig, jd, id
 !
    complex (kind=CmplxKind), pointer :: tau(:,:,:)
 !
-   if (present(i)) then
-      if (i < 1 .or. i > LocalNumAtoms) then
-         call ErrorHandler('getTau','invalid local index i',i)
-      else if (present(j)) then
-         if (j < 1 .or. j > LocalNumAtoms) then
-            call ErrorHandler('getTau','invalid local index j',j)
-         else if (i /= j) then
-            call ErrorHandler('getTau','Tau matrix has only been calculated for i = j',i,j)
-         else
-            id = i
-            jd = j
-         endif
-      else
-         id = i; jd = id
+   if (present(local_id)) then
+      if (local_id < 1 .or. local_id > LocalNumAtoms) then
+         call ErrorHandler('getTau','invalid local index i',local_id)
+      else if (present(global_j)) then
+         call ErrorHandler('getTau','The function call is confusing')
       endif
+!
+      jd = local_id
+      if (present(global_i)) then
+         ig = global_i
+      else
+!        take the diagonal block associated with the atom with local_id
+         ig = MatrixBand(jd)%global_index
+      endif
+   else if (present(global_i) .and. present(global_j)) then
+      if (global_i < 1 .or. global_i > GlobalNumAtoms) then
+         call ErrorHandler('getTau','invalid global index i',global_i)
+      else if (global_j < 1 .or. global_j > GlobalNumAtoms) then
+         call ErrorHandler('getTau','invalid global index j',global_j)
+      endif
+!     take the appropriate matrix block associated with the atom specified
+!     by the global index pair: (global_i, global_j)
+      jd = 0
+      LOOP_id: do id = 1, LocalNumAtoms
+         if (MatrixBand(id)%global_index == global_j) then
+            jd = id
+            exit LOOP_id
+         endif
+      enddo LOOP_id
+      if (jd == 0) then
+         call ErrorHandler('getTau',                                  &
+              'The global j index is not associated with a local atom',global_j)
+      endif
+      ig = global_i
+   else if (present(global_i) .or. present(global_j)) then
+      call ErrorHandler('getTau','The function call is confusing')
    else 
-      id = 1; jd = 1
+!     take the upper-left corner block
+      jd = 1
+      ig = MatrixBand(jd)%global_index
    endif
 !
-   ig = MatrixBand(jd)%global_index
    ni = gid_array(ig)
 !
    tau => MatrixBand(jd)%MatrixBlock(ni)%tau_l
+!
+   if (present(dsize)) then
+      dsize = MatrixBand(jd)%MatrixBlock(ni)%kmax_kkr*nSpinCant
+   endif
 !
    end function getTau
 !  ===================================================================
@@ -1606,39 +1975,70 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKau(i,j) result(kau)
+   function getKau(local_id,global_i,global_j,dsize) result(kau)
 !  ===================================================================
-   use Atom2ProcModule, only : getGlobalIndex
+!  local_i  = local site index
+!  global_i = global site index
+!  global_j = global site index
+!  *******************************************************************
    implicit none
 !
-   integer (kind=IntKind), intent(in), optional :: i, j
+   integer (kind=IntKind), intent(in), optional :: local_id
+   integer (kind=IntKind), intent(in), optional :: global_i, global_j
+   integer (kind=IntKind), intent(out), optional :: dsize
    integer (kind=IntKind) :: ni, ig, id, jd
 !
    complex (kind=CmplxKind), pointer :: kau(:,:,:)
 !
-   if (present(i)) then
-      if (i < 1 .or. i > LocalNumAtoms) then
-         call ErrorHandler('getKau','invalid local index i',i)
-      else if (present(j)) then
-         if (j < 1 .or. j > LocalNumAtoms) then
-            call ErrorHandler('getKau','invalid local index j',j)
-         else if (i /= j) then
-            call ErrorHandler('getKau','Kau matrix has only been calculated for i = j',i,j)
-         else
-            id = i
-            jd = j
-         endif
-      else
-         id = i; jd = id
+   if (present(local_id)) then
+      if (local_id < 1 .or. local_id > LocalNumAtoms) then
+         call ErrorHandler('getKau','invalid local index i',local_id)
+      else if (present(global_j)) then
+         call ErrorHandler('getKau','The function call is confusing')
       endif
+!
+      jd = local_id
+      if (present(global_i)) then
+         ig = global_i
+      else
+!        take the diagonal block associated with the atom with local_id
+         ig = MatrixBand(jd)%global_index
+      endif
+   else if (present(global_i) .and. present(global_j)) then
+      if (global_i < 1 .or. global_i > GlobalNumAtoms) then
+         call ErrorHandler('getKau','invalid global index i',global_i)
+      else if (global_j < 1 .or. global_j > GlobalNumAtoms) then
+         call ErrorHandler('getKau','invalid global index j',global_j)
+      endif
+!     take the appropriate matrix block associated with the atom specified
+!     by the global index pair: (global_i, global_j)
+      jd = 0
+      LOOP_id: do id = 1, LocalNumAtoms
+         if (MatrixBand(id)%global_index == global_j) then
+            jd = id
+            exit LOOP_id
+         endif
+      enddo LOOP_id
+      if (jd == 0) then
+         call ErrorHandler('getKau',                                  &
+              'The global j index is not associated with a local atom',global_j)
+      endif
+      ig = global_i
+   else if (present(global_i) .or. present(global_j)) then
+      call ErrorHandler('getKau','The function call is confusing')
    else 
-      id = 1; jd = 1
+!     take the upper-left corner block
+      jd = 1
+      ig = MatrixBand(jd)%global_index
    endif
 !
-   ig = MatrixBand(jd)%global_index
    ni = gid_array(ig)
 !
    kau => MatrixBand(jd)%MatrixBlock(ni)%kau_l
+!
+   if (present(dsize)) then
+      dsize = MatrixBand(jd)%MatrixBlock(ni)%kmax_kkr*nSpinCant
+   endif
 !
    end function getKau
 !  ===================================================================
@@ -1694,280 +2094,5 @@ contains
    enddo
 !
    end subroutine printCrystalMatrix
-!  ===================================================================
-!
-!  *******************************************************************
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine calBandStructure(is,eb,et,ne,kpts,nk)
-!  ===================================================================
-   use StrConstModule, only : getStrConstMatrix
-!
-   use SSSolverModule, only : solveSingleScattering
-!
-   implicit none
-!
-   character (len=20) :: sname = "calBandStructure"
-!
-   integer (kind=IntKind), intent(in) :: is, ne, nk
-   integer (kind=IntKind) :: ik, col, row, ie, id, js, ns
-!
-   real (kind=RealKind), intent(in) :: kpts(3,nk)
-   real (kind=RealKind) :: kvec(3), de
-!
-   real (kind=RealKind), intent(in) :: eb, et ! Find energy eigenvalues
-                                              ! within (eb, et)
-!
-   complex (kind=CmplxKind), pointer :: scm(:,:)
-!
-   do ik = 1, nk    ! Loop over the k-point mesh
-      kvec(1:3) = kpts(1:3,ik)
-      write(6,'(a,3f12.6)')'kvec(1:3) = ',kvec(1:3)
-!
-      de = (et-eb)/real(ne-1,kind=RealKind)
-      do ie = 1, ne ! Loopp over the energy mesh
-         energy = eb + (ie-1)*de
-         if (abs(energy) < TEN2m6) then
-            energy = energy + de*HALF
-         endif
-         write(6,'(a,f12.6)')'energy = ',real(energy,kind=RealKind)
-!
-         if (isRelativistic) then !xianglin
-            kappa = sqrt(2.d0*Me*energy + energy**2/LightSpeed**2)
-         else
-            kappa = sqrt(energy)
-         endif
-!
-         do col = 1, LocalNumAtoms
-            do row = 1, GlobalNumAtoms
-!              -------------------------------------------------------
-               scm => getStrConstMatrix(kvec,kappa,id_array(row),jd_array(col), &
-                                        lmaxi_array(row),lmaxj_array(col))
-!              -------------------------------------------------------
-               sc_blocks(row,col)%strcon_matrix = scm
-            enddo
-         enddo
-!
-         do id = 1, LocalNumAtoms
-            do js = 1, nSpinCant
-               ns = max(js,is)
-!              -------------------------------------------------------
-               call solveSingleScattering(ns,id,energy,CZERO)
-!              -------------------------------------------------------
-            enddo
-         enddo
-!
-!        -------------------------------------------------------------
-         call setupSCinGlobalFrame()   ! setup S- and C- matrix in global frame
-!        -------------------------------------------------------------
-!
-!
-         KKR_MatrixBand = CZERO
-!        =============================================================
-!        Compute the KKR matrix (kappa*C+B*S), which is stored in KKR_MatrixBand
-!        -------------------------------------------------------------
-         call computeKKRMatrix()
-!        -------------------------------------------------------------
-!
-!        =============================================================
-!        At this point, KKR_MatrixBand is calculated. Note:
-!           det[ KKR_Matrix ] = CZERO gives rise to the band structure
-!           KKR_Matrix is a KKRMatrixSizeCant x KKRMatrixSizeCant 
-!           matrix, and is divided into multiple Bands of columns so
-!           that it is disibuted on multiple processors. In other words,
-!           each band of columns, called KKR_MatrixBand, is allocated 
-!           on a processor as follows:
-!               allocate ( KKR_MatrixBand(KKRMatrixSizeCant*BandSizeCant) )
-!           Physically, KKR_MatrixBand is a matrix (2-D array) with 
-!           row size = KKRMatrixSizeCant:
-!
-!                         [ ( 1, 1 )                 ( 1, 2 )               ...      ( 1, BandSizeCant )          ]
-!                         | ( 2, 1 )                 ( 2, 2 )               ...      ( 2, BandSizeCant )          |
-!                         |    .                        .                   ...         .                         |
-!        KKR_MatrixBand = |    .                        .                   ...         .                         |
-!                         |    .                        .                   ...         .                         |
-!                         [ (KKRMatrixSizeCant,1)   (KKRMatrixSizeCant,2)   ...  (KKRMatrixSizeCant,BandSizeCant) ]
-!
-!           Of course, for thye number of processors = 1, BandSizeCant = KKRMatrixSizeCant
-!        =============================================================
-!
-!        Leo: The following part needs to be worked on...
-!        ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 
-
-!        ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-!        End of the change.
-!        =============================================================
-      enddo
-   enddo
-!
-   end subroutine calBandStructure
-!  ===================================================================
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupSCinGlobalFrame()
-!  ===================================================================
-   use WriteMatrixModule,  only : writeMatrix
-!
-   use Atom2ProcModule, only : getGlobalIndex
-!
-   use SpinRotationModule, only : rotateLtoG
-!
-   use SSSolverModule, only : getSineMatrix
-   use SSSolverModule, only : getCosineMatrix
-!
-   use RelSSSolverModule, only : getRelSineMatrix   !xianglin
-   use RelSSSolverModule, only : getRelCosineMatrix !xianglin
-!
-   implicit none
-!
-   integer (kind=IntKind) :: t0size, kkri_ns, i, kmax_kkr
-!
-   complex (kind=CmplxKind), pointer :: sm1(:,:), sm2(:,:)
-   complex (kind=CmplxKind), pointer :: cm1(:,:), cm2(:,:)
-   complex (kind=CmplxKind), pointer :: pm(:), gmat(:,:)
-!
-   cosine_g => stcm_g   ! Use stcm_g as the space for storing the cosine matrix
-!
-   if (isRelativistic) then !xianglin in between
-      do i = 1, LocalNumAtoms
-!        ================================================================
-!        Obtain the Jinv-matrix, Sine-Matrix, and t-matrix in Global frame
-!        ================================================================
-         kmax_kkr = MatrixBand(i)%kmax_kkr
-         kkri_ns =  kmax_kkr*nSpinCant
-         t0size = kmax_kkr*kmax_kkr*nSpinCant*nSpinCant
-         sm1 => getRelSineMatrix(i)
-         cm1 => getRelCosineMatrix(i)
-!        ----------------------------------------------------------------
-         call zcopy( t0size, sm1, 1, sine_g(1,i), 1 )     !save s into sine_g
-         call zcopy( t0size, cm1, 1, cosine_g(1,i), 1 )   !save jinv(Method 0) or s^t(Method 1) into jinv_g 
-!        ----------------------------------------------------------------
-      enddo
-   else
-      do i = 1, LocalNumAtoms
-!        =============================================================
-!        Obtain the Cosine-matrix, and Sine-Matrix t-matrix in Global frame
-!        =============================================================
-         kmax_kkr = MatrixBand(i)%kmax_kkr
-         t0size = kmax_kkr*kmax_kkr
-         if ( nSpinCant == 2 ) then
-            kkri_ns =  kmax_kkr*nSpinCant
-!           =============================================================
-!           calculate sine_g and cosine_g in global frame of reference.
-!           =============================================================
-            sm1 => getSineMatrix(1,i)
-            sm2 => getSineMatrix(2,i)
-            pm => sine_g(:,i)
-            gmat => aliasArray2_c(pm,kkri_ns,kkri_ns)
-!           -------------------------------------------------------------
-            call rotateLtoG(i, kmax_kkr, kmax_kkr, sm1, sm2, gmat)
-!           -------------------------------------------------------------
-            cm1 => getCosineMatrix(1,i)
-            cm2 => getCosineMatrix(2,i)
-            pm => cosine_g(:,i)
-            gmat => aliasArray2_c(pm,kkri_ns,kkri_ns)
-!           -------------------------------------------------------------
-            call rotateLtoG(i, kmax_kkr, kmax_kkr, cm1, cm2, gmat)
-!           -------------------------------------------------------------
-         else
-            sm1 => getSineMatrix(1,i)
-            cm1 => getCosineMatrix(1,i)
-!           -------------------------------------------------------------
-            call zcopy( t0size, sm1, 1, sine_g(1,i), 1 )
-            call zcopy( t0size, cm1, 1, cosine_g(1,i), 1 )
-!           -------------------------------------------------------------
-         endif
-      enddo
-   endif
-!
-   nullify(sm1,sm2,cm1,cm2,pm,gmat)
-!
-   end subroutine setupSCinGlobalFrame
-!  ===================================================================
-!
-!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeKKRMatrix()
-!  ===================================================================
-   use WriteMatrixModule,  only : writeMatrix
-!
-   implicit none
-!
-   integer (kind=IntKind) :: kmaxj, kmaxj_ns, kmaxi, kmaxi_ns, t0size
-   integer (kind=IntKind) :: j, nj, ni, i, is, ig, nc, kl
-!
-   complex (kind=CmplxKind), pointer :: strcon(:,:)
-   complex (kind=CmplxKind), pointer :: p_cosinej(:)
-   complex (kind=CmplxKind), pointer :: p_sinej(:)
-!
-   interface
-      subroutine convertGijToRel(gij, bgij, kkr1, kkr2, ce)
-         use KindParamModule, only : IntKind, RealKind, CmplxKind
-         implicit none
-         integer (kind=IntKind), intent(in) :: kkr1, kkr2
-         complex (kind=CmplxKind), intent(in) :: gij(:,:)
-         complex (kind=CmplxKind), intent(out) :: bgij(:,:)
-         complex (kind=CmplxKind), intent(in) :: ce
-      end subroutine convertGijToRel
-   end interface
-!
-!  ===================================================================
-!  calculate the following modified KKR Matrix (or the M-matrix).
-!    KKR_MatrixBand = [kappa*C(e) + B(e,k) * S(e)]
-!  ===================================================================
-   KKR_MatrixBand = CZERO
-   do j = 1, LocalNumAtoms
-      p_sinej => sine_g(:,j)
-      p_cosinej => cosine_g(:,j)
-!
-      kmaxj = MatrixBand(j)%kmax_kkr
-      kmaxj_ns = kmaxj*nSpinCant
-      nj = MatrixBand(j)%column_index-1
-      ig = MatrixBand(j)%global_index ! "ig" is the global index of the corresponding atom
-      nc = gid_array(ig)              ! "nc" is the column index of the block in the big matrix
-!
-      ni = MatrixBand(j)%MatrixBlock(nc)%row_index-1
-      do kl = 1, kmaxj_ns
-!        -------------------------------------------------------------
-         call zaxpy(kmaxj_ns,kappa,p_cosinej(kmaxj_ns*(kl-1)+1),1,    &
-                    KKR_MatrixBand(KKRMatrixSizeCant*(nj+kl-1)+ni+1),1)
-!        -------------------------------------------------------------
-      enddo
-!
-      do i = 1, GlobalNumAtoms        ! "i" is the row index of the matrix block
-         kmaxi = MatrixBand(j)%MatrixBlock(i)%kmax_kkr
-         kmaxi_ns = kmaxi*nSpinCant
-         t0size = kmaxi_ns*kmaxi_ns
-         ni = MatrixBand(j)%MatrixBlock(i)%row_index-1
-!
-         strcon => sc_blocks(i,j)%strcon_matrix(:,:)
-!
-         if (isRelativistic) then
-!           ----------------------------------------------------------
-            call convertGijToRel(strcon, strconrel, kmaxi, kmaxj, energy)
-!           ----------------------------------------------------------
-            strcon => strconrel
-!           ----------------------------------------------------------
-            call zgemm('n', 'n', kmaxi_ns, kmaxj_ns, kmaxj_ns, CONE,  &
-                       strcon, kmaxi_ns, p_sinej, kmaxj_ns, CONE,     &
-                       KKR_MatrixBand, KKRMatrixSizeCant)
-!           ----------------------------------------------------------
-         else
-            do is = 1, nSpinCant
-!              -------------------------------------------------------
-               call zgemm('n', 'n', kmaxi, kmaxj, kmaxj, CONE,        &
-                          strcon, kmaxi,                              &
-                          p_sinej((is-1)*kmaxj_ns*kmaxj+1), kmaxj_ns, &
-                          CONE,                                       &
-                          KKR_MatrixBand(KKRMatrixSizeCant*nj+ni+1), KKRMatrixSizeCant)
-!              -------------------------------------------------------
-            enddo
-         endif
-      enddo
-   enddo
-!
-   nullify(p_sinej, p_cosinej)
-!
-   end subroutine computeKKRMatrix
 !  ===================================================================
 end module CrystalMatrixModule

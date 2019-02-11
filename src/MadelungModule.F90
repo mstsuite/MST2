@@ -534,13 +534,14 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printMadelungMatrix()
+   subroutine printMadelungMatrix(iprint)
 !  ===================================================================
    use Atom2ProcModule, only : getGlobalIndex
 !
    implicit none
 !
-   integer (kind=IntKind) :: i, j, id
+   integer (kind=IntKind), optional :: iprint
+   integer (kind=IntKind) :: i, j, id, print_level
 !
    real (kind=RealKind) :: sum
 !
@@ -548,6 +549,10 @@ contains
       call WarningHandler('printMadelungMatrix',                      &
                           'MadelungModule is not initialized')
       return
+   else if (present(iprint)) then
+      print_level = iprint
+   else
+      print_level = 0
    endif
 !
    write(6,'(/,a)')'----------------------------------------------------------'
@@ -559,6 +564,10 @@ contains
       id = getGlobalIndex(i)
       sum=ZERO
       do j=1,GlobalNumAtoms
+         if (print_level > 0) then
+            write(6,'(a,i5,a,d20.13 )')' Madelung Matrix(j,i) for atom ', &
+                                       id,': ',madmat(j,i)
+         endif
          sum=sum+madmat(j,i)
       enddo
       write(6,'(a,i5,a,d20.13 )')                                     &

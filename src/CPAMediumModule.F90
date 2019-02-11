@@ -24,8 +24,8 @@ private
 !
    type CPAMatrixStruct
       real (kind=RealKind) :: content
-      complex (kind=CmplxKind), pointer :: tmat(:,:)
-      complex (kind=CmplxKind), pointer :: tau(:,:)
+      complex (kind=CmplxKind), pointer :: tmat_a(:,:)
+      complex (kind=CmplxKind), pointer :: tau_a(:,:,:)
    end type CPAMatrixStruct
 !
    type CPAMediumStruct
@@ -33,9 +33,11 @@ private
       integer (kind=IntKind) :: local_index
       integer (kind=IntKind) :: global_index
       integer (kind=IntKind) :: num_species
-      complex (kind=CmplxKind), pointer :: tau(:,:)
+      complex (kind=CmplxKind), pointer :: tau_c(:,:,:)
       complex (kind=CmplxKind), pointer :: Tcpa(:,:)
+      complex (kind=CmplxKind), pointer :: TcpaInv(:,:)
       complex (kind=CmplxKind), pointer :: Tcpa_old(:,:)
+      complex (kind=CmplxKind), pointer :: TcpaInv_old(:,:)
       type (CPAMatrixStruct), pointer :: CPAMatrix(:)
    end type CPAMediumStruct
 !
@@ -46,9 +48,11 @@ private
    character (len=50) :: stop_routine
 !
    complex (kind=CmplxKind), allocatable, target :: Tcpa(:)
+   complex (kind=CmplxKind), allocatable, target :: TcpaInv(:)
    complex (kind=CmplxKind), allocatable, target :: Tcpa_old(:)
-   complex (kind=CmplxKind), allocatable, target :: Tau(:)
-   complex (kind=CmplxKind), allocatable, target :: TauA(:)
+   complex (kind=CmplxKind), allocatable, target :: TcpaInv_old(:)
+!  complex (kind=CmplxKind), allocatable, target :: Tau(:)
+!  complex (kind=CmplxKind), allocatable, target :: TauA(:)
    complex (kind=CmplxKind), allocatable, target :: Tmat_global(:,:)
    complex (kind=CmplxKind), allocatable, target :: WORK0(:), WORK1(:), WORK2(:)
 !
@@ -60,25 +64,29 @@ contains
    include '../lib/arrayTools.F90'
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initCPAMedium(cant, rel, mix_type, max_iter, cpa_mix, cpa_tol,   &
-                            istop, iprint)
+   subroutine initCPAMedium(cant, lmax_kkr, rel, mix_type, max_iter,  &
+                            cpa_mix, cpa_tol, istop, iprint)
 !  ===================================================================
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
+   use GroupCommModule, only : getNumGroups, getGroupLabel, isGroupExisting
 !
-   use MediumMatrixModule, only : initMediumMatrix
+   use CrystalMatrixModule, only : initCrystalMatrix
    use MediumHostModule, only  : getNumSites, getLocalNumSites, getNumSpecies, &
-                                 getLmaxKKR, getGlobalIndex, getSpeciesContent
+                                 getLmaxKKR, getGlobalSiteIndex, getSpeciesContent
 !
    use AccelerateCPAModule, only : initAccelerateCPA
+!
+   use EmbeddedClusterModule, only : initEmbeddedCluster
 !
    implicit none
 !
    character (len=*), intent(in) :: istop
 !
    integer (kind=IntKind), intent(in) :: cant, rel, mix_type, max_iter
-   integer (kind=IntKind), intent(in) :: iprint
-   integer (kind=IntKind) :: i, ig, lmaxi, kmaxi, ic, n, NumImpurities
-   integer (kind=IntKind) :: aid, num, dsize
+   integer (kind=IntKind), intent(in) :: iprint(:)
+   integer (kind=IntKind), intent(in) :: lmax_kkr(:)
+   integer (kind=IntKind) :: i, ig, kmaxi, ic, n, NumImpurities
+   integer (kind=IntKind) :: aid, num, dsize, lmaxi, nsize
 !
    real (kind=RealKind), intent(in) :: cpa_mix, cpa_tol
 !
@@ -88,9 +96,15 @@ contains
    LocalNumSites = getLocalNumSites()
    nSpinCant = cant
 !
-   GroupID = getGroupID('Medium Cell')
-   NumPEsInGroup = getNumPEsInGroup(GroupID)
-   MyPEinGroup = getMyPEinGroup(GroupID)
+   if (isGroupExisting('Medium Cell')) then
+      GroupID = getGroupID('Medium Cell')
+      NumPEsInGroup = getNumPEsInGroup(GroupID)
+      MyPEinGroup = getMyPEinGroup(GroupID)
+   else
+      GroupID = -1
+      NumPEsInGroup = 1
+      MyPEinGroup = 0
+   endif
 !
    if (rel>1) then
       isRelativistic = .true.
@@ -117,7 +131,7 @@ contains
    NumCPAMediums = 0
    NumImpurities = 0
    do i = 1, LocalNumSites
-      ig = getGlobalIndex(i)
+      ig = getGlobalSiteIndex(i)
       if (getNumSpecies(ig) > 1) then
          NumCPAMediums = NumCPAMediums + 1
          NumImpurities = NumImpurities + getNumSpecies(ig)
@@ -127,13 +141,16 @@ contains
    if (NumCPAMediums > 0) then
       allocate(CPAMedium(NumCPAMediums))
       allocate(Tcpa(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
+      allocate(TcpaInv(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
       allocate(Tcpa_old(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
-      allocate(Tau(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
-      allocate(TauA(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumImpurities))
+      allocate(TcpaInv_old(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
+!     allocate(Tau(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumCPAMediums))
+!     allocate(TauA(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant*NumImpurities))
       if (nSpinCant == 2) then
-         allocate(tmat_global(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant,NumImpurities))
+         allocate(Tmat_global(kmax_kkr_max*nSpinCant*kmax_kkr_max*nSpinCant,NumImpurities))
       endif
-      Tcpa = CZERO; Tau = CZERO
+      Tcpa = CZERO; TcpaInv = CZERO
+!     Tau = CZERO; TauA=CZERO
    endif
 !
    n = 0
@@ -141,7 +158,7 @@ contains
    MediumIndex = 0
    ndim_Tmat = 0; aid = 0
    do i = 1, LocalNumSites
-      ig = getGlobalIndex(i)
+      ig = getGlobalSiteIndex(i)
       num = getNumSpecies(ig)
       if (num > 1) then
          n = n + 1
@@ -150,36 +167,43 @@ contains
          CPAMedium(n)%local_index = i
          CPAMedium(n)%global_index = ig
          lmaxi = getLmaxKKR(ig)
-         dsize = (lmaxi+1)**2*nSpinCant
+         dsize = (lmaxi+1)**2
          CPAMedium(n)%dsize = dsize
-         CPAMedium(n)%Tcpa => aliasArray2_c(Tcpa(ndim_Tmat+1:),dsize,dsize)
-         CPAMedium(n)%Tcpa_old => aliasArray2_c(Tcpa_old(ndim_Tmat+1:),dsize,dsize)
-         CPAMedium(n)%tau => aliasArray2_c(Tau(ndim_Tmat+1:),dsize,dsize)
-         ndim_Tmat = ndim_Tmat + dsize*dsize
+         nsize = dsize*nSpinCant
+         CPAMedium(n)%Tcpa => aliasArray2_c(Tcpa(ndim_Tmat+1:),nsize,nsize)
+         CPAMedium(n)%TcpaInv => aliasArray2_c(TcpaInv(ndim_Tmat+1:),nsize,nsize)
+         CPAMedium(n)%Tcpa_old => aliasArray2_c(Tcpa_old(ndim_Tmat+1:),nsize,nsize)
+         CPAMedium(n)%TcpaInv_old => aliasArray2_c(TcpaInv_old(ndim_Tmat+1:),nsize,nsize)
+!        CPAMedium(n)%tau_c => aliasArray2_c(Tau(ndim_Tmat+1:),dsize,dsize,nSpinCant*nSpinCant)
+         nullify(CPAMedium(n)%tau_c)
+         ndim_Tmat = ndim_Tmat + nsize*nsize
          allocate(CPAMedium(n)%CPAMatrix(num))
          do ic = 1, num
             NumImpurities = NumImpurities + 1
             CPAMedium(n)%CPAMatrix(ic)%content = getSpeciesContent(ic,ig)
             if (nSpinCant == 2) then ! Spin-canted case, use the locally allocated space
-               CPAMedium(n)%CPAMatrix(ic)%tmat => aliasArray2_c(tmat_global(:,NumImpurities),dsize,dsize)
+               CPAMedium(n)%CPAMatrix(ic)%tmat_a => aliasArray2_c(Tmat_global(:,NumImpurities),nsize,nsize)
             else ! In (non-)spin-polarized case, use the Tmat space in SSSolverModule
-               nullify(CPAMedium(n)%CPAMatrix(ic)%tmat)
+               nullify(CPAMedium(n)%CPAMatrix(ic)%tmat_a)
             endif
-            CPAMedium(n)%CPAMatrix(ic)%tau => aliasArray2_c(TauA(aid+1:),dsize,dsize)
-            aid = aid + dsize*dsize
+!           CPAMedium(n)%CPAMatrix(ic)%tau_a => aliasArray2_c(TauA(aid+1:),dsize,dsize,nSpinCant*nSpinCant)
+            nullify(CPAMedium(n)%CPAMatrix(ic)%tau_a)
+            aid = aid + nsize*nsize
          enddo
       endif
    enddo
 !
+   iteration = 0
+   print_instruction = maxval(iprint)
+!
 !  -------------------------------------------------------------------
-   call initMediumMatrix(cant, rel, istop, iprint)
+   call initCrystalMatrix(LocalNumSites, cant, lmax_kkr, rel, istop, iprint)
+!  -------------------------------------------------------------------
+   call initEmbeddedCluster(cant, kmax_kkr_max, istop, print_instruction)
 !  -------------------------------------------------------------------
    call initAccelerateCPA(mix_type, max_iter, cpa_mix, cpa_tol,       &
                           kmax_kkr_max, NumCPAMediums)
 !  -------------------------------------------------------------------
-!
-   iteration = 0
-   print_instruction = iprint
 !
    end subroutine initCPAMedium
 !  ===================================================================
@@ -189,8 +213,9 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine endCPAMedium()
 !  ===================================================================
-   use MediumMatrixModule, only : endMediumMatrix
+   use CrystalMatrixModule, only : endCrystalMatrix
    use AccelerateCPAModule, only : endAccelerateCPA
+   use EmbeddedClusterModule, only : endEmbeddedCluster
 !
    implicit none
 !
@@ -199,24 +224,28 @@ contains
    deallocate(WORK0, WORK1, WORK2, MediumIndex)
 !
    do n = 1, NumCPAMediums
-      nullify(CPAMedium(n)%tau, CPAMedium(n)%Tcpa, CPAMedium(n)%Tcpa_old)
+      nullify(CPAMedium(n)%tau_c, CPAMedium(n)%Tcpa, CPAMedium(n)%TcpaInv)
+      nullify(CPAMedium(n)%Tcpa_old, CPAMedium(n)%TcpaInv_old)
       do ic = 1, CPAMedium(n)%num_species
-         nullify(CPAMedium(n)%CPAMatrix(ic)%tau, CPAMedium(n)%CPAMatrix(ic)%tmat)
+         nullify(CPAMedium(n)%CPAMatrix(ic)%tau_a, CPAMedium(n)%CPAMatrix(ic)%tmat_a)
       enddo
       deallocate(CPAMedium(n)%CPAMatrix)
    enddo
 !
    if (NumCPAMediums > 0) then
-      deallocate(Tcpa, Tcpa_old, Tau, TauA, CPAMedium)
+      deallocate(Tcpa, TcpaInv, Tcpa_old, TcpaInv_old, CPAMedium)
+!     deallocate(Tau, TauA)
       if (nSpinCant ==2) then
-         deallocate(tmat_global)
+         deallocate(Tmat_global)
       endif
    endif
 !
 !  -------------------------------------------------------------------
-   call endMediumMatrix()
-!  -------------------------------------------------------------------
    call endAccelerateCPA()
+!  -------------------------------------------------------------------
+   call endEmbeddedCluster()
+!  -------------------------------------------------------------------
+   call endCrystalMatrix()
 !  -------------------------------------------------------------------
 !
    NumCPAMediums = 0
@@ -242,17 +271,23 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeCPAMedium(e)
+   subroutine computeCPAMedium(e,cpa_medium)
 !  ===================================================================
-   use SSSolverModule, only : getTMatrix
+   use MatrixInverseModule, only : MtxInv_LU
 !
-   use MediumMatrixModule, only : calMediumMatrix
+   use SSSolverModule, only : getScatteringMatrix
+!
+   use CrystalMatrixModule, only : calCrystalMatrix
 !
    use AccelerateCPAModule, only : initializeAcceleration, accelerateCPA
 !
+   use EmbeddedClusterModule, only : getTau
+!
    implicit none
 !
-   integer (kind=IntKind) :: ia, id, n, dsize
+   integer (kind=IntKind), intent(in), optional :: cpa_medium
+   integer (kind=IntKind) :: ia, id, dsize, nsize, n
+   integer (kind=IntKind) :: site_config(LocalNumSites)
 !
 !  ===================================================================
 !  CPA iteration acceleration parameters...
@@ -262,31 +297,42 @@ contains
    real (kind=RealKind), parameter ::  ctol=1.0d-08, cmix=0.15d0, cw0=5.0d-03
 !  ===================================================================
 !
-   real (kind=RealKind) :: err, total_err
+   real (kind=RealKind) :: err
 !
    complex (kind=CmplxKind), intent(in) :: e
-   complex (kind=CmplxKind) :: cfac
-   complex (kind=CmplxKind), pointer :: tainv(:,:), tcinv(:,:), tau_a(:,:), p_Tau(:,:)
+   complex (kind=CmplxKind), pointer :: tau_a(:,:,:)
 !  
-   if (nSpinCant == 1) then
-      do n = 1, NumCPAMediums
-         id = CPAMedium(n)%local_index
-         do ia = 1, CPAMedium(n)%num_species
-            CPAMedium(n)%CPAMatrix(ia)%tmat => getTMatrix(spin=1,site=id,atom=ia)
-         enddo
-      enddo
+   if (present(cpa_medium)) then
+      n = cpa_medium
+      if (n < 1 .or. n > NumCPAMediums) then
+         call ErrorHandler('computeCPAMedium','The CPA medium index is out of bound',n)
+      endif
+   else
+      n = 1
    endif
 !
-   do n = 1, NumCPAMediums
-!     ----------------------------------------------------------------
-      call averageTMatrix(n)
-!     ----------------------------------------------------------------
-   enddo
+   if (nSpinCant == 1) then
+      id = CPAMedium(n)%local_index
+      do ia = 1, CPAMedium(n)%num_species
+         CPAMedium(n)%CPAMatrix(ia)%tmat_a =>                      &
+            getScatteringMatrix('T-Matrix',spin=1,site=id,atom=ia)
+      enddo
+   else
+      call ErrorHandler('computeCPAMedium',                           &
+               'Spin-canting calculation needs to be checked in CPA case')
+   endif
 !
+!  -------------------------------------------------------------------
+   call averageTMatrix(n)
+!  -------------------------------------------------------------------
+!
+   site_config = 0 ! Set each atomic site to be the CPA medium site
    iteration = 0
    LOOP_iter: do while (iteration < MaxIterations)
       Tcpa_old = Tcpa
+      TcpaInv_old = TcpaInv
       iteration = iteration + 1
+print *,'iteration = ',iteration
 !     ----------------------------------------------------------------
       call initializeAcceleration(Tcpa,ndim_Tmat,iteration)
 !     ----------------------------------------------------------------
@@ -294,39 +340,57 @@ contains
 !     ================================================================
 !     calculate Tau00, Tauij, of the medium made of tmat_c's
 !     ----------------------------------------------------------------
-      call calMediumMatrix(e,getSingleSiteTmat)
+print *,'Before calCrystalMatrix'
+      call calCrystalMatrix(e,getSingleSiteTmat,use_tmat=.true.,      &
+                            configuration=site_config)
+print *,'After calCrystalMatrix'
 !     ----------------------------------------------------------------
 !
 !     ================================================================
 !     Assume that the CPA mediums on each sub-lattice are not correlated,
 !     i.e., we are taking the single site approximation.
-!     ================================================================
-      do n = 1, NumCPAMediums  ! For each Medium, calculate new tmat_c
-!        -------------------------------------------------------------
-         call iterateCPAMedium(n)
-!        -------------------------------------------------------------
-      enddo
+!     ----------------------------------------------------------------
+      call iterateCPAMedium(n)
+!     ----------------------------------------------------------------
 !
 !     ----------------------------------------------------------------
       call accelerateCPA(Tcpa,ndim_Tmat,iteration)
 !     ----------------------------------------------------------------
+      dsize = CPAMedium(n)%dsize
+      nsize = dsize*nSpinCant
+      CPAMedium(n)%TcpaInv = CPAMedium(n)%Tcpa
+!     ----------------------------------------------------------------
+      call MtxInv_LU(CPAMedium(n)%TcpaInv,nsize)
+!     ----------------------------------------------------------------
 !
-      total_err = ZERO
-      do n = 1, NumCPAMediums
-!        -------------------------------------------------------------
-         call checkCPAMedium(n,err)
-!        -------------------------------------------------------------
-         total_err = max(total_err,err)
-         if (print_instruction >= 0) then
-            write(6,'(a,2i4,2x,d15.8)')'In computeCPAMedium: iter, medium, err = ', &
-                  iteration, n, err   
-         endif
-      enddo
+!     ----------------------------------------------------------------
+      call checkCPAMedium(n,err)
+!     ----------------------------------------------------------------
+      if (print_instruction >= 0) then
+         write(6,'(a,2i4,2x,d15.8)')'In computeCPAMedium: iter, medium, err = ', &
+               iteration, n, err   
+      endif
 !
-      if (total_err < CPA_tolerance) then
+      if (err < CPA_tolerance) then
          exit LOOP_iter
       endif
    enddo LOOP_iter
+!  
+!  ===================================================================
+!  Calculate Tau_a for each species
+!  ===================================================================
+   id = CPAMedium(n)%local_index
+   do ia = 1, CPAMedium(n)%num_species
+      tau_a => getTau(local_id=1) ! Associated tau_a space with the space
+                                  ! allocated in EmbeddedCluster module
+!     ================================================================
+!     Substitute one CPA medium site by a real atom. The returning
+!     xmat_a is the tau_a matrix.
+!     ----------------------------------------------------------------
+      call substituteTcByTa(id,ia,spin=1,mat_a=tau_a(:,:,1))
+!     ----------------------------------------------------------------
+      CPAMedium(n)%CPAMatrix(ia)%tau_a => tau_a
+   enddo
 !
    end subroutine computeCPAMedium
 !  ===================================================================
@@ -336,14 +400,16 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine averageTMatrix(n)
 !  ===================================================================
+   use MatrixInverseModule, only : MtxInv_LU
+!
    use SpinRotationModule, only : rotateLtoG
 !
-   use SSSolverModule, only : getTMatrix
+   use SSSolverModule, only : getScatteringMatrix
 !
    implicit none
 !
    integer (kind=IntKind), intent(in) :: n ! n = CPA medium index
-   integer (kind=IntKind) :: i, ic, ia, dsize
+   integer (kind=IntKind) :: i, ic, ia, dsize, nsize
 !
    complex (kind=CmplxKind), pointer :: tm1(:,:), tm2(:,:), tm0(:,:)
    complex (kind=CmplxKind), pointer :: tavr(:,:)
@@ -353,21 +419,26 @@ contains
    tavr = CZERO
    ia = CPAMedium(n)%local_index
    dsize = CPAMedium(n)%dsize
+   nsize = dsize*nSpinCant
    do ic = 1, CPAMedium(n)%num_species
-      tm0 => CPAMedium(n)%CPAMatrix(ic)%tmat
+      tm0 => CPAMedium(n)%CPAMatrix(ic)%tmat_a
       if (nSpinCant == 2) then
-         tm1 => getTMatrix(spin=1,site=ia,atom=ic)
-         tm2 => getTMatrix(spin=2,site=ia,atom=ic)
-         dsize = size(tm1,1)
+         tm1 => getScatteringMatrix('T-Matrix',spin=1,site=ia,atom=ic)
+         tm2 => getScatteringMatrix('T-Matrix',spin=2,site=ia,atom=ic)
+         nsize = size(tm1,1)
 !        -------------------------------------------------------------
-         call rotateLtoG(i, dsize, dsize, tm1, tm2, tm0)
+         call rotateLtoG(i, nsize, nsize, tm1, tm2, tm0)
 !        -------------------------------------------------------------
       endif
       cfac = CPAMedium(n)%CPAMatrix(ic)%content
 !     ----------------------------------------------------------------
-      call zaxpy(dsize*dsize,cfac,tm0,1,tavr,1)
+      call zaxpy(nsize*nsize,cfac,tm0,1,tavr,1)
 !     ----------------------------------------------------------------
    enddo
+   CPAMedium(n)%TcpaInv = CPAMedium(n)%Tcpa
+!  -------------------------------------------------------------------
+   call MtxInv_LU(CPAMedium(n)%TcpaInv,nsize)
+!  -------------------------------------------------------------------
 !
    end subroutine averageTMatrix
 !  ===================================================================
@@ -383,7 +454,8 @@ contains
    integer (kind=IntKind) :: num, n
 !
    if (site < 1 .or. site > LocalNumSites) then
-      call ErrorHandler('getNumSpeciesInCPAMedium','The local atom index is out of range',site)
+      call ErrorHandler('getNumSpeciesInCPAMedium',                   &
+                        'The local atom index is out of range',site)
    endif
 !
    n = MediumIndex(site)
@@ -399,7 +471,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getCPAMatrix(site,atom,matrix_type,dsize,err) result(mat)
+   function getCPAMatrix(matrix_type,site,atom,dsize,err) result(mat)
 !  ===================================================================
    implicit none
 !
@@ -430,8 +502,12 @@ contains
    n = MediumIndex(site)
    if (n == 0) then
       nullify(mat)
-      dsize = 0
-      err = 1
+      if (present(dsize)) then
+         dsize = 0
+      endif
+      if (present(err)) then
+         err = 1
+      endif
       return
    endif
 !
@@ -445,19 +521,32 @@ contains
       ia = 0
    endif
 !
-   dsize = CPAMedium(n)%dsize
-   err = 0
+   if (present(dsize)) then
+      dsize = CPAMedium(n)%dsize
+   endif
+   if (present(err)) then
+      err = 0
+   endif
    if (nocaseCompare(matrix_type,'Tcpa')) then
       mat => CPAMedium(n)%Tcpa
    else if (nocaseCompare(matrix_type,'Tau')) then
       if (ia == 0) then
-         mat => CPAMedium(n)%tau
+         mat => CPAMedium(n)%tau_c(:,:,1)
       else
-         mat => CPAMedium(n)%CPAMatrix(ia)%tau
+         mat => CPAMedium(n)%CPAMatrix(ia)%tau_a(:,:,1)
       endif
+   else if (nocaseCompare(matrix_type,'Tmat_a') .and. ia > 0) then
+      mat => CPAMedium(n)%CPAMatrix(ia)%tmat_a
    else 
       nullify(mat)
-      dsize = 0; err = 2
+      call WarningHandler('getCPAMatrix','The requested matrix does not exist', &
+                          matrix_type)
+      if (present(dsize)) then
+         dsize = 0
+      endif
+      if (present(err)) then
+         err = 2
+      endif
    endif
 !
    end function getCPAMatrix
@@ -468,69 +557,67 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine iterateCPAMedium(n)
 !  ===================================================================
-   use MediumMatrixModule, only : embedScatterToMedium, getTmatInvDiff, &
-                                  projectMatrix, beginEmbedding, endEmbedding
+   use SSSolverModule, only : getScatteringMatrix
+!
+   use CrystalMatrixModule, only : getCPAMediumTau => getTau
+!
+   use EmbeddedClusterModule, only : embedScatterInHostMedium,        &
+                                     setupHostMedium, beginEmbedding, &
+                                     endEmbedding
+   use EmbeddedClusterModule, only : calEmbeddedSiteMatrix
 !
    use MatrixInverseModule, only : MtxInv_LU
+!
+   use MatrixModule, only : computeAprojB
 !
    implicit none
 !
    integer (kind=IntKind), intent(in) :: n
-   integer (kind=IntKind) :: id, ia, dsize, i
+   integer (kind=IntKind) :: id, ia, dsize, i, nsize
 !
    complex (kind=CmplxKind) :: cfac
-   complex (kind=CmplxKind), pointer :: xmat_a(:,:), xmat_c(:,:)
-   complex (kind=CmplxKind), pointer :: tmat_a(:,:), diff_tminv(:,:)
-   complex (kind=CmplxKind), pointer :: xmat_proj(:,:), dmat(:,:), tc_new(:,:)
+   complex (kind=CmplxKind), pointer :: xmat_a(:,:), xmat_c(:,:), tau_c(:,:,:)
+   complex (kind=CmplxKind), pointer :: xmat_proj(:,:), tmat_a(:,:)
+!
+!  -------------------------------------------------------------------
+   call setupHostMedium(t_host=CPAMedium(n)%TcpaInv,t_inverse=.true., &
+                        getMediumTau=getCPAMediumTau)
+!  -------------------------------------------------------------------
 !
    id = CPAMedium(n)%local_index
    dsize = CPAMedium(n)%dsize
-   xmat_a => aliasArray2_c(WORK1,dsize,dsize)
-   xmat_c => aliasArray2_c(WORK2,dsize,dsize)
+   nsize = dsize*nSpinCant
+   xmat_a => aliasArray2_c(WORK1,nsize,nsize)
+   xmat_c => aliasArray2_c(WORK2,nsize,nsize)
    xmat_c = CZERO
    do ia = 1, CPAMedium(n)%num_species
-      tmat_a => getSingleSiteTmat(id,ia)
 !     ================================================================
-!     substitute tmat_c by tmat_a in the medium
-!     ================================================================
-      call beginEmbedding()
-      call embedScatterToMedium(id,tmat_a,dsize)
-      call endEmbedding()
+!     Substitute one CPA medium site by a real atom. The returning
+!     xmat_a is the X_a matrix if compute_X=.true., or the tau_a matrix
+!     if compute_X=.false.
 !     ----------------------------------------------------------------
-      diff_tminv => getTmatInvDiff(id)
-!     ----------------------------------------------------------------
-      call projectMatrix('L',id,diff_tminv,xmat_a,dsize)
+      call substituteTcByTa(id,ia,spin=1,mat_a=xmat_a,compute_X=.true.)
 !     ----------------------------------------------------------------
 !
 !     ================================================================
-!     add content*Tau_a to Tau_c
+!     add content*Xmat_a to Xmat_c
 !     ================================================================
       cfac = CPAMedium(n)%CPAMatrix(ia)%content
 !     ----------------------------------------------------------------
-      call zaxpy(dsize*dsize,cfac,xmat_a,1,xmat_c,1)
+      call zaxpy(nsize*nsize,cfac,xmat_a,1,xmat_c,1)
 !     ----------------------------------------------------------------
    enddo
-   xmat_proj => aliasArray2_c(WORK0,dsize,dsize)
+   CPAMedium(n)%tau_c => getCPAMediumTau(id)
+   xmat_proj => aliasArray2_c(WORK0,nsize,nsize)
+!  ===================================================================
+!  This only works for non-spin-canted case.
 !  -------------------------------------------------------------------
-   call projectMatrix('L',id,xmat_c,xmat_proj,dsize)
+   call computeAprojB('L',nsize,xmat_c,CPAMedium(n)%tau_c(:,:,1),xmat_proj)
 !  -------------------------------------------------------------------
-   dmat => aliasArray2_c(WORK1,dsize,dsize)
-   dmat = CZERO
-   do i = 1, dsize
-      dmat(i,i) = CONE
-   enddo
+   CPAMedium(n)%TcpaInv = CPAMedium(n)%TcpaInv - xmat_proj
+   CPAMedium(n)%Tcpa = CPAMedium(n)%TcpaInv
 !  -------------------------------------------------------------------
-   call zgemm('n','n',dsize,dsize,dsize,-CONE,xmat_proj,dsize,        &
-               CPAMedium(n)%Tcpa,dsize,CONE,dmat,dsize)
-!  -------------------------------------------------------------------
-   call MtxInv_LU(dmat,dsize)
-!  -------------------------------------------------------------------
-   tc_new => aliasArray2_c(WORK0,dsize,dsize)
-!  -------------------------------------------------------------------
-   call zgemm('n','n',dsize,dsize,dsize,CONE,CPAMedium(n)%Tcpa,dsize, &
-              dmat,dsize,CZERO,tc_new,dsize)
-!  -------------------------------------------------------------------
-   CPAMedium(n)%Tcpa = tc_new
+   call MtxInv_LU(CPAMedium(n)%Tcpa,nsize)
 !  -------------------------------------------------------------------
 !
    end subroutine iterateCPAMedium
@@ -539,30 +626,87 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getSingleSiteTmat(site,atom,dsize) result(tmat)
+   subroutine substituteTcByTa(id,ia,spin,mat_a,compute_X)
 !  ===================================================================
-   use SpinRotationModule, only : rotateLtoG
+   use SSSolverModule, only : getScatteringMatrix
 !
-   use SSSolverModule, only : getTMatrix
+   use EmbeddedClusterModule, only : embedScatterInHostMedium,        &
+                                     setupHostMedium, beginEmbedding, &
+                                     endEmbedding
+   use EmbeddedClusterModule, only : calEmbeddedSiteMatrix
 !
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: site, atom  ! Local atom index
-   integer (kind=IntKind), intent(out), optional :: dsize
+   integer (kind=IntKind), intent(in) :: id, ia, spin
+!
+   logical, intent(in), optional :: compute_X
+   logical :: X
+!
+   complex (kind=CmplxKind), intent(out) :: mat_a(:,:)
+   complex (kind=CmplxKind), pointer :: tmat_a(:,:)
+!
+   if (present(compute_X)) then
+      X = compute_X
+   else
+      X = .false.
+   endif
+!
+   tmat_a => getScatteringMatrix('T-Matrix',spin=spin,site=id,atom=ia)
+!
+!  ===================================================================
+!  substitute tmat_c by tmat_a in the medium
+!  -------------------------------------------------------------------
+   call beginEmbedding()
+   call embedScatterInHostMedium(id,tmat_a)
+   call endEmbedding()
+   call calEmbeddedSiteMatrix(id,mat_a,compute_X=X)
+!  -------------------------------------------------------------------
+!
+   end subroutine substituteTcByTa
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getSingleSiteTmat(sm_type,spin,site,atom,nsize) result(tmat)
+!  ===================================================================
+   use SpinRotationModule, only : rotateLtoG
+!
+   use SSSolverModule, only : getScatteringMatrix
+!
+   implicit none
+!
+   character (len=*), intent(in) :: sm_type
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom  ! Local atom index
+   integer (kind=IntKind), intent(out), optional :: nsize
    integer (kind=IntKind) :: msize, ic, n
 !
-   complex (kind=CmplxKind), pointer :: tm1(:,:), tm2(:,:)
    complex (kind=CmplxKind), pointer :: tmat(:,:)  ! t-matrix
+!
+   interface
+      function nocaseCompare(s1,s2) result(t)
+         character (len=*), intent(in) :: s1
+         character (len=*), intent(in) :: s2
+         logical :: t
+      end function nocaseCompare
+   end interface
+!
+   if (.not.nocaseCompare(sm_type,'T-Matrix')) then
+      call ErrorHandler('getSingleSiteTmat',                          &
+           'The scattering matrix type is not recognized in this case',sm_type)
+   endif
 !
    n = MediumIndex(site)
    if (n > 0) then
-      dsize = CPAMedium(n)%dsize
       if (atom < 0 .or. atom > CPAMedium(n)%num_species) then
          call ErrorHandler('getSingleSiteTmat','The species index is out of range',atom)
       else if (atom == 0) then ! For a CPA site, it returns Tcpa if atom = 0
          tmat => CPAMedium(n)%Tcpa
       else
-         tmat => CPAMedium(n)%CPAMatrix(atom)%tmat
+         tmat => CPAMedium(n)%CPAMatrix(atom)%tmat_a
+      endif
+      if (present(nsize)) then
+         nsize = CPAMedium(n)%dsize*nSpinCant
       endif
    else 
       if (atom == 0) then
@@ -570,25 +714,17 @@ contains
       else
          ic = atom  ! For a CPA site, set ic to a real species index
       endif
-      if (nSpinCant == 2) then
-         tm1 => getTMatrix(spin=1,site=site,atom=ic,dsize=msize)
-         tm2 => getTMatrix(spin=2,site=site,atom=ic)
-         dsize = 2*msize
-         tmat => aliasArray2_c(WORK0,dsize,dsize)
-!        =============================================================
-!        NOTE:
-!        site is the local index for the medium host, therefore it needs to
-!        find appropriate index for the following call. This will be looked
-!        into further in the future (12/31/2016 - YW)
-!        -------------------------------------------------------------
-         call rotateLtoG(site, msize, msize, tm1, tm2, tmat)
-!        -------------------------------------------------------------
+      if (present(spin)) then
+         tmat => getScatteringMatrix('T-Matrix',spin=spin,site=site,atom=ic,dsize=msize)
       else
-         tmat => getTMatrix(spin=1,site=site,atom=ic,dsize=dsize)
+         tmat => getScatteringMatrix('T-Matrix',spin=1,site=site,atom=ic,dsize=msize)
+      endif
+      if (present(nsize)) then
+         nsize = msize
       endif
    endif
 !
-   nullify(tm1, tm2)
+   nullify(tmat)
 !
    end function getSingleSiteTmat
 !  ===================================================================
@@ -601,7 +737,7 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: n
-   integer (kind=IntKind) :: i, j, dsize
+   integer (kind=IntKind) :: i, j, dsize, nsize
 !
    real (kind=RealKind), intent(out) :: err
    real (kind=RealKind) :: trace
@@ -611,10 +747,11 @@ contains
    tc_new => CPAMedium(n)%Tcpa
    tc_old => CPAMedium(n)%Tcpa_old
    dsize = CPAMedium(n)%dsize
+   nsize = dsize*nSpinCant
 !
    err = ZERO; trace = ZERO
-   do j = 1, dsize
-      do i = 1, dsize
+   do j = 1, nsize
+      do i = 1, nsize
          err = err + abs(tc_new(i,j) - tc_old(i,j))
       enddo
       trace = trace + abs(tc_old(j,j))

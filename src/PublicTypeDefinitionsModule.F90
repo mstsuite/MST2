@@ -177,4 +177,21 @@ public
       complex(kind=CmplxKind) :: q_lloyd(2)
    end type LloydStruct
 !
+   type MatrixBlockStruct
+      integer (kind=IntKind) :: lmax_kkr
+      integer (kind=IntKind) :: kmax_kkr
+      integer (kind=IntKind) :: row_index
+      integer (kind=IntKind) :: global_index
+      complex (kind=CmplxKind), pointer :: tau_l(:,:,:)
+      complex (kind=CmplxKind), pointer :: kau_l(:,:,:)
+   end type MatrixBlockStruct
+!
+   type MatrixBandStruct
+      integer (kind=IntKind) :: global_index
+      integer (kind=IntKind) :: column_index  ! The column index in the band matrix, not the "big" KKR matrix
+      integer (kind=IntKind) :: lmax_kkr
+      integer (kind=IntKind) :: kmax_kkr
+      type (MatrixBlockStruct), pointer :: MatrixBlock(:)
+   end type MatrixBandStruct
+!
 end module PublicTypeDefinitionsModule

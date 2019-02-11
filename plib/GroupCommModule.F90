@@ -42,7 +42,8 @@ public ::                   &
    closeLocalMemoryInGroup, &
    syncLocalMemoryInGroup,  &
    syncAllPEsInGroup,       &
-   isInSameGroup
+   isInSameGroup,           &
+   isGroupExisting
 !
    interface createProcGrid
       module procedure createProcGrid0, createProcGrid1
@@ -4621,6 +4622,11 @@ contains
       end function nocaseCompare
    end interface
 !
+   if (.not.associated(ptr2CommGr)) then
+      ptr2CommGr => head2CommGr
+   endif
+!
+   found = .false.
    if (.not.nocaseCompare(ptr2CommGr%Label,s)) then
       ptr2CommGr => head2CommGr
       LOOP_n: do n = 1, NumGroups
@@ -4650,6 +4656,11 @@ contains
 !
    logical :: found = .false.
 !
+   if (.not.associated(ptr2CommGr)) then
+      ptr2CommGr => head2CommGr
+   endif
+!
+   found = .false.
    if (ptr2CommGr%Index /= i) then
       ptr2CommGr => head2CommGr
       LOOP_n: do n = 1, NumGroups
@@ -4788,5 +4799,36 @@ contains
    ptr2PG%Label = s
 !
    end subroutine allocateGrid
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function isGroupExisting(s) result(y)
+!  ===================================================================
+   character (len=*), intent(in) :: s
+   integer (kind=IntKind) :: n
+!
+   logical :: y
+!
+   interface
+      function nocaseCompare(s1,s2) result(t)
+         logical :: t
+         character (len=*), intent(in) :: s1
+         character (len=*), intent(in) :: s2
+      end function nocaseCompare
+   end interface
+!
+   y = .false.
+   ptr2CommGr => head2CommGr
+   LOOP_n: do n = 1, NumGroups
+      if (nocaseCompare(ptr2CommGr%Label,s)) then
+         y = .true.
+         exit LOOP_n
+      endif
+      ptr2CommGr => ptr2CommGr%next
+   enddo LOOP_n
+!
+   end function isGroupExisting
 !  ===================================================================
 end module GroupCommModule

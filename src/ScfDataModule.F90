@@ -606,8 +606,7 @@ contains
    implicit none
    logical :: md
 !
-   if (scf_method == KKR .or. scf_method == ScreenKKR .or.            &
-       scf_method == KKRCPA) then
+   if (scf_method == KKR) then
        md = .true.
    else
        md = .false.

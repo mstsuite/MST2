@@ -137,13 +137,13 @@ program  testMadelung
    lmax_mad = 2*max(lmax_pot,lmax_rho)
 !
 !  -------------------------------------------------------------------
-   call initSphericalHarmonics(lmax_kkr+lmax_phi)
+   call initSphericalHarmonics(2*lmax_mad)
 !  -------------------------------------------------------------------
 !  
 !  ===================================================================
 !  initilize GauntFactors:
 !  ===================================================================
-   call initGauntFactors(lmax_phi,istop,0)
+   call initGauntFactors(lmax_mad,istop,0)
 !  -------------------------------------------------------------------
 !
 !  -------------------------------------------------------------------
@@ -167,8 +167,8 @@ program  testMadelung
 !        -------------------------------------------------------------
 !        write(6,'(a)')'Madelung Matrix:'
 !        write(6,'(i5,2x,d15.8)')(i,madmat(i), i=1,NumAtoms)
-         call printMadelungMatrix()
-         if (lmax_mad > 0) then
+         call printMadelungMatrix(1)
+         if (lmax_mad > 0 .and. iprint > 0) then
             dlm => getDLMatrix(n,a0)
             write(6,'(a)')'DL Matrix:'
             kl = 0

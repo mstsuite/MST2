@@ -4351,6 +4351,10 @@ endif
       enddo
    endif
 !
+   if (present(grad)) then
+      grad = ZERO
+   endif
+!
    end function getPotentialAtPoint
 !  ===================================================================
 !
@@ -4631,6 +4635,7 @@ endif
          i2l = i2l*sqrtm1
       enddo
    enddo
+   nullify(rmesh, r_interp, p_Bj_l, pv_interp)
 !
 !  ===================================================================
 !  In parallel FFT case, a summation over all k-points, which are
@@ -4654,7 +4659,6 @@ endif
       deallocate(w_interp_global)
    endif
    deallocate(Bj_l)
-   nullify(rmesh, r_interp, p_Bj_l, pv_interp)
 !
    end subroutine calRadialInterpolation
 !  ===================================================================

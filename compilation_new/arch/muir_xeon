@@ -11,7 +11,7 @@ F77=mpiifort
 CC=mpiicc
 CXX=mpiicc
 PREPROC = $(FC)
-EXEC_NAME = mst2_intel
+EXEC_NAME = mst2
 
 CUDA_CXX = nvcc -arch=sm_35
 CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -DCUDA
@@ -32,8 +32,8 @@ LD=$(FC)
 #=====================================================================
 #FFLAGS=-I. -assume byterecl -openmp -O3 -axSSE4.2
 #FFLAGS=-I. -assume byterecl -openmp -g -C -traceback -check all -check nopointer -check noshape #-warn all
-#FFLAGS=-I. -O3 -CB -CU -traceback -ftrapuv -fpe0 -ftz -fp-stack-check
-FFLAGS=-I. -O3
+FFLAGS=-I. -O3 -CB -CU -traceback -ftrapuv -fpe0 -ftz -fp-stack-check
+#FFLAGS=-I. -O3
 F77FLAGS=$(FFLAGS)
 FPPDEFS=-fpp
 CFLAGS= -O3
