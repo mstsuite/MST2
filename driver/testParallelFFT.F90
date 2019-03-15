@@ -62,7 +62,7 @@ program testParallelFFT
    integer (kind=IntKind) :: ig, jg, kg
    integer (kind=IntKind) :: memsize, m1, m2, m3, n1, n2, n3
    integer (kind=IntKind) :: grid_start(3), grid_end(3), gir(3,3)
-   real (kind=RealKind), allocatable :: rfunc_fftwr(:)
+   real (kind=RealKind), pointer :: rfunc_fftwr(:)
    real (kind=RealKind), pointer :: p_rfunc_fftwr(:,:,:)
    real (kind=RealKind) :: p(3), kvec_fftw(3)
 !  ===================================================================
@@ -80,7 +80,7 @@ program testParallelFFT
    complex (kind=CmplxKind), allocatable :: ft(:)
    complex (kind=CmplxKind), allocatable :: ftm(:)
    complex (kind=CmplxKind), allocatable :: ft_a(:), ft_nr(:)
-   complex (kind=CmplxKind), allocatable :: ft_fftw_ip(:)
+   complex (kind=CmplxKind), pointer :: ft_fftw_ip(:)
 !
 !  -------------------------------------------------------------------
    call initMPP()
