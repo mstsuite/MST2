@@ -926,8 +926,8 @@ contains
 !                 ====================================================
 !                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
 !                 ====================================================
-                  do klp2 = kmaxp, 1, -1
-                     do klg = kmaxg, 1, -1
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
                         do ir = 1, mst(id)%iend
                            gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
                         enddo
@@ -969,8 +969,8 @@ contains
 !                 ====================================================
 !                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
 !                 ====================================================
-                  do klp2 = kmaxp, 1, -1
-                     do klg = kmaxg, 1, -1
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
                         do ir = 1, mst(id)%iend
                            gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
                         enddo

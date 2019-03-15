@@ -847,13 +847,15 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine allocateFunctionSpace_R(rfunc,n)
 !  ===================================================================
+   use MathParamModule, only : ZERO
    implicit none
 !
    integer (kind=IntKind), intent(out) :: n
-   real (kind=RealKind), allocatable :: rfunc(:)
+   real (kind=RealKind), pointer :: rfunc(:)
 !
    n = memsize(1)*memsize(2)*memsize(3)
    allocate( rfunc(n) )
+   rfunc = ZERO
 !
    end subroutine allocateFunctionSpace_R
 !  ===================================================================
@@ -861,13 +863,15 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine allocateFunctionSpace_K(cfunc,n)
 !  ===================================================================
+   use MathParamModule, only : CZERO
    implicit none
 !
    integer (kind=IntKind), intent(out) :: n
-   complex (kind=CmplxKind), allocatable :: cfunc(:)
+   complex (kind=CmplxKind), pointer :: cfunc(:)
 !
    n = numk_local
    allocate( cfunc(n) )
+   cfunc = CZERO
 !
    end subroutine allocateFunctionSpace_K
 !  ===================================================================

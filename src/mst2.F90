@@ -1089,11 +1089,16 @@ program mst2
 !  ===================================================================
 !  setup Madelung matrix
 !  ===================================================================
+   t2 = getTime()
 !  -------------------------------------------------------------------
    call initMadelung(LocalNumAtoms,GlobalNumAtoms,GlobalIndex,        &
                      lmax_rho_max,lmax_pot_max,bravais,AtomPosition,  &
                      node_print_level)
 !  -------------------------------------------------------------------
+   if (MyPE == 0) then
+      write(6,'(/,a,f10.5,/)')'Time:: initMadelung: ',getTime()-t2
+   endif
+!
    if (node_print_level >= 0) then
 !     ----------------------------------------------------------------
       call printMadelungMatrix()
@@ -1554,9 +1559,13 @@ program mst2
             endif
          endif
 #endif
+         t2 = getTime()
 !        -------------------------------------------------------------
          call computeNewPotential()
 !        -------------------------------------------------------------
+         if (MyPE == 0) then
+            write(6,'(/,a,f10.5,/)')'Time:: computeNewPotential: ',getTime()-t2
+         endif
 !
          if (iscf < 10) then
             write(anm,'(a,i1,a)')'scf',iscf,'post_'

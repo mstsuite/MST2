@@ -2500,7 +2500,8 @@ contains
          else
             Density(id)%DenCompFlag(jl) = 1
             if (getSymmetryFlags(id,jl) == 0) then
-               call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected',lofj(jl),mofj(jl))
+               call WarningHandler('updateValenceDensity','Zero valence density in this (l,m) channel is expected', &
+                                   lofj(jl),mofj(jl))
                ir = izamax(NumRs,rho_l(:,jl,ia),1)
                write(6,'(a,i5,2x,i5,2x,2d16.8)')'Maximum density value in this channel = ',MyPE,ir,rho_l(ir,jl,ia)
                if ( isValSymmOn ) then

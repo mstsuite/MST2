@@ -437,10 +437,13 @@ contains
          do is = 1, n_spin_pola
             v_eff => getOldPotential(na,ia,is)
             v_tmp = CZERO
-            v_tmp(:,1) = v_eff(:,1)
+            v_tmp(1:jend,1) = v_eff(1:jend,1)
             rho_sph => getDeepCoreDensity(na,ia,is)
             rho_tmp = CZERO
-            rho_tmp(:,1) = rho_sph(:)*Y0inv
+!           rho_tmp(1:jend,1) = rho_sph(1:jend)*Y0inv
+            do ir = 1, jend
+               rho_tmp(ir,1) = cmplx(rho_sph(ir)*Y0inv,ZERO,kind=CmplxKind)
+            enddo
 !           ----------------------------------------------------------
             call computeProdExpan(jend,0,rho_tmp,0,v_tmp,0,prod)
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), 1, 1, 0, prod, vint_mt)
@@ -456,7 +459,10 @@ contains
 !
             rho_sph => getSemiCoreDensity(na,ia,is)
             rho_tmp = CZERO
-            rho_tmp(:,1) = rho_sph(:)*Y0inv
+!           rho_tmp(1:jend,1) = rho_sph(1:jend)*Y0inv
+            do ir = 1, jend
+               rho_tmp(ir,1) = cmplx(rho_sph(ir)*Y0inv,ZERO,kind=CmplxKind)
+            enddo
 !           ----------------------------------------------------------
             call computeProdExpan(jend,0,rho_tmp,0,v_tmp,0,prod)
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), 1, 1, 0, prod, vint_mt)
@@ -519,10 +525,13 @@ contains
 !           ke = ke + getSemiCoreKineticEnergy(na,ia,is)
 !           ==========================================================
             v_tmp = CZERO
-            v_tmp(:,1) = v_eff(:,1)
+            v_tmp(1:jend,1) = v_eff(1:jend,1)
             rho_sph => getSemiCoreDensity(na,ia,is)
             rho_tmp = CZERO
-            rho_tmp(:,1) = rho_sph(:)*Y0inv
+!           rho_tmp(1:jend,1) = rho_sph(1:jend)*Y0inv
+            do ir = 1, jend
+               rho_tmp(ir,1) = cmplx(rho_sph(ir)*Y0inv,ZERO,kind=CmplxKind)
+            enddo
 !           ----------------------------------------------------------
             call computeProdExpan(jend,0,rho_tmp,0,v_tmp,0,prod)
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), 1, 1, 0, prod, vint_mt)

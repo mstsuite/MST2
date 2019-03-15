@@ -416,6 +416,8 @@ contains
       call ErrorHandler('insertAtomsInGrid','AtomOnGrid has already been allocated')
    endif
 !
+   nullify(p_head, linked_list)
+!
 !  ===================================================================
 !  Set up AtomBox, which identifies a box of uniform grid points with
 !  an atom at the center of the box. The coordinates of the box is 
@@ -1522,7 +1524,11 @@ contains
    endif
 !
    nProc = pUG%AtomOnGrid%NumSourceProcs(id)
-   p => pUG%AtomOnGrid%SourceProc(:,id)
+   if (nProc > 0) then
+      p => pUG%AtomOnGrid%SourceProc(:,id)
+   else
+      nullify(p)
+   endif
 !
    end function getSourceProc
 !  ===================================================================
@@ -1547,7 +1553,11 @@ contains
    endif
 !
    nProc = pUG%AtomOnGrid%NumTargetProcs(id)
-   p => pUG%AtomOnGrid%TargetProc(:,id)
+   if (nProc > 0) then
+      p => pUG%AtomOnGrid%TargetProc(:,id)
+   else
+      nullify(p)
+   endif
 !
    end function getTargetProc
 !  ===================================================================

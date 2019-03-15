@@ -311,7 +311,8 @@ contains
       Grid => getGrid(id)
       DataSize(id) = Grid%jend*jl*n_spin_pola*NumSpecies(id)
       if ( isTruncatedPotential ) then
-         l = lmax_step(id)+lmax(id)
+!        l = lmax_step(id)+lmax(id)
+         l = getTPL(id)
          jl = ((l+1)*(l+2))/2
          iend_diff = Grid%jend - Grid%jmt + 1
          DataSize_trunc(id) = iend_diff*jl*n_spin_pola*NumSpecies(id)
@@ -869,6 +870,7 @@ contains
    call calYlm(posi,Potential(id)%lmax,ylm)
 !  -------------------------------------------------------------------
 !
+   pot = ZERO
    if ( present(is) ) then
       pot_l => Potential(id)%pot_l(1:iend,1:Potential(id)%jmax,is,ia)
 !
@@ -2909,15 +2911,15 @@ contains
 !
    implicit none
 !
-   character (len=9*Potential(id)%jmax) :: aflag
-!
    integer (kind=IntKind), intent(in) :: id, ia
+!
+   character (len=9*Potential(id)%jmax) :: aflag
 !
    integer (kind=IntKind) :: jmax_pot, lmax_pot, kmax_pot
    integer (kind=IntKind) :: jmax_trunc, lmax_trunc, jmax_min
    integer (kind=IntKind) :: ir, iend, jmt, iend_diff, is, jl, i, n
    integer (kind=IntKind) :: izamax, ModifiedTruncation
-   integer (kind=IntKind), pointer :: flags_jl(:)
+   integer (kind=IntKind), pointer :: flags_jl(:), p_flags(:)
 !
    real (kind=RealKind) :: pot_r, pot_i
    real (kind=RealKind), pointer :: r_mesh(:)
@@ -2933,13 +2935,12 @@ contains
    lmax_trunc = Potential(id)%lmax_trunc
 !
    jmax_trunc = ((lmax_trunc+1)*(lmax_trunc+2))/2
-   jmax_min = min( jmax_pot, jmax_trunc )
    r_mesh => Potential(id)%Grid%r_mesh
 !
-   do is = 1,n_spin_pola
-      potl =>Potential(id)%pot_l_trunc(1:iend_diff,1:jmax_trunc,is,ia)
-      potl = CZERO
-   enddo
+!  do is = 1,n_spin_pola
+!     potl =>Potential(id)%pot_l_trunc(1:iend_diff,1:jmax_trunc,is,ia)
+!     potl = CZERO
+!  enddo
 !
    do is = 1,n_spin_pola
       pot => Potential(id)%pot_l(1:iend,1:jmax_pot,is,ia)
@@ -3025,7 +3026,11 @@ endif
 !           The following statement overwrites PotCompFlag_trunc with
 !           symmetry flags of the system
 !           ==========================================================
-            flags_jl = getSymmetryFlags(id)
+            p_flags => getSymmetryFlags(id)
+            jmax_min = min( size(p_flags,1), jmax_trunc )
+            do jl = 1, jmax_min
+               flags_jl(jl) = p_flags(jl)
+            enddo
 !
             do jl = 1,jmax_trunc
                if ( flags_jl(jl) == 0 ) then
@@ -3097,6 +3102,8 @@ endif
       endif
 !
    enddo
+!
+   nullify( flags_jl, p_flags, r_mesh, pot, potl )
 !
    end subroutine truncatePotential
 !  ===================================================================

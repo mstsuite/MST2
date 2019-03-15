@@ -701,7 +701,8 @@
          integer (kind=IntKind) :: sourceNode
          integer (kind=IntKind) :: bufferID
 !
-         integer (kind=IntKind) :: MaxWaits = 500
+         integer (kind=IntKind), parameter :: MaxWaits_param = 50000
+         integer (kind=IntKind) :: MaxWaits = MaxWaits_param
          integer (kind=IntKind) :: NumWaits
          integer (kind=IntKind) :: NumSends, NumRecvs
          integer (kind=IntKind), allocatable :: MsgID(:)
@@ -900,7 +901,7 @@
             received = .false.
             packing = .false.
             sourceNode=0
-            MaxWaits = 500
+            MaxWaits = MaxWaits_param
             allocate(MsgID(MaxWaits), MsgBuffer(MaxWaits),            &
                      MsgSRC(MaxWaits), WaitType(MaxWaits))
             MsgID(1:MaxWaits)=0

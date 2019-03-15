@@ -152,7 +152,7 @@ private
    integer (kind=IntKind), parameter :: n_interp_max = 100
    integer (kind=IntKind), allocatable :: iparam(:,:)
 !
-   complex(kind=CmplxKind), allocatable, target :: fft_c(:)
+   complex(kind=CmplxKind), pointer :: fft_c(:)
    complex(kind=CmplxKind), allocatable :: Ylm(:)
    complex(kind=CmplxKind), allocatable, target :: v_interp(:,:)
    real (kind=RealKind), allocatable, target ::  LocalAtomPosi(:,:)
@@ -765,7 +765,7 @@ radius(i) = getGridRadius(i)
       call clearAngularData()
       call endParallelFFT()
 !     ----------------------------------------------------------------
-      deallocate( fft_c )
+      deallocate( fft_c ); nullify( fft_c )
       deallocate( indrl_fit )
       deallocate( pXC_r, pXC_rphi, eXC_r, eXC_rphi )
    endif
@@ -1150,6 +1150,7 @@ radius(i) = getGridRadius(i)
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine computeNewPotential(isMT)
 !  ===================================================================
+   use MPPModule, only : MyPE
    use GroupCommModule, only : GlobalSumInGroup
    use Atom2ProcModule, only : getMaxLocalNumAtoms
    use Atom2ProcModule, only : getLocalIndex, getAtom2ProcInGroup
@@ -1180,7 +1181,7 @@ radius(i) = getGridRadius(i)
    integer (kind=IntKind) :: id, ia, ig, ip, is, jl, jmt, ir, nRpts, jend, l
    integer (kind=IntKind) :: jmax, lmax, kmax
    integer (kind=IntKind) :: MaxLocalAtoms
-   integer (kind=IntKind), pointer :: flag_jl(:)
+   integer (kind=IntKind), pointer :: flag_jl(:), p_flags(:)
 !
    real (kind=RealKind) :: pot_r, pot_i, vol_ints, vtmp, vs, vs_mt
 #ifdef POT_DEBUG
@@ -1190,9 +1191,7 @@ radius(i) = getGridRadius(i)
    real (kind=RealKind) :: membuf(6)
 #endif
    real (kind=RealKind), pointer :: r_mesh(:)
-#ifdef TIMING
-   real (kind=RealKind) :: t0
-#endif
+   real (kind=RealKind) :: t0, t1
 !
    complex (kind=CmplxKind) :: cfact
    complex (kind=CmplxKind), pointer :: pot_l(:,:)
@@ -1278,15 +1277,30 @@ radius(i) = getGridRadius(i)
          call calZeroPotential_MT()    ! We use calZeroPotential_MT instead
 !        -------------------------------------------------------------
       else
+         t1 = getTime()
 !        -------------------------------------------------------------
          call calIntraPot()
 !        -------------------------------------------------------------
+         if (MyPE == 0) then
+            write(6,'(/,a,f10.5,/)')'Time:: calIntraPot: ',getTime()-t1
+         endif
+         t1 = getTime()
+!        -------------------------------------------------------------
          call calInterPlusMadPot()
+!        -------------------------------------------------------------
+         if (MyPE == 0) then
+            write(6,'(/,a,f10.5,/)')'Time:: calInterPlusMadPot: ',getTime()-t1
+         endif
+         t1 = getTime()
 !        -------------------------------------------------------------
          call calFFTPseudoPot()
 !        -------------------------------------------------------------
+         if (MyPE == 0) then
+            write(6,'(/,a,f10.5,/)')'Time:: calFFTPseudoPot: ',getTime()-t1
+         endif
       endif
 !
+      t1 = getTime()
       do id = 1,LocalNumAtoms
          do ia = 1, Potential(id)%NumSpecies
 !           ----------------------------------------------------------
@@ -1294,6 +1308,9 @@ radius(i) = getGridRadius(i)
 !           ----------------------------------------------------------
          enddo
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5,/)')'Time:: calExchangeJl: ',getTime()-t1
+      endif
 !
       do id = 1,LocalNumAtoms
          nRpts = Potential(id)%n_Rpts
@@ -1406,7 +1423,8 @@ radius(i) = getGridRadius(i)
             do is = 1,n_spin_pola
                flag_jl => Potential(id)%PotCompFlag(1:jmax)
                if ( isChargeSymmOn ) then
-                  flag_jl(1:jmax) = getSymmetryFlags(id)
+                  p_flags => getSymmetryFlags(id)
+                  flag_jl(1:jmax) = p_flags(1:jmax)
                   do jl = 1,jmax
                      if ( flag_jl(jl) ==0 ) then
                         Potential(id)%potL(1:nRpts,jl,is) = CZERO
@@ -1468,7 +1486,8 @@ radius(i) = getGridRadius(i)
 !
 if (.false.) then
                if ( isChargeSymmOn ) then
-                  flag_jl(1:jmax) = getSymmetryFlags(id)
+                  p_flags => getSymmetryFlags(id)
+                  flag_jl(1:jmax) = p_flags(1:jmax)
                   do jl = 1,jmax
                      if ( flag_jl(jl) ==0 ) then
                         Potential(id)%potL(1:nRpts,jl,is) = CZERO
@@ -1729,6 +1748,8 @@ endif
       write(6,'(a,f10.5)')' PotentialGeneration ::  Time:',t0
 #endif
    endif
+!
+   nullify(p_flags, flag_jl)
 !
    end subroutine computeNewPotential
 !  ===================================================================
@@ -3129,10 +3150,9 @@ endif
    real (kind=RealKind) :: dfp(3), dfp_total(3), dfp_corr(3), buf(2)
    real (kind=RealKind), pointer :: r_mesh(:)
 !  real (kind=RealKind), pointer :: p_den(:,:,:)
-   real (kind=RealKind), allocatable :: p_den(:)
+   real (kind=RealKind), pointer :: p_den(:)
 !
    complex (kind=CmplxKind), pointer :: v_jl(:,:)
-   complex (kind=CmplxKind), pointer :: p_fft_c(:)
 !
    real (kind=RealKind) :: t0, t1, t2
 !
@@ -3163,6 +3183,7 @@ endif
    do i = 1, ng
       pseudo_fft = pseudo_fft + p_den(i)
    enddo
+!  write(6,'(a,i5,2x,3d16.8)')'MyPE,p_den = ',MyPE,p_den(1),p_den(ng),pseudo_fft
 !
    buf(1) = ng
    buf(2) = pseudo_fft
@@ -3201,13 +3222,12 @@ endif
 ! close(unit=111)
 !nullify(gp)
 !
-   p_fft_c => fft_c
 !  -------------------------------------------------------------------
-   call performTransformR2C(p_den,p_fft_c)
+   call performTransformR2C(p_den,fft_c)
 !  -------------------------------------------------------------------
 !open(unit=112,file='kden-new.dat',status='unknown',form='formatted')
 !do k = 1, numk_local
-!write(112,'(i5,2x,3f15.8,2x,2d15.8)')k,getGridPointCoord('K',k),p_fft_c(k)
+!write(112,'(i5,2x,3f15.8,2x,2d15.8)')k,getGridPointCoord('K',k),fft_c(k)
 !enddo
 !close(112)
 !
@@ -3217,7 +3237,7 @@ endif
    write(6,*) "calFFTPseudoPot:: Time in performTransformR2C: ",t1
 #endif
 !  -------------------------------------------------------------------
-   call calPseudoDipoleField(p_fft_c, DF_Pseudo)
+   call calPseudoDipoleField(fft_c, DF_Pseudo)
 !  -------------------------------------------------------------------
    dfp_total = ZERO
    do id = 1,LocalNumAtoms
@@ -3239,7 +3259,7 @@ endif
 #endif
 !
 !  -------------------------------------------------------------------
-   call calRadialInterpolation(p_fft_c,-2,60,iparam,v_interp)
+   call calRadialInterpolation(fft_c,-2,60,iparam,v_interp)
 !  -------------------------------------------------------------------
    do id = 1,LocalNumAtoms
       lmax   = Potential(id)%lmax
@@ -3288,8 +3308,7 @@ endif
       enddo
    enddo
 !
-   deallocate(p_den)
-   nullify(p_fft_c)
+   deallocate(p_den); nullify(p_den)
 #ifdef TIMING
    t2 = getTime()
    t1 = t2 - t1

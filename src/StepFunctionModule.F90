@@ -564,7 +564,7 @@ contains
          n=n+1
          StepFunction(poly)%np_index(n)=np
          if (sigma(ZERO,ZERO,xpt(3,np),xpt,nbnd,1) == 1) then
-            do j=ncorn,1,-1
+            do j = 1, ncorn
                if(abs(corn(3,j)-xpt(3,np)) < TEN2m10) then
                   StepFunction(poly)%rp_index(n)=sqrt(corn(1,j)*corn(1,j)+ &
                                                       corn(2,j)*corn(2,j)+ &
@@ -588,7 +588,7 @@ contains
          n = n + 1
          StepFunction(poly)%GaussR(n) = rg(ig,ic-1)
          StepFunction(poly)%GaussRWeight(n) = wg(ig,ic-1)
-         do jl = jmax_step, 1, -1
+         do jl = 1, jmax_step
             StepFunction(poly)%sigma_L(n,jl) =                        &
                 getStepFunction(poly,jl,rg(ig,ic-1))
             if ( abs(StepFunction(poly)%sigma_L(n,jl)) > sigma_tol) then
@@ -1398,8 +1398,8 @@ contains
    endif
 !
    cfg = CZERO
-   lmax = min(kmax,StepFunction(n)%kmax_step)
-   lmax = lofk(lmax)
+   kl = min(kmax,StepFunction(n)%kmax_step)
+   lmax = lofk(kl)
    vng  = CZERO
    v_m0 = CZERO
    if (ir<ng) then

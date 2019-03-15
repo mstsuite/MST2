@@ -5851,7 +5851,7 @@ use MPPModule, only : MyPE, syncAllPEs
       sm => Scatter(id)%Solutions(ic,is)%OmegaHatInv_mat
    else
       call ErrorHandler('getScatteringMatrix','Scattering matrix type is invalid', &
-                        sm_type)
+                        sm_type(1:15))
    endif
 !
    if (present(dsize)) then
@@ -6809,7 +6809,7 @@ use MPPModule, only : MyPE, syncAllPEs
    if (present(atom)) then
       ic = atom
    else
-      id = 1
+      ic = 1
    endif
 !
    lmax_phi_loc = Scatter(id)%lmax_phi
