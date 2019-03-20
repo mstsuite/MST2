@@ -2287,7 +2287,18 @@ contains
 !
    is = info(1); id = info(2); print_dos = info(3)
    sfac= TWO/real(n_spin_pola,kind=RealKind)
-   sfac = sfac*getFermiDiracFunc(adjustEnergy(is,e),chempot,Boltzmann*Temperature)
+!  ===================================================================
+!  The following piece of code for multiplying the Fermi-Dirac function
+!  needs to be carefully thought since for T = 0, if e > chempot, 
+!  getFermiDiracFunc = 0, which causes sfac = 0 and has effects on
+!  finding the Fermi energy properly.
+!  ===================================================================
+   if (Temperature > TEN2m6) then
+!     ----------------------------------------------------------------
+      sfac = sfac*getFermiDiracFunc(adjustEnergy(is,e),chempot,       &
+                                    Boltzmann*Temperature)
+!     ----------------------------------------------------------------
+   endif
 !
    if (present(rfac)) then
       rmul = rfac

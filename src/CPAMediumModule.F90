@@ -326,6 +326,12 @@ contains
    call averageTMatrix(n)
 !  -------------------------------------------------------------------
 !
+!  ===================================================================
+!  Note that:
+!       CPAMedium(n)%Tcpa(:,:) is an alias of Tcpa(:)
+!       CPAMedium(n)%Tcpa_old(:,:) is an alias of Tcpa_old(:)
+!       CPAMedium(n)%TcpaInv_old(:,:) is an alias of TcpaInv_old(:)
+!  ===================================================================
    site_config = 0 ! Set each atomic site to be the CPA medium site
    iteration = 0
    LOOP_iter: do while (iteration < MaxIterations)

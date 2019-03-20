@@ -663,7 +663,7 @@ contains
    allocate(peak_dos(2,NumPEsInGroup))
    peak_dos = ZERO
 !
-   f_mesh = func(info,x0,AuxArray)
+   f_mesh = func(info,x0,AuxArray,redundant=.true.)
    peak_dos(1,MyPEinGroup+1) = f_mesh
    peak_dos(2,MyPEinGroup+1) = x0
    fac = SEVEN/real(NumPEsInGroup,RealKind)
