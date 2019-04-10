@@ -146,6 +146,9 @@ private
    integer (kind=IntKind) :: nw_Pole_new_plus, nwPG_plus
    real (kind=RealKind), allocatable :: Poles_all(:,:,:)
 !
+   integer (kind=IntKind) :: NumCalls_SS = 0
+   real (kind=RealKind) :: Timing_SS = ZERO
+!
 contains
 !
    include '../lib/arrayTools.F90'
@@ -781,6 +784,9 @@ contains
       endif
    enddo
 !
+   NumCalls_SS = 0
+   Timing_SS = ZERO
+!
 !  ===================================================================
 !  initialize Single Site Scatterer
 !  -------------------------------------------------------------------
@@ -944,6 +950,12 @@ contains
    endif
 !
 !  ===================================================================
+   if (node_print_level >= 0) then
+      write(6,'(/,a,i5)')'Number of single site scattering solver calls:', &
+                         NumCalls_SS
+      write(6,'(a,f12.3,a,/)')'Total of single site scattering solver timing:', &
+                         Timing_SS,' (sec)'
+   endif
 !
    if (RelativisticFlag == 2) then
       call endRelMSSolver() 
@@ -1022,6 +1034,9 @@ contains
 !        ----------------------------------------------------------------
       endif
    enddo
+!
+   NumCalls_SS = 0
+   Timing_SS = ZERO
 !
 !  ===================================================================
 !  initialize Single Site Scatterer
@@ -1342,6 +1357,13 @@ contains
       enddo
       nullify(imdos)
       deallocate(imag_msDOS,dimdos)
+   endif
+!
+   if (node_print_level >= 0) then
+      write(6,'(/,a,i5)')'Number of single site scattering solver calls:', &
+                         NumCalls_SS
+      write(6,'(a,f12.3,a,/)')'Total of single site scattering solver timing:', &
+                         Timing_SS,' (sec)'
    endif
 !
    deallocate(e_real)
@@ -1872,7 +1894,7 @@ contains
    integer (kind=IntKind) :: kmax_phi_max, iprint
 !
    real (kind=RealKind), intent(in) :: er
-   real (kind=RealKind) :: sfac, evec(3), check_ws, check_mt
+   real (kind=RealKind) :: sfac, evec(3), check_ws, check_mt, t0
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind), pointer :: pdos_ws(:), pdos_mt(:)
    real (kind=RealKind) :: ms_dos_ws(n_spin_cant*n_spin_pola), ms_dos_mt(n_spin_cant*n_spin_pola)
@@ -1904,6 +1926,9 @@ contains
       call resetSpinRotation(id,evec(1:3))
 !     ----------------------------------------------------------------
    enddo
+!
+   NumCalls_SS = 0
+   Timing_SS = ZERO
 !
 !  ===================================================================
 !  initialize Single Site Scatterer
@@ -1968,9 +1993,15 @@ contains
    do id = 1, LocalNumAtoms
       Grid => getGrid(id)
       do is = 1, n_spin_pola
-!        -------------------------------------------------------------
          ec = adjustEnergy(is,cmplx(er,0.0d0,kind=CmplxKind))
+!
+         t0 = getTime()
+!        -------------------------------------------------------------
          call solveSingleScattering(is,id,ec,CZERO)
+!        -------------------------------------------------------------
+         Timing_SS = Timing_SS + (getTime() - t0)
+         NumCalls_SS = NumCalls_SS + 1
+!
          call computePDOS()
          ss_dos_ws(is,id) = sfac*getCellDOS()
          ss_dos_mt(is,id) = sfac*getMTSphereDOS()
@@ -2123,6 +2154,13 @@ contains
       enddo
    endif
 !
+   if (node_print_level >= 0) then
+      write(6,'(/,a,i5)')'Number of single site scattering solver calls:', &
+                         NumCalls_SS
+      write(6,'(a,f12.3,a,/)')'Total of single site scattering solver timing:', &
+                         Timing_SS,' (sec)'
+   endif
+!
    if (RelativisticFlag == 2) then
 !     ----------------------------------------------------------------
       call endRelScatterer()
@@ -2213,13 +2251,19 @@ contains
 !
    complex (kind=CmplxKind) :: energy
 !
-   real (kind=RealKind) :: tps
+   real (kind=RealKind) :: tps, t0
    real (kind=RealKind), pointer :: ps(:)
 !
-!  -------------------------------------------------------------------
    is = info(1); id = info(2)
    energy = adjustEnergy(is,e)
+!
+   t0 = getTime()
+!  -------------------------------------------------------------------
    call solveSingleScattering(is,id,energy,CZERO)
+!  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
    call computePhaseShift()
    ps => getPhaseShift()
 !  -------------------------------------------------------------------
@@ -2274,7 +2318,7 @@ contains
    integer (kind=IntKind) :: jmax_dos, kmax_phi, iend, n, kl, jl, ir
    integer (kind=IntKind) :: is, id, print_dos
 !
-   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul
+   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul, t0
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind) :: msgbuf(5,NumPEsInEGroup)
 !
@@ -2313,9 +2357,14 @@ contains
    endif
 !
    energy = adjustEnergy(is,e)
+!
+   t0 = getTime()
 !  -------------------------------------------------------------------
    call solveSingleScattering(is,id,energy,CZERO)
 !  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
    if (getLocalAtomicNumber(id,1) == 0) then
 !     call computeDOS(add_highl_fec=.true.)
       call computeDOS()
@@ -2424,7 +2473,7 @@ contains
    integer (kind=IntKind) :: is, id
    integer (kind=IntKind) :: kmax, jmax, iend, n, ir, jl, l, m, kl, klc
 !
-   real (kind=RealKind) :: dos, sfac
+   real (kind=RealKind) :: dos, sfac, t0
 !
    complex (kind=CmplxKind), intent(out) :: aux(:)
    complex (kind=CmplxKind) :: energy, cmul, greenint, greenint_mt, ede
@@ -2449,9 +2498,15 @@ contains
 !  together with irregular solution
 !  ===================================================================
    energy = adjustEnergy(is,e)
+!
+   t0 = getTime()
 !  -------------------------------------------------------------------
    call solveSingleScattering(is,id,energy,CZERO,                     &
                               isSphSolver=.true., useIrrSol='h')
+!  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
 !  -------------------------------------------------------------------
    call computeGreenFunction()
 !  -------------------------------------------------------------------
@@ -5718,7 +5773,7 @@ contains
    integer (kind=IntKind) :: jmax_dos, kmax_phi, iend, n, kl, jl, ir, n0
    integer (kind=IntKind) :: is, id, print_dos
 !
-   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul, dos1
+   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul, dos1, t0
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind) :: msgbuf(5,NumPEsInEGroup)
 !
@@ -5746,9 +5801,14 @@ contains
 !
 !   energy = adjustEnergy(is,e)
    energy = e
+!
+   t0 = getTime()
 !  -------------------------------------------------------------------
    call SingleDiracScattering(id,energy)
 !  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
 !   if (AtomicNumber(id) == 0) then
 !!     call computeDOS(add_highl_fec=.true.)
 !      call computeDOS()
@@ -5849,7 +5909,7 @@ contains
    integer (kind=IntKind) :: jmax_dos, kmax_phi, iend, n, kl, jl, ir, n0
    integer (kind=IntKind) :: is, id, print_dos
 !
-   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul, dos1, dos_end
+   real (kind=RealKind) :: dos, sfac, dos_mt, dos_out, tps, rmul, dos1, dos_end, t0
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind) :: msgbuf(5,NumPEsInEGroup)
 !
@@ -5871,9 +5931,14 @@ contains
 !   energy = adjustEnergy(is,e)
 !   energy = cmplx(e,0.d0)!cmplx(e,TEN2m6,kind=CmplxKind)
     energy = cmplx(e,TEN2m6,kind=CmplxKind)
+!
+   t0 = getTime()
 !  -------------------------------------------------------------------
     call SingleDiracScattering(id,energy)
 !  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
 !   if (AtomicNumber(id) == 0) then
 !!     call computeDOS(add_highl_fec=.true.)
 !      call computeDOS()
@@ -6013,7 +6078,7 @@ contains
    integer (kind=IntKind) :: is, id, ks
    integer (kind=IntKind) :: kmax, jmax, iend, n, ir, jl, l, m, kl, klc, p0, n0
 !
-   real (kind=RealKind) :: dos, sfac
+   real (kind=RealKind) :: dos, sfac, t0
 !
    complex (kind=CmplxKind), intent(out) :: aux(:)
    complex (kind=CmplxKind) :: energy, cmul, greenint, greenint_mt, ede
@@ -6037,8 +6102,14 @@ contains
 !  together with irregular solution
 !  ===================================================================
    energy = adjustEnergy(is,e)
+!
+   t0 = getTime()
 !  -------------------------------------------------------------------
    call SingleDiracScattering(id,energy)
+!  -------------------------------------------------------------------
+   Timing_SS = Timing_SS + (getTime() - t0)
+   NumCalls_SS = NumCalls_SS + 1
+!
 !  -------------------------------------------------------------------
    green=>getRelSSGreen(1,id)
 !  -------------------------------------------------------------------
@@ -6663,7 +6734,7 @@ contains
 !
 !   real (kind=RealKind), parameter :: Delta = 0.002d0
    real (kind=RealKind) :: WindowWidth != 5.0*Delta!20.*Delta!4.05*Delta
-   real (kind=RealKind) :: Delta
+   real (kind=RealKind) :: Delta, t0
    real (kind=RealKind), intent(in) :: eb, et
    real (kind=RealKind) :: e0, de, de2, dede2, pe, w0
    real (kind=RealKind), intent(out) :: Poles(ldp,LocalNumAtoms,n_spin)
@@ -6746,8 +6817,14 @@ contains
                else
                   e = cmplx(e0,ZERO,kind=CmplxKind)
                   kappa = sqrt(e)
+!
+                  t0 = getTime()
 !                 -------------------------------------------------------
                   call SingleDiracScattering (id,e)
+!                 -------------------------------------------------------
+                  Timing_SS = Timing_SS + (getTime() - t0)
+                  NumCalls_SS = NumCalls_SS + 1
+!
 !                 -------------------------------------------------------
                   sin_mat => getRelJostMatrix(id)
 !                 -------------------------------------------------------
@@ -6756,8 +6833,14 @@ contains
                endif
 !
                e = cmplx(e0+de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call SingleDiracScattering (id,e)
+!              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
 !              ----------------------------------------------------------
                sin_mat => getRelJostMatrix(id)
 !              ----------------------------------------------------------
@@ -6765,8 +6848,14 @@ contains
 !              ----------------------------------------------------------
 !
                e = cmplx(e0-de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call SingleDiracScattering (id,e)
+!              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
 !              ----------------------------------------------------------
                sin_mat => getRelJostMatrix(id)
 !              ----------------------------------------------------------
@@ -6848,9 +6937,14 @@ contains
                else
                   e = cmplx(e0,ZERO,kind=CmplxKind)
                   kappa = sqrt(e)
+!
+                  t0 = getTime()
 !                 -------------------------------------------------------
                   call solveSingleScattering(is, id, e, CZERO)
 !                 -------------------------------------------------------
+                  Timing_SS = Timing_SS + (getTime() - t0)
+                  NumCalls_SS = NumCalls_SS + 1
+!
                   sin_mat => getJostMatrix()
 !                 -------------------------------------------------------
                   call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s0,1)
@@ -6858,18 +6952,28 @@ contains
                endif
 !
                e = cmplx(e0+de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call solveSingleScattering(is, id, e, CZERO)
 !              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
                sin_mat => getJostMatrix()
 !              ----------------------------------------------------------
                call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s2,1)
 !              ----------------------------------------------------------
 !
                e = cmplx(e0-de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call solveSingleScattering(is, id, e, CZERO)
 !              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
                sin_mat => getJostMatrix()
 !              ----------------------------------------------------------
                call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s1,1)
@@ -7027,7 +7131,7 @@ contains
 !
 !   real (kind=RealKind), parameter :: Delta = 0.002d0
    real (kind=RealKind) :: WindowWidth != 5.0*Delta!20.*Delta!4.05*Delta
-   real (kind=RealKind) :: Delta
+   real (kind=RealKind) :: Delta, t0
    real (kind=RealKind), intent(in) :: eb, et
    real (kind=RealKind) :: e0, de, de2, dede2, pe, w0
    complex (kind=CmplxKind), intent(out) :: Poles(ldp,LocalNumAtoms,n_spin)
@@ -7109,8 +7213,14 @@ contains
                else
                   e = cmplx(e0,ZERO,kind=CmplxKind)
                   kappa = sqrt(e)
+!
+                  t0 = getTime()
    !              -------------------------------------------------------
                   call SingleDiracScattering (id,e)
+   !              -------------------------------------------------------
+                  Timing_SS = Timing_SS + (getTime() - t0)
+                  NumCalls_SS = NumCalls_SS + 1
+!
    !              -------------------------------------------------------
                   sin_mat => getRelJostMatrix(id)
    !              -------------------------------------------------------
@@ -7119,8 +7229,14 @@ contains
                endif
 !
                e = cmplx(e0+de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
    !           ----------------------------------------------------------
                call SingleDiracScattering (id,e)
+   !           ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
    !           ----------------------------------------------------------
                sin_mat => getRelJostMatrix(id)
    !           ----------------------------------------------------------
@@ -7128,8 +7244,14 @@ contains
    !           ----------------------------------------------------------
    !
                e = cmplx(e0-de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
    !           ----------------------------------------------------------
                call SingleDiracScattering (id,e)
+   !           ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
    !           ----------------------------------------------------------
                sin_mat => getRelJostMatrix(id)
    !           ----------------------------------------------------------
@@ -7215,9 +7337,14 @@ contains
                else
                   e = cmplx(e0,ZERO,kind=CmplxKind)
                   kappa = sqrt(e)
+!
+                  t0 = getTime()
 !                 -------------------------------------------------------
                   call solveSingleScattering(is, id, e, CZERO)
 !                 -------------------------------------------------------
+                  Timing_SS = Timing_SS + (getTime() - t0)
+                  NumCalls_SS = NumCalls_SS + 1
+!
                   sin_mat => getJostMatrix()
 !                 -------------------------------------------------------
                   call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s0,1)
@@ -7225,17 +7352,27 @@ contains
                endif
 !
                e = cmplx(e0+de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call solveSingleScattering(is, id, e, CZERO)
 !              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
                sin_mat => getJostMatrix()
 !              ----------------------------------------------------------
                call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s2,1)
 !              ----------------------------------------------------------
                e = cmplx(e0-de,ZERO,kind=CmplxKind)
+!
+               t0 = getTime()
 !              ----------------------------------------------------------
                call solveSingleScattering(is, id, e, CZERO)
 !              ----------------------------------------------------------
+               Timing_SS = Timing_SS + (getTime() - t0)
+               NumCalls_SS = NumCalls_SS + 1
+!
                sin_mat => getJostMatrix()
 !              ----------------------------------------------------------
                call zcopy(kmax_kkr*kmax_kkr,sin_mat,1,s1,1)

@@ -449,10 +449,11 @@ contains
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), 1, 1, 0, prod, vint_mt)
 !           ----------------------------------------------------------
             if (Print_Level(na) >= 0) then
-               write(6,'(a,2f18.8)')'r_mesh(jmt), r_mesh(jend) = ',r_mesh(Grid%jmt),r_mesh(Grid%jend)
-               write(6,'(a,3f18.8)')'Deep core E, int[rho*v] =',      &
+               write(6,'(51x,a)')'At Rmt            At Rcs'
+               write(6,'(a,18x,2f18.8)')'R_mesh                  =',r_mesh(Grid%jmt),r_mesh(Grid%jend)
+               write(6,'(a,3f18.8)')    'Deep core E, int[rho*v] =',      &
                  getDeepCoreEnergy(na,is), fact1, vint_mt
-               write(6,'(a,3f18.8)')'Deep core K.E.          =',      &
+               write(6,'(a,3f18.8)')    'Deep core K.E.          =',      &
                  getDeepCoreKineticEnergy(na,ia,is), getDeepCoreEnergy(na,is)-fact1, &
                  getDeepCoreEnergy(na,is)-vint_mt
             endif
@@ -498,8 +499,8 @@ contains
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), kmax_prod, jmax_prod, 0, prod, vint_mt)
 !           ----------------------------------------------------------
             if (Print_Level(na) >= 0) then
-               write(6,'(a,3f18.8)')'int[rho] in VP, int[rho] in MT, rho0 =',fact1, vint_mt,  &
-                                    (fact1-vint_mt)/(getVolume(na)-getInscrSphVolume(na))
+               write(6,'(a,2f18.8)')'int[rho]_VP, int[rho]_MT=',fact1, vint_mt
+               write(6,'(a,f18.8)') 'Interstitial density    =',(fact1-vint_mt)/(getVolume(na)-getInscrSphVolume(na))
             endif
 !
             rho_tmp = ZERO
@@ -508,7 +509,7 @@ contains
             call computeProdExpan(jend,lmax_rho,rho_tmp,lmax_pot,v_tmp,lmax_prod,prod)
             fact1 = getVolumeIntegration( na, jend, r_mesh(1:jend), kmax_prod, jmax_prod, 0, prod, vint_mt)
 !           ----------------------------------------------------------
-            if (Print_Level(na) >= 0) then
+            if (Print_Level(na) >= 1) then
                write(6,'(a,3f18.8)')'int[1] in VP, int[1] in MT, V_int =',fact1, vint_mt,(fact1-vint_mt)
             endif
 !           ==========================================================

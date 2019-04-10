@@ -17,6 +17,7 @@ implicit none
    write(myunit,'(''#'',/,''#'')')
 !
 #include "print_version_include.h"
+#include "git_version.h"
 !
    write(myunit,'(''#'',79(''-''))')
 

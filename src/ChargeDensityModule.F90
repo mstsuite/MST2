@@ -2058,7 +2058,7 @@ contains
    integer (kind=IntKind) :: id, ia, nr, nr_ps, ir, is, ns, jl, jmax, jmt, l, jend, kmax, id_glb
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
-   real (kind=RealKind) :: evec(3), mvec(3)
+   real (kind=RealKind) :: evec(3), mvec(3), msgbuf(3)
    real (kind=RealKind) :: corr, qint(2), volume, rho_r,rho_i, q_tmp, q_tmp_mt, qlost, omega_vp, omega_mt
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: rho0(:), mom0(:)
@@ -2302,7 +2302,9 @@ contains
                   if (rho0(ir) < TEN2m5 .or. getLocalAtomicNumber(id) == 0) then
                      mom0(ir) = ZERO
                   else
-                     call ErrorHandler('constructChargeDensity','rho0 < mom0',rho0(ir),mom0(ir),.true.)
+!                    call ErrorHandler('constructChargeDensity','rho0 < mom0',rho0(ir),mom0(ir),.true.)
+                     call WarningHandler('constructChargeDensity','rho0 < mom0',rho0(ir),mom0(ir),.true.)
+                     mom0(ir) = sign(rho0(ir),mom0(ir)) ! Added on 01/12/2019 by YW
                   endif
                endif
             enddo
@@ -2646,7 +2648,9 @@ contains
 !
       enddo
    enddo
-   call GlobalSumInGroup(GroupID,qlost)
+   msgbuf(1) = qlost; msgbuf(2) = omega_vp; msgbuf(3) = omega_mt
+   call GlobalSumInGroup(GroupID,msgbuf,3)
+   qlost = msgbuf(1); omega_vp = msgbuf(2); omega_mt = msgbuf(3)
 !  ===================================================================
 !  Determine the missing charge density, which is to be added to the
 !  interstitial region. -Yang Wang @ 12/17/2018.

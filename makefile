@@ -3,7 +3,7 @@
 #=====================================================================
 # SystemName is the filename found under ./compilation_new/arch
 #=====================================================================
-SystemName = titan_accel
+SystemName = muir_xeon
 
 #=====================================================================
 # Paths and internal libraries setup - This unlikely needs to be changed
@@ -45,13 +45,19 @@ CUDA_OPT += -c
 
 #=====================================================================
 
-all: check-bin main check util gen_link
+all: check-bin check-git-tag main check util gen_link
 
 #=====================================================================
 # Check bin directory to make sure it exists
 #=====================================================================
 check-bin:
 	if [ ! -d $(ODIR) ]; then echo $(ODIR) "folder does not exist and I am creating one ..."; mkdir $(ODIR); fi
+
+check-git-tag:
+	[[ `(git tag | tail -n 1 | wc -m)` -eq 0 ]] && echo '"Develop"' > $(ODIR)/git_version || git tag | tail -n 1 | sed 's/^/\"/' | sed 's/$$/\"/' > $(ODIR)/git_version
+	echo 'write(myunit,'\''("# ",t5,a,t30,": ",a)'\'') "Source code version",' > $(ODIR)/prepend
+	cat $(ODIR)/prepend $(ODIR)/git_version | ( tr -d '\n'; echo; ) > src/git_version.h
+	rm -f $(ODIR)/git_version $(ODIR)/prepend
 
 gen_link:
 	cd ../ ; rm -f $(MST2_DIR_LINK); ln -s $(WORK_DIR) $(MST2_DIR_LINK)
