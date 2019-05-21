@@ -1312,6 +1312,7 @@ radius(i) = getGridRadius(i)
          write(6,'(/,a,f10.5,/)')'Time:: calExchangeJl: ',getTime()-t1
       endif
 !
+      t1 = getTime()
       do id = 1,LocalNumAtoms
          nRpts = Potential(id)%n_Rpts
          do ia = 1, Potential(id)%NumSpecies
@@ -1344,6 +1345,9 @@ radius(i) = getGridRadius(i)
             enddo
          enddo
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5,/)')'Time:: computeNewPotentail:: Loop_id 1: ',getTime()-t1
+      endif
 !
 #ifdef POT_DEBUG
       vol_int = ZERO
@@ -1412,6 +1416,7 @@ radius(i) = getGridRadius(i)
       write(6,'(a,f13.6)')  '             Coulomb  :', potaver_Coulomb
 #endif
 !
+      t1 = getTime()
       do id = 1,LocalNumAtoms
          nRpts = Potential(id)%n_Rpts
          jmax = Potential(id)%jmax
@@ -1688,6 +1693,9 @@ endif
             Potential(id)%Madelung_Shift = ZERO
          enddo
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5,/)')'Time:: computeNewPotentail:: Loop_id 2: ',getTime()-t1
+      endif
 !
       if (isMTFP) then
          V0_inter = v0 ! v0(is) is calculated in calZeroPotential_MTFP
@@ -1703,6 +1711,7 @@ endif
 !     ================================================================
 !     substract muffin-tin zero from the potential.....
 !     ================================================================
+      t1 = getTime()
       do id = 1,LocalNumAtoms
          jend = Potential(id)%jend
          r_mesh => Potential(id)%Grid%r_mesh
@@ -1717,6 +1726,9 @@ endif
             enddo
          enddo
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5,/)')'Time:: computeNewPotentail:: Loop_id 3: ',getTime()-t1
+      endif
       v_shift(1:n_spin_pola) = V0_inter(1:n_spin_pola)
 !
 #ifdef POT_DEBUG
@@ -3436,6 +3448,7 @@ endif
 !  use SystemSymmetryModule, only : getSymmetryFlags ! The symmetry break is likely 
 !                                                      caused by the calculation
 !                                                      of the ex-corr potential
+   use MPPModule, only : MyPE
    use ChargeDensityModule, only : getChargeDensity, getMomentDensity, &
                                    getChargeDensityAtPoint,           &
                                    getMomentDensityAtPoint,           &
@@ -3465,9 +3478,9 @@ endif
    real (kind=RealKind), pointer :: wght_the(:), wght_phi(:)
    real (kind=RealKind), pointer :: chgmom_data(:,:,:,:,:)
    real (kind=RealKind), allocatable :: der_rho_tmp(:), der_mom_tmp(:)
-#ifdef TIMING
-   real (kind=RealKind) :: t0, t1, t2
-#endif
+!#ifdef TIMING
+   real (kind=RealKind) :: t0, t1, t2, ts, tc1, tc2, tc3
+!#endif
 !
    complex (kind=CmplxKind) :: a, b, y1, y2, x1, x2
    complex (kind=CmplxKind), pointer :: rhol(:,:), der_rhol(:,:)
@@ -3607,11 +3620,14 @@ endif
     write(6,*) "calExchangeJl:: Init Time : ",t1-t0
 #endif
 !
+   tc1 = ZERO; tc2 = ZERO; tc3 = ZERO
+   ts = getTime()
    ir_lastNeg = 0
    do ir = 1,jend
       isNegCharge = .false.
-      pXC_r(1:jmax,1:n_spin_pola) = CZERO
-      eXC_r(1:jmax,1:n_spin_pola) = CZERO
+!     pXC_r(1:jmax,1:n_spin_pola) = CZERO
+!     eXC_r(1:jmax,1:n_spin_pola) = CZERO
+      pXC_r = CZERO; eXC_r = CZERO
       Loop_phi01: do ip0 = 1,ngl_phi
          if ( mod(ip0,2)==0 ) then
             ip = ngl_phi-ip0/2+1
@@ -3620,8 +3636,9 @@ endif
          endif
          cosp  = cos(phi(ip))
          sinp  = sin(phi(ip))
-         pXC_rphi(1:jmax,1:n_spin_pola) = CZERO
-         eXC_rphi(1:jmax,1:n_spin_pola) = CZERO
+!        pXC_rphi(1:jmax,1:n_spin_pola) = CZERO
+!        eXC_rphi(1:jmax,1:n_spin_pola) = CZERO
+         pXC_rphi = CZERO; eXC_rphi = CZERO
          Loop_the01: do it0 = 1,ngl_the
             if ( mod(it0,2)==0 ) then
                it = ngl_the-it0/2+1
@@ -3642,15 +3659,18 @@ endif
 !
             posi(3) = cosp
             posi(1:3) = r_mesh(ir)*posi(1:3)
+            t2 = getTime()
             if (gga_functional) then
                rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi, grad=grad_rho )
             else
                rho = getChargeDensityAtPoint( 'TotalNew', id, ia, posi )
                grad_rho = ZERO
             endif
+            tc1 = tc1 + (getTime()-t2)  ! cummulating time on getChargeDensityAtPoint
             if ( rho <= ZERO ) then
                cycle Loop_the01
             endif
+            t2 = getTime()
             if ( n_spin_pola==2 ) then
                if (gga_functional) then
                   mom = getMomentDensityAtPoint( 'TotalNew', id, ia, posi, grad=grad_mom )
@@ -3674,6 +3694,8 @@ endif
 !                 ----------------------------------------------------
                endif
             endif
+            tc2 = tc2 + (getTime()-t2)  ! cummulating time on calExchangeCorrelation
+            t2 = getTime()
             do is = 1,n_spin_pola
 !              -------------------------------------------------------
                pXC_rtp = getExchCorrPot(is)
@@ -3686,6 +3708,7 @@ endif
                eXC_rtp = eXC_rtp*wght_the(it)
                eXC_rphi(1,is) = eXC_rphi(1,is) + Y0*cmplx(eXC_rtp,ZERO,Kind=CmplxKind)
             enddo
+            tc3 = tc3 + (getTime()-t2)  ! cummulating time on getExchCorrPot and getExchCorrEnDen
          enddo Loop_the01
          fact = sinp*wght_phi(ip)
          do is = 1,n_spin_pola
@@ -3707,6 +3730,12 @@ endif
       enddo
 !
    enddo
+   if (MyPE == 0) then
+      write(6,'(/,a,f10.5)')'Time:: calExchangeJl::tc1: ',tc1
+      write(6,'(  a,f10.5)')'Time:: calExchangeJl::tc2: ',tc2
+      write(6,'(  a,f10.5)')'Time:: calExchangeJl::tc3: ',tc3
+      write(6,'(  a,f10.5/)')'Time:: calExchangeJl::Loop_ir 1: ',getTime()-ts
+   endif
 !
 #ifdef TIMING
    t2 = getTime()
@@ -3721,6 +3750,9 @@ endif
 !     ----------------------------------------------------------------
       ir_lastNeg = 0
       indrl_fit = ir_fit
+!
+      ts = getTime()
+!
       do ir = jend,ir_fit,-1
          ing=0
          if ( ir < Potential(id)%jend ) then
@@ -3824,7 +3856,11 @@ endif
          enddo
 !
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5/)')'Time:: calExchangeJl::Loop_ir 2: ',getTime()-ts
+      endif
 !
+      ts = getTime()
       n0 = 4
       do is = 1,n_spin_pola
          do jl = 2,jmax
@@ -3854,6 +3890,9 @@ endif
             endif
          enddo
       enddo
+      if (MyPE == 0) then
+         write(6,'(/,a,f10.5/)')'Time:: calExchangeJl::Loop_is : ',getTime()-ts
+      endif
 !
    endif
 !

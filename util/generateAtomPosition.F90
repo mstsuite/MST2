@@ -60,6 +60,7 @@
    integer (kind=IntKind) :: ftype
    integer (kind=IntKind) :: nshell
    integer (kind=IntKind) :: ios
+   integer (kind=IntKind) :: iseed
 !
    integer (kind=IntKind) :: NumHostAtomsOfType(MaxAtomTypes)
    integer (kind=IntKind) :: NumClusterAtomsOfType(MaxAtomTypes)
@@ -426,6 +427,20 @@
          endif
       enddo
 !     -----------------------------------------------------------------------
+      iseed = 0
+      write(6,'(/,2x,a,$)') 'Initialize random seed by entering an integer (> 0), other wise using the default seed: '
+      read(5,'(i10)',iostat=ios) iseed
+      if (ios == 0) then
+         if (iseed > 0) then
+            write(6,'(/,2x,a,i10)')'Initial seed for random number generator is: ',iseed
+         endif
+      else
+         iseed = 0
+      endif
+      if (iseed < 1) then
+         write(6,'(/,2x,a)')'Initial seed for random number generator will be the default.'
+      endif
+!     -----------------------------------------------------------------------
 !
       nshell=-1
       if (ordered == 2) then   ! Random host with short range order
@@ -504,13 +519,25 @@
          write(6,'(/,2x,a,$)')'Enter the temperature step (K) for cooling: '
          read(5,*)Tstep
          write(6,'(a)')' '
-!        --------------------------------------------------------------------
-         call placeAtoms(NumHostAtomTypes,Host,HostContent,weight,nshell,srop,Tmax,Tstep)
-!        --------------------------------------------------------------------
+         if (iseed > 0) then
+!           -----------------------------------------------------------------
+            call placeAtoms(NumHostAtomTypes,Host,HostContent,weight,nshell,srop,Tmax,Tstep,iseed)
+!           -----------------------------------------------------------------
+         else
+!           -----------------------------------------------------------------
+            call placeAtoms(NumHostAtomTypes,Host,HostContent,weight,nshell,srop,Tmax,Tstep)
+!           -----------------------------------------------------------------
+         endif
       else
-!        --------------------------------------------------------------------
-         call placeAtoms(NumHostAtomTypes,Host,HostContent)
-!        --------------------------------------------------------------------
+         if (iseed > 0) then
+!           -----------------------------------------------------------------
+            call placeAtoms(NumHostAtomTypes,Host,HostContent,iseed)
+!           -----------------------------------------------------------------
+         else
+!           -----------------------------------------------------------------
+            call placeAtoms(NumHostAtomTypes,Host,HostContent)
+!           -----------------------------------------------------------------
+         endif
       endif
    endif
 !

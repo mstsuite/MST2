@@ -2019,6 +2019,8 @@ contains
 !  ===================================================================
    use InterpolationModule, only: getInterpolation
 !
+   use BesselModule, only : IntegrateSphHankelSq
+!
    use WriteFunctionModule, only : writeFunction
 !
    use ChemElementModule, only : MaxLenOfAtomName
@@ -2051,7 +2053,7 @@ contains
    real (kind=RealKind), intent(in) :: rv(last)
 !
    real (kind=RealKind) :: fac1
-   real (kind=RealKind) :: gnrm
+   real (kind=RealKind) :: gnrm, norm_frac, h2nrm
    real (kind=RealKind) :: ftmp_int, dftmp_int, err
 !
    integer, parameter :: solver = 1
@@ -2106,14 +2108,14 @@ contains
 !        -------------------------------------------------------------
          call deepst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia), &
                      Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last), &
-                     dftmp(1:last),h,Core(id)%ztotss(ia),nws,last)
+                     dftmp(1:last),h2nrm,h,Core(id)%ztotss(ia),nws,last)
 !        -------------------------------------------------------------
 !
          if (ndeep > ndeepz) then
 !           ----------------------------------------------------------
             call semcst(Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia),  &
                         Core(id)%ec(i,is,ia),rv,r,sqrt_r(0:last),ftmp(1:last2), &
-                        dftmp(1:last2),h,Core(id)%ztotss(ia),jmt,nws,last2)
+                        dftmp(1:last2),h2nrm,h,Core(id)%ztotss(ia),jmt,nws,last2)
 !           ----------------------------------------------------------
          endif
       else
@@ -2157,7 +2159,16 @@ contains
 !     ----------------------------------------------------------------
       call calIntegration(last2+1,sqrt_r(0:last2),ftmp(0:last2),qmp(0:last2),3)
 !     ----------------------------------------------------------------
-      gnrm=ONE/(TWO*PI4*qmp(last2))
+      call IntegrateSphHankelSq(Core(id)%lc(i,ia),r(last2),Core(id)%ec(i,is,ia),norm_frac)
+!     ----------------------------------------------------------------
+      if (print_level >= 0) then
+         write(6,'(a,3i4,2(a,d15.8),a,2d15.8)')'nc, lc, kc = ',       &
+               Core(id)%nc(i,ia),Core(id)%lc(i,ia),Core(id)%kc(i,ia), &
+               ', Int[rho] beyond Rc = ', PI4*norm_frac*h2nrm,        &
+               ', Int[Rho] within Rc = ',TWO*PI4*qmp(last2),          &
+               ', norm_frac, h2nrm = ',norm_frac,h2nrm
+      endif
+      gnrm=ONE/(TWO*PI4*qmp(last2)+PI4*norm_frac*h2nrm) ! Normalized to R = infinity
       do j=1,last2
          ftmp(j)=ftmp(j)*gnrm/r(j)    ! get rid off another factor r so that
                                       ! at this stage, ftmp is just density
@@ -2303,7 +2314,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine deepst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h,z,nws,last)
+   subroutine deepst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h2nrm,h,z,nws,last)
 !  ===================================================================
 !
 !     core states solver ...............................bg...june 1990
@@ -2356,6 +2367,7 @@ contains
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind), intent(out) :: rf(last)
    real (kind=RealKind), intent(out) :: der_rf(last)
+   real (kind=RealKind), intent(out) :: h2nrm
    real (kind=RealKind), intent(in) :: rv(last)
    real (kind=RealKind), intent(in) :: r(last)
    real (kind=RealKind), intent(in) :: sqrt_r(0:last)
@@ -2586,6 +2598,8 @@ contains
       enddo
    endif
 !
+   h2nrm = fnrm**2
+!
    if (sname == stop_routine) then
       call StopHandler(sname,'Forced to stop')
    endif
@@ -2718,7 +2732,8 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine semcst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h,z,jmt,nws,last2)
+   subroutine semcst(nqn,lqn,kqn,en,rv,r,sqrt_r,rf,der_rf,h2nrm,      &
+                     h,z,jmt,nws,last2)
 !  ===================================================================
 !
 !     semi-core states solver ..........................bg...june 1990
@@ -2774,12 +2789,14 @@ contains
    real (kind=RealKind), intent(in) :: z
    real (kind=RealKind), intent(out) :: rf(last2)
    real (kind=RealKind), intent(out) :: der_rf(last2)
+   real (kind=RealKind), intent(out) :: h2nrm
    real (kind=RealKind), intent(in) :: rv(last2)
    real (kind=RealKind), intent(in) :: r(last2)
    real (kind=RealKind), intent(in) :: sqrt_r(0:last2)
    real (kind=RealKind) :: rg(last2), der_rg(last2)
    real (kind=RealKind) :: drg(ipdeq*2)
    real (kind=RealKind) :: drf(ipdeq*2)
+   real (kind=RealKind) :: fnrm
    real (kind=RealKind) :: dk
    real (kind=RealKind) :: dm
    real (kind=RealKind) :: gam
@@ -2789,7 +2806,6 @@ contains
    real (kind=RealKind) :: rfm
    real (kind=RealKind) :: rgm
    real (kind=RealKind) :: rose
-   real (kind=RealKind) :: fnrm
    real (kind=RealKind) :: de
    real (kind=RealKind) :: val
    real (kind=RealKind) :: enew
@@ -2885,7 +2901,7 @@ contains
 !     ----------------------------------------------------------------
 !
 !     ================================================================
-!     components match
+!     components match at r(invp)
 !     ================================================================
       fnrm=rgm/rg(invp)
 !
@@ -2989,6 +3005,8 @@ contains
    do j=1,last2
       rf(j)=rf(j)*rf(j)+rg(j)*rg(j)
    enddo
+!
+   h2nrm = fnrm**2
 !
    end subroutine semcst
 !  ===================================================================

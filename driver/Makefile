@@ -292,7 +292,7 @@ $(ODIR)/testParallelIO: testParallelIO.o
 $(ODIR)/testPZGETRI: testPZGETRI.o 
 	$(LD) -o $(ODIR)/testPZGETRI testPZGETRI.o $(ADDLIBS) $(MPPLIB) $(MSTLIB)
 
-$(ODIR)/testProcMapping: testProcMapping.o
+$(ODIR)/testProcMapping: testProcMapping.o $(ODIR)/ProcMappingModule.o
 	$(LD) -o $(ODIR)/testProcMapping testProcMapping.o $(BASE_ROUTINES) $(SRC_OBJS) $(IOLIB) $(MPPLIB) $(MSTLIB) $(ADDLIBS)
 
 $(ODIR)/testStepFunc: testStepFunc.o $(ODIR)/StepFunctionModule.o

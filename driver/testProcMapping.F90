@@ -1,8 +1,9 @@
 program testProcMapping
    use KindParamModule, only : IntKind, RealKind, CmplxKind
    use MathParamModule, only : ZERO, ONE
-   use MPPModule, only : initMPP, endMPP, syncAllPEs
-   use GroupCommModule
+   use MPPModule, only : initMPP, endMPP, syncAllPEs, MyPE, NumPEs
+   use GroupCommModule, only : initGroupComm, endGroupComm
+   use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
 !
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
    use DataServiceCenterModule, only : initDataServiceCenter, &
@@ -29,15 +30,19 @@ program testProcMapping
 !
    use BZoneModule, only : initBZone, printBZone, endBZone, getNumKs
 !
-   use ProcMappingModule, only : initProcMapping, endProcMapping,            &
-                                 createParallelization
+   use ProcMappingModule, only : initProcMapping, endProcMapping,     &
+                                 createParallelization,               &
+                                 isEnergyOnMyProc, getEnergyIndex,    &
+                                 getProcWithEnergyIndex
 !
    implicit none
 !
-   integer (kind=IntKind) :: def_id, info_id, MyPE, NumPEs, nk, ne
+   integer (kind=IntKind) :: def_id, info_id, nk, ne
    integer (kind=IntKind) :: NumAtoms
-   integer (kind=IntKind) :: i, ia, ie, ik
+   integer (kind=IntKind) :: i, ia, ie, ik, je, ip
    integer (kind=IntKind), allocatable :: AtomicNumber(:)
+!
+   integer (kind=IntKind) :: NumPEsInEGroup, MyPEinEGroup, eGID
 !
    real (kind=RealKind), pointer :: bravais(:,:)
    real (kind=RealKind), allocatable :: AtomPosition(:,:)
@@ -63,7 +68,8 @@ program testProcMapping
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', -1)
+      call initContour( ContourType, eGridType, NumEs, Temperature, 'none', &
+                        -1, .true.)
 !     ----------------------------------------------------------------
    endif
 !  
@@ -133,6 +139,35 @@ program testProcMapping
 !  -------------------------------------------------------------------
 !
 !  ===================================================================
+   eGID = getGroupID('Energy Mesh')
+   NumPEsInEGroup = getNumPEsInGroup(eGID)
+   MyPEinEGroup = getMyPEinGroup(eGID)
+!
+   if (MyPE == 0) then
+      write(6,'(/,a)')'Check energy to process mapping ...'
+   endif
+   call syncAllPEs()
+   je = 0
+   do ie = 1, ne
+      ip = getProcWithEnergyIndex(ie)
+      if (isEnergyOnMyProc(ie)) then
+         je = je + 1
+         if (ip < 0) then
+            write(6,'(a,2i5,a,2i5, a)')'ie, getEnergyIndex = ',       &
+                                       ie,getEnergyIndex(je),         &
+                                       ', MyPE,MyPEinEGroup    = ',   &
+                                       MyPE,MyPEinEGroup,' redundant'
+         else
+            write(6,'(a,2i5,5x,a,3i5)')'ie, getEnergyIndex = ',       &
+                                       ie,getEnergyIndex(je),         &
+                                       ', MyPE,MyPEinEGroup,ip = ',   &
+                                       MyPE,MyPEinEGroup,ip
+         endif
+!     else
+!        write(6,'(a,i5,a,i5)')'ie = ',ie,', not on MyPE: ',MyPE
+      endif
+      call syncAllPEs()
+   enddo
 !
 !
 !  ===================================================================

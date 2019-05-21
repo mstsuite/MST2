@@ -5441,6 +5441,7 @@ use MPPModule, only : MyPE, syncAllPEs
    function getOutsideDOS(spin, site, atom, rs) result(dos_out)
 !  ===================================================================
    use PolyhedraModule, only : getVolume, getInscrSphRadius, getOutscrSphRadius
+   use BesselModule, only : IntegrateSphHankelSq
    implicit none
 !
    integer (kind=IntKind), intent(in), optional :: spin, site, atom
@@ -5493,7 +5494,8 @@ use MPPModule, only : MyPE, syncAllPEs
    cdos_out = CZERO
    if (outside_rs) then
 !     ----------------------------------------------------------------
-      call calIntSphHankelSq0(lmax_phi,rc,energy,fint)
+!     call calIntSphHankelSq0(lmax_phi,rc,energy,fint)
+      call IntegrateSphHankelSq(lmax_phi,rc,energy,fint)
 !     ----------------------------------------------------------------
       do kl = kmax_phi, 1, -1
          l = lofk(kl)
@@ -5503,7 +5505,8 @@ use MPPModule, only : MyPE, syncAllPEs
    else ! calculating the DOS outside the atomic cell
       rmt = getInscrSphRadius(id)
 !     ----------------------------------------------------------------
-      call calIntSphHankelSq0(lmax_phi,rmt,energy,fint)
+!     call calIntSphHankelSq0(lmax_phi,rmt,energy,fint)
+      call IntegrateSphHankelSq(lmax_phi,rmt,energy,fint)
 !     ----------------------------------------------------------------
       do kl = kmax_phi, 1, -1
          l = lofk(kl)

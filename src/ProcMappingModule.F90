@@ -810,6 +810,8 @@ contains
 !
 !  ==================================================================
 !  mapping energy mesh on processors
+!    NProc_E = the number of processes in the E-group in which NumEs
+!              energy points are distributed
 !  ==================================================================
    n = NumEsPerBox - re
    do i = 1, n
@@ -829,14 +831,19 @@ contains
    m = NumEs - re
    if (NumEsPerBox > 0) then
       do ie = 1, m
-         E2Proc(ie) = (ie-1)/n
+         E2Proc(ie) = mod(ie-1,NProc_E)
       enddo
       if (re > 0) then
-         E2Proc(m+1:NumEs) = -1 ! the redundant Es are assigned to all processors
+         E2Proc(m+1:NumEs) = -1 ! the redundant Es are assigned to all processors in the group
       endif
-      if (MyPE == 0 .and. NumEs <= 20) then
-         write(6,'(a,20i5)')'E index = ',(ie, ie=1, NumEs)
-         write(6,'(a,20i5)')'Process = ',(E2Proc(ie), ie=1, NumEs)
+      if (MyPE == 0) then
+         if (NumEs > 20) then
+            write(6,'(a,20i5,a)')'Energy point index = ',(ie, ie=1, 20),', ...'
+            write(6,'(a,20i5,a)')'Process in E-group = ',(E2Proc(ie), ie=1, 20),', ...'
+         else
+            write(6,'(a,20i5)')'Energy point index = ',(ie, ie=1, NumEs)
+            write(6,'(a,20i5)')'Process in E-group = ',(E2Proc(ie), ie=1, NumEs)
+         endif
       endif
    endif
 !
@@ -864,18 +871,18 @@ contains
    m = NumKs - rk
    if (NumKsPerBox > 0) then
       do ik = 1, m
-         K2Proc(ik) = (ik-1)/n
+         K2Proc(ik) = ik/n
       enddo
       if (rk > 0) then
          K2Proc(m+1:NumKs) = -1 ! the redundant Ks are assigned to all processors
       endif
       if (MyPE == 0) then
-         if (NumKs > 16) then
-            write(6,'(a,16i5,a)')'K index = ',(ik, ik=1, 16),', ...,...'
-            write(6,'(a,16i5,a)')'Process = ',(K2Proc(ik), ik=1, 16),', ...,...'
+         if (NumKs > 20) then
+            write(6,'(a,20i5,a)')'IBZ K point index  = ',(ik, ik=1, 20),', ...,...'
+            write(6,'(a,20i5,a)')'Process in K-group = ',(K2Proc(ik), ik=1, 20),', ...,...'
          else
-            write(6,'(a,16i5)')'K index = ',(ik, ik=1, NumKs)
-            write(6,'(a,16i5)')'Process = ',(K2Proc(ik), ik=1, NumKs)
+            write(6,'(a,20i5)')'IBZ K point index  = ',(ik, ik=1, NumKs)
+            write(6,'(a,20i5)')'Process in K-group = ',(K2Proc(ik), ik=1, NumKs)
          endif
       endif
    endif

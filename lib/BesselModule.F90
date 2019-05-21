@@ -1,11 +1,12 @@
 module BesselModule
    use KindParamModule, only : IntKind, RealKind, CmplxKind
    use ErrorHandlerModule, only : ErrorHandler
-   use MathParamModule, only : ten2m12, zero, one, two, cone, sqrtm1
+   use MathParamModule, only : ten2m12, zero, one, two, cone, sqrtm1, HALF
 !
 public :: SphericalBessel,  &
           SphericalNeumann, &
-          SphericalHankel
+          SphericalHankel,  &
+          IntegrateSphHankelSq
 !
 !  define generic procedure for bessel functions
 !
@@ -24,6 +25,11 @@ public :: SphericalBessel,  &
    interface SphericalHankel
       module procedure SphericalHankelReal0,  SphericalHankelReal1,   &
                        SphericalHankelCmplx0, SphericalHankelCmplx1
+   end interface
+!
+   interface IntegrateSphHankelSq
+      module procedure IntegrateSphHankelSq_Cs, IntegrateSphHankelSq_Ca, &
+                       IntegrateSphHankelSq_Rs, IntegrateSphHankelSq_Ra
    end interface
 !
 private
@@ -1032,5 +1038,221 @@ contains
    dhl(1:lmax)=djlc(1:lmax)+sqrtm1*dnlc(1:lmax)
 !
    end subroutine SphericalHankelCmplx1
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine IntegrateSphHankelSq_Ca(lmax,rc,energy,fint)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+   integer (kind=IntKind) :: l
+!
+   real (kind=RealKind), intent(in) :: rc
+!
+   complex (kind=CmplxKind), intent(in) :: energy
+   complex (kind=CmplxKind), intent(out) :: fint(0:lmax)
+!  complex (kind=CmplxKind) :: bessjl(0:lmax+1), bessnl(0:lmax+1), x, besshl, besshlp1, besshlm1
+   complex (kind=CmplxKind) :: besshl(0:lmax+1), x
+   complex (kind=CmplxKind) :: Ul, Ulp1
+!
+!  x = rc*sqrt(energy)+SQRTm1*0.00001d0
+   x = rc*sqrt(energy)
+!  -------------------------------------------------------------------
+!  call SphericalBessel(lmax+1,x,bessjl)
+!  call SphericalNeumann(lmax+1,x,bessnl)
+   call SphericalHankel(lmax+1,x,besshl)
+!  -------------------------------------------------------------------
+!  besshl = bessjl(0)+SQRTm1*bessnl(0)
+!  besshlp1 = bessjl(1)+SQRTm1*bessnl(1)
+!  fint(0) = (besshl*besshlp1/x-besshl**2-besshlp1**2)*HALF
+   fint(0) = (besshl(0)*besshl(1)/x-besshl(0)**2-besshl(1)**2)*HALF
+   do l = 1, lmax
+!     besshlm1 = besshl
+!     besshl = besshlp1
+!     besshlp1 = bessjl(l+1)+SQRTm1*bessnl(l+1)
+!!    fint(l) = ((2*l+1)*besshl*besshlp1/x-besshl**2-besshlp1**2)*HALF
+!     fint(l) = (besshlm1*besshlp1-besshl**2)*HALF
+      fint(l) = (besshl(l-1)*besshl(l+1)-besshl(l)**2)*HALF
+   enddo
+!
+!  ===================================================================
+!  Another way of calculating fint is to use recursive relation.
+!  Both ways have shown to give the same results.
+!  ===================================================================
+!! Ul = -SQRTm1*exp(SQRTm1*TWO*x)/(TWO*x**3)
+!! write(6,'(a,2d16.8,2x,2d16.8)')'fint(0), Ul = ',fint(0), Ul
+!! fint(0) = Ul
+!! do l = 1, lmax
+!!    besshlm1 = bessjl(l-1)+SQRTm1*bessnl(l-1)
+!!    besshl = bessjl(l)+SQRTm1*bessnl(l)
+!!    Ulp1 = (besshl**2+besshlm1**2+(2*l+1)*fint(l-1))/(2*l-1.0d0)
+!!    write(6,'(a,2d16.8,2x,2d16.8)')'fint(l), Ulp1 = ',fint(l), Ulp1
+!!    fint(l) = Ulp1
+!! enddo
+!  ===================================================================
+!
+   do l = 0, lmax
+      fint(l) = fint(l)*rc**3
+   enddo
+!
+   end subroutine IntegrateSphHankelSq_Ca
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine IntegrateSphHankelSq_Cs(lmax,rc,energy,fint)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+   integer (kind=IntKind) :: l
+!
+   real (kind=RealKind), intent(in) :: rc
+!
+   complex (kind=CmplxKind), intent(in) :: energy
+   complex (kind=CmplxKind), intent(out) :: fint
+   complex (kind=CmplxKind) :: besshl(0:lmax+1), x
+   complex (kind=CmplxKind) :: Ul, Ulp1
+!
+!  x = rc*sqrt(energy)+SQRTm1*0.00001d0
+   x = rc*sqrt(energy)
+!  -------------------------------------------------------------------
+   call SphericalHankel(lmax+1,x,besshl)
+!  -------------------------------------------------------------------
+   if (lmax == 0) then
+      fint = (besshl(0)*besshl(1)/x-besshl(0)**2-besshl(1)**2)*HALF
+   else
+      fint = (besshl(lmax-1)*besshl(lmax+1)-besshl(lmax)**2)*HALF
+   endif
+!
+!  ===================================================================
+!  Another way of calculating fint is to use recursive relation.
+!  Both ways have shown to give the same results.
+!  ===================================================================
+!! Ul = -SQRTm1*exp(SQRTm1*TWO*x)/(TWO*x**3)
+!! write(6,'(a,2d16.8,2x,2d16.8)')'fint(0), Ul = ',fint(0), Ul
+!! fint(0) = Ul
+!! do l = 1, lmax
+!!    besshlm1 = bessjl(l-1)+SQRTm1*bessnl(l-1)
+!!    besshl = bessjl(l)+SQRTm1*bessnl(l)
+!!    Ulp1 = (besshl**2+besshlm1**2+(2*l+1)*fint(l-1))/(2*l-1.0d0)
+!!    write(6,'(a,2d16.8,2x,2d16.8)')'fint(l), Ulp1 = ',fint(l), Ulp1
+!!    fint(l) = Ulp1
+!! enddo
+!  ===================================================================
+!
+   fint = fint*rc**3
+!
+   end subroutine IntegrateSphHankelSq_Cs
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine IntegrateSphHankelSq_Ra(lmax,rc,energy,fint)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+   integer (kind=IntKind) :: l
+!
+   real (kind=RealKind), intent(in) :: rc
+!
+   real (kind=RealKind), intent(in) :: energy
+   real (kind=RealKind), intent(out) :: fint(0:lmax)
+!
+!  complex (kind=CmplxKind) :: bessjl(0:lmax+1), bessnl(0:lmax+1), x, besshl, besshlp1, besshlm1
+   complex (kind=CmplxKind) :: besshl(0:lmax+1), x, ec
+   complex (kind=CmplxKind) :: Ul, Ulp1
+!
+!  x = rc*sqrt(energy)+SQRTm1*0.00001d0
+   ec = energy
+   x = rc*sqrt(ec)
+!  -------------------------------------------------------------------
+   call SphericalHankel(lmax+1,x,besshl)
+!  -------------------------------------------------------------------
+   fint(0) = abs(besshl(0)*besshl(1)/x-besshl(0)**2-besshl(1)**2)*HALF
+   do l = 1, lmax
+!     fint(l) = ((2*l+1)*besshl*besshlp1/x-besshl**2-besshlp1**2)*HALF
+      fint(l) = abs(besshl(l-1)*besshl(l+1)-besshl(l)**2)*HALF
+   enddo
+!
+!  ===================================================================
+!  Another way of calculating fint is to use recursive relation.
+!  Both ways have shown to give the same results.
+!  ===================================================================
+!! Ul = -SQRTm1*exp(SQRTm1*TWO*x)/(TWO*x**3)
+!! write(6,'(a,2d16.8,2x,2d16.8)')'fint(0), Ul = ',fint(0), Ul
+!! fint(0) = Ul
+!! do l = 1, lmax
+!!    besshlm1 = bessjl(l-1)+SQRTm1*bessnl(l-1)
+!!    besshl = bessjl(l)+SQRTm1*bessnl(l)
+!!    Ulp1 = (besshl**2+besshlm1**2+(2*l+1)*fint(l-1))/(2*l-1.0d0)
+!!    write(6,'(a,2d16.8,2x,2d16.8)')'fint(l), Ulp1 = ',fint(l), Ulp1
+!!    fint(l) = Ulp1
+!! enddo
+!  ===================================================================
+!
+   do l = 0, lmax
+      fint(l) = fint(l)*rc**3
+   enddo
+!
+   end subroutine IntegrateSphHankelSq_Ra
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine IntegrateSphHankelSq_Rs(lmax,rc,energy,fint)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(in) :: lmax
+   integer (kind=IntKind) :: l
+!
+   real (kind=RealKind), intent(in) :: rc
+!
+   real (kind=RealKind), intent(in) :: energy
+   real (kind=RealKind), intent(out) :: fint
+!
+!  complex (kind=CmplxKind) :: bessjl(0:lmax+1), bessnl(0:lmax+1), x, besshl, besshlp1, besshlm1
+   complex (kind=CmplxKind) :: besshl(0:lmax+1), x, ec
+   complex (kind=CmplxKind) :: Ul, Ulp1
+!
+!  x = rc*sqrt(energy)+SQRTm1*0.00001d0
+   ec = energy
+   x = rc*sqrt(ec)
+!  -------------------------------------------------------------------
+   call SphericalHankel(lmax+1,x,besshl)
+!  -------------------------------------------------------------------
+   if (lmax == 0) then
+      fint = abs(besshl(0)*besshl(1)/x-besshl(0)**2-besshl(1)**2)*HALF
+   else
+      fint = abs(besshl(lmax-1)*besshl(lmax+1)-besshl(lmax)**2)*HALF
+   endif
+!
+!  ===================================================================
+!  Another way of calculating fint is to use recursive relation.
+!  Both ways have shown to give the same results.
+!  ===================================================================
+!! Ul = -SQRTm1*exp(SQRTm1*TWO*x)/(TWO*x**3)
+!! write(6,'(a,2d16.8,2x,2d16.8)')'fint(0), Ul = ',fint(0), Ul
+!! fint(0) = Ul
+!! do l = 1, lmax
+!!    besshlm1 = bessjl(l-1)+SQRTm1*bessnl(l-1)
+!!    besshl = bessjl(l)+SQRTm1*bessnl(l)
+!!    Ulp1 = (besshl**2+besshlm1**2+(2*l+1)*fint(l-1))/(2*l-1.0d0)
+!!    write(6,'(a,2d16.8,2x,2d16.8)')'fint(l), Ulp1 = ',fint(l), Ulp1
+!!    fint(l) = Ulp1
+!! enddo
+!  ===================================================================
+!
+   fint = fint*rc**3
+!
+   end subroutine IntegrateSphHankelSq_Rs
 !  ===================================================================
 end module BesselModule
