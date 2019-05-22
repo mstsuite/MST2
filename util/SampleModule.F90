@@ -289,12 +289,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine placeAtomsRandomly(nt,atn,content)
+   subroutine placeAtomsRandomly(nt,atn,content,seed_in)
 !  ===================================================================
    use MathParamModule, only : ZERO, ONE, TEN2m6
    implicit none
 !
    integer (kind=IntKind), intent(in) :: nt
+   integer (kind=IntKind), intent(in), optional :: seed_in
 !
    character (len=*), intent(in) :: atn(nt)
 !
@@ -304,6 +305,10 @@ contains
 !
    real (kind=RealKind) :: r, ran2
    real (kind=RealKind), allocatable :: bins(:)
+!
+   if (present(seed_in)) then
+      iseed = seed_in
+   endif
 !
    NumTypes = nt
    allocate( TypeName(NumTypes), NumAtomsOfType(NumTypes) )
@@ -422,13 +427,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine placeAtomsRandomlyWithSRO(nt,atn,content,weight,nshell,srop_in,Tmax,Tstep)
+   subroutine placeAtomsRandomlyWithSRO(nt,atn,content,weight,nshell,srop_in, &
+                                        Tmax,Tstep,seed_in)
 !  ===================================================================
    use MathParamModule, only : ZERO, ONE, TEN2m6
    implicit none
 !
    integer (kind=IntKind), intent(in) :: nt
    integer (kind=IntKind), intent(in) :: nshell
+   integer (kind=IntKind), intent(in), optional :: seed_in
 !
    character (len=*), intent(in) :: atn(nt)
 !
@@ -444,11 +451,17 @@ contains
    if (nshell > MaxShells) then
       call ErrorHandler('placeAtoms','nshell > MaxShells',nshell,MaxShells)
    endif
-
-!  -------------------------------------------------------------------
-   call placeAtomsRandomly(nt,atn,content)
-!  -------------------------------------------------------------------
- 
+!
+   if (present(seed_in)) then
+!     ----------------------------------------------------------------
+      call placeAtomsRandomly(nt,atn,content,seed_in)
+!     ----------------------------------------------------------------
+   else
+!     ----------------------------------------------------------------
+      call placeAtomsRandomly(nt,atn,content)
+!     ----------------------------------------------------------------
+   endif
+! 
 !  ===================================================================
 !  re-arrange atom positions according to the desired short range
 !  order parameters taken from the input
