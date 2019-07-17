@@ -2613,7 +2613,7 @@ endif
    use ChargeDistributionModule, only : getGlobalMTSphereElectronTableOld, &
                                         getGlobalOnSiteElectronTableOld
 !
-   use SystemModule, only : getAtomicNumber, getAtomName
+   use SystemModule, only : getAtomicNumber, getAtomName, getAtomEnergy
 !
    implicit none
 !
@@ -2625,6 +2625,7 @@ endif
 !
    real (kind=RealKind), pointer :: Qmt_Table(:)
    real (kind=RealKind), pointer :: Q_Table(:)
+   real (kind=RealKind), pointer :: atom_en(:,:)
 !
    if (.not.Initialized) then
       call ErrorHandler('printMadelungShiftTable',                    &
@@ -2662,15 +2663,16 @@ endif
       write(fu,'(60(''=''))')
    endif
 !
-   write(fu,'(a)')' Atom   Index      Q          Qmt         dQ       Vmad'
+   write(fu,'(a)')' Atom   Index      Q          Qmt        dQ        Vmad        Local Energy'
    Q_Table => getGlobalOnSiteElectronTableOld()
    Qmt_Table => getGlobalMTSphereElectronTableOld()
+   atom_en => getAtomEnergy()
    do ig = 1, GlobalNumAtoms
 !     write(fu,'(2x,a3,2x,i6,4(2x,f20.16))')getAtomName(ig), ig,         &
-      write(fu,'(2x,a3,2x,i6,4(2x,f9.5))')getAtomName(ig), ig,         &
-                                          Q_Table(ig),Qmt_Table(ig),   &
-                                          Q_Table(ig)-getAtomicNumber(ig), &
-                                          MadelungShiftTable(ig)
+      write(fu,'(2x,a3,2x,i6,4(2x,f9.5),6x,f12.5)')getAtomName(ig), ig,     &
+                                           Q_Table(ig),Qmt_Table(ig),       &
+                                           Q_Table(ig)-getAtomicNumber(ig), &
+                                           MadelungShiftTable(ig),atom_en(1,ig)
    enddo
    if (fu == 6) then
       write(fu,'(80(''=''),/)')

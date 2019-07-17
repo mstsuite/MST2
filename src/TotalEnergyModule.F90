@@ -111,6 +111,8 @@ contains
       gga_functional = .false.
    endif
 !
+   StopRoutine = istop
+!
    end subroutine initTotalEnergy
 !  ===================================================================
 !
@@ -203,6 +205,14 @@ contains
 !
    logical :: isMTon
 !
+   interface
+      function nocaseCompare(s1,s2) result(t)
+         character (len=*), intent(in) :: s1
+         character (len=*), intent(in) :: s2
+         logical :: t
+      end function nocaseCompare
+   end interface
+!
    if (.not.Initialized) then
       call ErrorHandler('computeEnergyFunctional',                    &
                         'Need to initialize TotalEnergyModule first')
@@ -229,6 +239,10 @@ contains
 !     ----------------------------------------------------------------
       call computeFullTotalEnergy()
 !     ----------------------------------------------------------------
+   endif
+!
+   if (nocaseCompare(StopRoutine,'computeEnergyFunctional')) then
+      call StopHandler('computeEnergyFunctional','Stopped by request')
    endif
 !
    end subroutine computeEnergyFunctional
@@ -305,6 +319,7 @@ contains
 !
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: rho_sph(:)
+   real (kind=RealKind), allocatable :: LocalEnergy(:,:)
 !
    complex (kind=CmplxKind), pointer :: rho_tot(:,:)
    complex (kind=CmplxKind), pointer :: mom_tot(:,:)
@@ -360,6 +375,7 @@ contains
    allocate(ws_rho(jend_max*jmax_max))
    allocate(ws_pot(jend_max*jmax_max))
    allocate(ws_prod(jend_max*(2*lmax_max+1)*(lmax_max+1)))
+   allocate(LocalEnergy(2,GlobalNumAtoms))
 !
    SiteEnPres  = ZERO
    do na = 1, LocalNumAtoms
@@ -732,9 +748,16 @@ contains
    total_energy=msgbuf(1)
    pressure=msgbuf(2)
 !
+   LocalEnergy = ZERO
    do na =1, LocalNumAtoms
-      call setAtomEnergy(getGlobalIndex(na),SiteEnPres(1:2,na))
+!     call setAtomEnergy(getGlobalIndex(na),SiteEnPres(1:2,na))
+      LocalEnergy(1:2,getGlobalIndex(na))=SiteEnPres(1:2,na)
    enddo
+!  -------------------------------------------------------------------
+   call GlobalSumInGroup(GroupID,LocalEnergy,2,GlobalNumAtoms)
+!  -------------------------------------------------------------------
+   call setAtomEnergy(localEnergy)
+!  -------------------------------------------------------------------
    Computed = .true.
 !
 !  ===================================================================
@@ -812,6 +835,7 @@ contains
    real (kind=RealKind), allocatable, target :: rho_tmp(:)
    real (kind=RealKind), allocatable, target :: mom_tmp(:)
    real (kind=RealKind), allocatable :: rho_spin(:)
+   real (kind=RealKind), allocatable :: LocalEnergy(:,:)
    real (kind=RealKind), pointer :: vrold(:)
    real (kind=RealKind), pointer :: vrnew(:)
    real (kind=RealKind), pointer :: valden_rho(:)
@@ -843,6 +867,7 @@ contains
    real (kind=RealKind) :: fac
    real (kind=RealKind) :: etot_is, press_is
    real (kind=RealKind) :: etot, press, ecorr
+   real (kind=RealKind) :: u0i(LocalNumAtoms)
 !
    Qmt_Table => getGlobalMTSphereElectronTable()
    Qvp_Table => getGlobalVPCellElectronTable()
@@ -854,6 +879,7 @@ contains
    enddo
    allocate(rho_spin(jmt))
    allocate( rho_tmp(jmt), mom_tmp(jmt) )
+   allocate(LocalEnergy(2,GlobalNumAtoms))
    rho_tmp = ZERO
    mom_tmp = ZERO
 !
@@ -1010,6 +1036,10 @@ contains
       sfac = HALF
    endif
 !
+!  ===================================================================
+!  Add the exchange-correlation energy contribution from the interstitial
+!  electron density rhoint.
+!  ===================================================================
    emad = ZERO
    emadp = ZERO
    if ( isMuffintinPotential() ) then
@@ -1089,18 +1119,27 @@ contains
    endif
 !
 !  -------------------------------------------------------------------
-   u0 = getu0()
+   u0 = getu0(u0i)
 !  -------------------------------------------------------------------
+   LocalEnergy = ZERO
    do na = 1, LocalNumAtoms
-      if ( NumVacancies/=GlobalNumAtoms ) then
-         SiteEnPres(1,na) = SiteEnPres(1,na) + u0/(GlobalNumAtoms-NumVacancies)
-         SiteEnPres(2,na) = SiteEnPres(2,na) + u0/(GlobalNumAtoms-NumVacancies)
-      else
-         SiteEnPres(1,na) = SiteEnPres(1,na) + u0/GlobalNumAtoms
-         SiteEnPres(2,na) = SiteEnPres(2,na) + u0/GlobalNumAtoms
-      endif
-      call setAtomEnergy(getGlobalIndex(na),SiteEnPres(1:2,na))
+      SiteEnPres(1,na) = SiteEnPres(1,na) + u0i(na)
+      SiteEnPres(2,na) = SiteEnPres(2,na) + u0i(na)
+!     if ( NumVacancies/=GlobalNumAtoms ) then
+!        SiteEnPres(1,na) = SiteEnPres(1,na) + u0/(GlobalNumAtoms-NumVacancies)
+!        SiteEnPres(2,na) = SiteEnPres(2,na) + u0/(GlobalNumAtoms-NumVacancies)
+!     else
+!        SiteEnPres(1,na) = SiteEnPres(1,na) + u0/GlobalNumAtoms
+!        SiteEnPres(2,na) = SiteEnPres(2,na) + u0/GlobalNumAtoms
+!     endif
+!     call setAtomEnergy(getGlobalIndex(na),SiteEnPres(1:2,na))
+      LocalEnergy(1:2,getGlobalIndex(na)) = SiteEnPres(1:2,na)
    enddo
+!  -------------------------------------------------------------------
+   call GlobalSumInGroup(GroupID,LocalEnergy,2,GlobalNumAtoms)
+!  -------------------------------------------------------------------
+   call setAtomEnergy(localEnergy)
+!  -------------------------------------------------------------------
    total_energy=total_energy+u0+emad
    pressure=pressure+u0+emadp
 !
@@ -1673,7 +1712,7 @@ contains
 !
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getu0() result(u0)
+   function getu0(u0i) result(u0)
 !  ===================================================================
    use GroupCommModule, only : GlobalSumInGroup
 !
@@ -1715,6 +1754,7 @@ contains
    real (kind=RealKind) :: u0
    real (kind=RealKind) :: dq_mt,dq
    real (kind=RealKind) :: qsub_i, qsub_j
+   real (kind=RealKind) :: u0i(:)
 !
    real (kind=RealKind), parameter :: fifth=ONE/FIVE
    real (kind=RealKind), parameter :: sixfifth=SIX/FIVE
@@ -1730,6 +1770,7 @@ contains
    Qvp_Table => getGlobalVPCellElectronTable()
 !
    u0 = ZERO
+   u0i = ZERO
    if(isMuffintinPotential() .or. isMuffintinASAPotential()) then
        do i=1, LocalNumAtoms
            Grid => getGrid(i)
@@ -1739,6 +1780,7 @@ contains
            omegmt=surfamt*rmt*THIRD
            qsub_j = getAtomicNumber(j)-Q_Table(j)+rhoint*getAtomicVPVolume(j)
            u0=u0+rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
+           u0i(i) = rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
            if(isMuffintinASAPotential()) then
                dq_mt = Qmt_Table(j) - getAtomicNumber(j)
                dq = Qvp_Table(j) - Qmt_Table(j) - rhoint*(getVolume(i)-omegmt)
@@ -1754,6 +1796,7 @@ contains
        do i=1,GlobalNumAtoms
            qsub_i = getAtomicNumber(i)-Q_Table(i) + rhoint*getAtomicVPVolume(i)
            u0=u0+madmat(i)*qsub_j*qsub_i
+           u0i(k) = u0i(k) + madmat(i)*qsub_j*qsub_i
            if (maxval(print_level) >= 0) then
               write(6,'(a,i4,a,2f18.14)')'Atom =',i,',  madmat, qsub = ',madmat(i),qsub_i
            endif
@@ -1777,6 +1820,10 @@ contains
 !
    logical, optional :: isMT
    logical :: isMTon
+!
+   integer (kind=IntKind) :: i
+!
+   real (kind=RealKind) :: sum_en
 !
    if (.not.Initialized) then
       call ErrorHandler('printTotalEnergy',                    &
@@ -1813,6 +1860,13 @@ contains
       write(6,'(8x,''Pressure Per Atom     ='',f17.8)')                        &
                      pressure/real(GlobalNumAtoms-NumVacancies,RealKind)
    endif
+   write(6,'(/,a)')'Local energy:'
+   sum_en = ZERO
+   do i = 1, LocalNumAtoms
+      write(6,'(i5,2x,f12.5)')i,SiteEnPres(1,i)
+      sum_en = sum_en + SiteEnPres(1,i)
+   enddo
+   write(6,'(/,a,f12.5)')'Sum of Local energy: ',sum_en
    write(6,'(80(''=''))')
 #ifdef DEBUG_EPRINT
    if (GlobalNumAtoms == NumVacancies) then

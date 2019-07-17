@@ -276,25 +276,27 @@ contains
    SiteLIZ(1:NumAtoms) = 0
    RadicalPlaneRatio(1:NumAtoms) = ONE
 !  -------------------------------------------------------------------
-   rstatus = getKeyValue(tbl_id,'Info Table File Name',info_table)
    rstatus = getKeyValue(tbl_id,'Current File Path',file_path)
 !  -------------------------------------------------------------------
    file_path = adjustl(file_path)
-   info_id=getTableIndex(trim(file_path)//adjustl(info_table))
+   if ( getKeyValue(tbl_id,'Info Table File Name',info_table) == 0) then
+      info_id=getTableIndex(trim(file_path)//adjustl(info_table))
+   else 
+      info_id = tbl_id
+   endif
 !  -------------------------------------------------------------------
 !
    if ( isKeyExisting(tbl_id,'Atomic Position File Name') ) then
 !     ----------------------------------------------------------------
       rstatus = getKeyValue(tbl_id,'Atomic Position File Name',fposi_in)
 !     ----------------------------------------------------------------
-   else if ( isKeyExisting(info_id,'Atomic Position File Name') ) then
-!     ----------------------------------------------------------------
-      rstatus = getKeyValue(info_id,'Atomic Position File Name',fposi_in)
-!     ----------------------------------------------------------------
+   else if ( getKeyValue(info_id,'Atomic Position File Name',fposi_in) /= 0) then
+      fposi_in = 'position.dat'
    else
 !     ----------------------------------------------------------------
-      call ErrorHandler('initSystem','Atom Position Data file is not specified')
+!     call ErrorHandler('initSystem','Atom Position Data file is not specified')
 !     ----------------------------------------------------------------
+      fposi_in = 'position.dat'
    endif
 !
    fposi_out = trim(fposi_in)//'_out'
@@ -310,16 +312,10 @@ contains
 !        -------------------------------------------------------------
          rstatus = getKeyValue(tbl_id,'Moment Direction File Name',fevec_in)
 !        -------------------------------------------------------------
-      else if ( isKeyExisting(info_id,'Moment Direction File Name') ) then
-!        -------------------------------------------------------------
-         rstatus = getKeyValue(info_id,'Moment Direction File Name',fevec_in)
-!        -------------------------------------------------------------
+      else if ( getKeyValue(info_id,'Moment Direction File Name',fevec_in) /= 0) then
+            fevec_in ='None'
       else
-         fevec_in =''
-!        -------------------------------------------------------------
-!        call ErrorHandler('initSystem',                              &
-!                          'Moment Direction Data file is not specified')
-!        -------------------------------------------------------------
+         fevec_in ='None'
       endif
       if ( len_trim(fevec_in) > 0 .and. .not.nocaseCompare(fevec_in,'None') ) then
 !        -------------------------------------------------------------
@@ -435,7 +431,7 @@ contains
    AtomType(1) = NumAtomTypes
    LOOP_i: do i=2,NumAtoms
       do ig=1,NumAtomTypes
-         if (nocaseCompare(AtomName(i),AtomTypeName(ig))) then
+         if (nocaseCompare(AtomName(i),AtomTypeName(ig)) .and. .not.nocaseCompare(AtomName(i),'CPA')) then
             AtomType(i) = ig
             cycle LOOP_i
          endif
@@ -1504,18 +1500,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setAtomEnergy(i,en)
+   subroutine setAtomEnergy(en)
 !  ===================================================================
    implicit none
 !
-   integer(kind=IntKind), intent(in) :: i
-   real (kind=RealKind), intent(in) :: en(2)
+   real (kind=RealKind), intent(in) :: en(:,:)
 !
-   if (i<1 .or. i>NumAtoms) then
-      call ErrorHandler('setAtomEnergy','Invalid atom index',i)
-   endif
-!
-   EnPres(1:2,i) = en(1:2)
+   EnPres = en
 !
    end subroutine setAtomEnergy
 !  ===================================================================
