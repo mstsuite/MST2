@@ -1,4 +1,4 @@
-CUDA_PATH = $(CUDAPATH)
+CUDA_PATH =$(CUDAPATH)
 LIBXC_PATH = /ccs/proj/mat020/libxc-4.2.3/Summit_PGI
 ODIR = $(PWD)/bin_Summit
 #=====================================================================
@@ -10,12 +10,12 @@ F77=mpif90
 CC=pgcc
 CXX=pgc++
 PREPROC = $(FC)
-EXEC_NAME = mst2_summit_pgi
+EXEC_NAME = mst2_summit_pgi_accel
 
 #=====================================================================
 # Set Acceleration to 0 if Accelerator is not used.
 #=====================================================================
-Acceleration = 0
+Acceleration = 1
 
 CUDA_CXX = nvcc -arch=sm_70
 # CUDA_OPT = -I$(CUDA_PATH)/include -I. -DLSMS2 -Xcompiler "-Warray-bounds -O2 -Woverlength-strings"
@@ -48,7 +48,7 @@ CPPFLAGS=-DUnderscore
 # Math library (Lapack, Blas, Scalapck) linking flags
 #=====================================================================
 #ADDLIBS = -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++
-ADDLIBS = -llapack -lblas
+ADDLIBS = -llapack -lblas -lm -L$(CUDA_PATH)/lib64 -lcudart -lcuda -lcublas -lstdc++
 
 ifdef LIBXC_PATH
 ADDLIBS += -L$(LIBXC_PATH)/lib -lxcf90 -lxc
