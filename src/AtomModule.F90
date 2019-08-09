@@ -2,6 +2,7 @@ module AtomModule
    use KindParamModule, only : IntKind, RealKind
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
    use PublicTypeDefinitionsModule, only : LizLmaxStruct
+   use PublicParamDefinitionsModule, only : MaxLenFileName
    use ChemElementModule, only : MaxLenOfAtomName
 !
 public :: initAtom,    &
@@ -141,9 +142,9 @@ private
    type AtomPropertyStruct
       character (len=2), allocatable :: AtomName(:)
       character (len=MaxLenOfAtomName), allocatable :: NickName(:)
-      character (len=100), allocatable :: potinfile(:)
+      character (len=MaxLenFileName), allocatable :: potinfile(:)
       character (len=11) :: potinform
-      character (len=100), allocatable :: potoutfile(:)
+      character (len=MaxLenFileName), allocatable :: potoutfile(:)
       character (len=11) :: potoutform
       integer (kind=IntKind), allocatable :: AtomicNumber(:)
       integer (kind=IntKind) :: GlobalIndex
@@ -162,8 +163,8 @@ private
    end type AtomPropertyStruct
    type (AtomPropertyStruct), allocatable :: AtomProperty(:)
 !
-   character (len=100) :: InPotFileName
-   character (len=100) :: OutPotFileName
+   character (len=MaxLenFileName) :: InPotFileName
+   character (len=MaxLenFileName) :: OutPotFileName
    character (len=11) :: InPotFileForm
    character (len=11) :: OutPotFileForm
 !  ===================================================================
@@ -201,12 +202,13 @@ contains
    use ChemElementModule, only : getZtot
    use StringModule, only : initString, endString, getNumTokens, readToken
    use MPPModule, only : MyPE
+   use PublicParamDefinitionsModule, only : ASA, MuffinTin, MuffinTinASA
    use Atom2ProcModule, only : getLocalNumAtoms, getGlobalIndex
    use InputModule, only : getKeyValue, getKeyIndexValue
-   use ScfDataModule, only : inputpath, isKKRCPA
+   use ScfDataModule, only : inputpath, isKKRCPA,  getPotentialTypeParam
    use SystemModule, only : getNumAtoms, getNumAlloyElements, getAlloyElementContent
    use SystemModule, only : getAlloyElementName
-   use SystemModule, only : getAtomName, getAtomicNumber, getAtomPosition
+   use SystemModule, only : getAtomPosition
    use SystemModule, only : getMomentDirection, getConstrainField
    use SystemModule, only : getMomentDirectionMixingParam
 !
@@ -214,6 +216,7 @@ contains
 !
    character (len=*) :: istop
    character (len=1) :: dummy
+   character (len=2) :: s2
    character (len=50) :: fname
    character (len=160) :: path_fname
    character (len=150), allocatable :: lmax_shell(:)
@@ -344,119 +347,205 @@ contains
    allocate(ind_cutoff_r_s(GlobalNumAtoms), cutoff_r_s(0:GlobalNumAtoms))
    allocate(ind_rmt_desire(GlobalNumAtoms), rmt_desire(0:GlobalNumAtoms))
    allocate(ind_rcr_desire(GlobalNumAtoms), rcr_desire(0:GlobalNumAtoms))
+!
 !  -------------------------------------------------------------------
-!  info_id=getTableIndex(trim(adjustl(info_path))//adjustl(info_table))
 !  rstatus = getKeyValue(info_id,'Atom Index',atom_index,GlobalNumAtoms)
 !  -------------------------------------------------------------------
-   rstatus = getKeyValue(info_id,'Default Potential Input File Name',potinname(0))
-   rstatus = getKeyValue(info_id,'Default Potential Input File Form',potinform(0))
-   rstatus = getKeyValue(info_id,'Default Potential Output File Name',potoutname(0))
-   rstatus = getKeyValue(info_id,'Default Potential Output File Form',potoutform(0))
-   rstatus = getKeyValue(info_id,'Default Lmax-T matrix',lmax_kkr(0))
-   rstatus = getKeyValue(info_id,'Default Lmax-Step Func',lmax_step(0))
-   rstatus = getKeyValue(info_id,'Default Lmax-Wave Func',lmax_phi(0))
-   rstatus = getKeyValue(info_id,'Default Lmax-Potential',lmax_pot(0))
-   rstatus = getKeyValue(info_id,'Default Lmax-Trunc Pot',lmax_pot_trunc(0))
-   if (rstatus /= 0) then
-      lmax_pot_trunc(0) = lmax_pot(0) + lmax_step(0)
-   else if (lmax_pot_trunc(0) < 0) then
-      lmax_pot_trunc(0) = lmax_pot(0)
-   else if (lmax_pot_trunc(0) > lmax_pot(0) + lmax_step(0)) then
-      lmax_pot_trunc(0) = lmax_pot(0) + lmax_step(0)
+   if (getKeyValue(info_id,'Default Potential Input File Name',potinname(0)) /= 0) then
+      call ErrorHandler('initAtom','Input potential file name is missing from input')
    endif
-   rstatus = getKeyValue(info_id,'Default Lmax-Charge Den',lmax_rho(0))
-   rstatus = getKeyValue(info_id,'Default LIZ # Neighbors',nmax_liz(0))
-   rstatus = getKeyValue(info_id,'Default LIZ # NN Shells',num_shells(0))
-   rstatus = getKeyValue(info_id,'Default LIZ Shell Lmax',lmax_shell(0))
-   rstatus = getKeyValue(info_id,'Default LIZ Cutoff Radius',cutoff_r(0))
-   rstatus = getKeyValue(info_id,'Default Rcut-Screen',cutoff_r_s(0))
-   rstatus = getKeyValue(info_id,'Default Pseudo Charge Radius',pseudo_r(0))
-   rstatus = getKeyValue(info_id,'Default Rho  Mix Param.',alpha_rho(0))
-   rstatus = getKeyValue(info_id,'Default Pot  Mix Param.',alpha_pot(0))
-   rstatus = getKeyValue(info_id,'Default Mom  Mix Param.',alpha_mom(0))
-!  rstatus = getKeyValue(info_id,'Default Evec Mix Param.',alpha_evec(0))
-   if (getKeyValue(info_id,'Default Chg  Mix Param.',alpha_chg(0)) /= 0) then
-      if (MyPE == 0) then
-         call WarningHandler('initAtom','<Default Chg  Mix Param.> is not in input', &
-                                        '<Default Chg  Mix Param.> is set to 1.0')
-      endif
-      alpha_chg(0) = ONE
-   endif
-   rstatus = getKeyValue(info_id,'Default No. Rad Points ndivin',ndivin(0))
-   rstatus = getKeyValue(info_id,'Default No. Rad Points ndivout',ndivout(0))
-   rstatus = getKeyValue(info_id,'Default Integer Factor nmult',nmult(0))
-   rstatus = getKeyValue(info_id,'Default Screen Potential',potScreen(0))
-   rstatus = getKeyValue(info_id,'Desired Muffin-tin Radius',rmt_desire(0))
-   rstatus = getKeyValue(info_id,'Desired Core Radius',rcr_desire(0))
-!  -------------------------------------------------------------------
    rstatus = getKeyIndexValue(info_id,'Potential Input File Name',    &
                               ind_potinname,potinname(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Potential Input File Form',potinform(0)) /= 0) then
+      call ErrorHandler('initAtom','Input potential file form is missing from input')
+   endif
    rstatus = getKeyIndexValue(info_id,'Potential Input File Form',    &
                               ind_potinform,potinform(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Potential Output File Name',potoutname(0)) /= 0) then
+      call ErrorHandler('initAtom','Output potential file name is missing from input')
+   endif
    rstatus = getKeyIndexValue(info_id,'Potential Output File Name',   &
                               ind_potoutname,potoutname(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Potential Output File Form',potoutform(0)) /= 0) then
+      call ErrorHandler('initAtom','Output potential file form is missing from input')
+   endif
    rstatus = getKeyIndexValue(info_id,'Potential Output File Form',   &
                               ind_potoutform,potoutform(1:GlobalNumAtoms), GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Lmax-T matrix',lmax_kkr(0)) /= 0) then
+      call ErrorHandler('initAtom','Lmax for T-matrix is missing from input')
+   endif
+   ind_lmax_kkr = 0
    rstatus = getKeyIndexValue(info_id,'Lmax-T matrix',                &
                               ind_lmax_kkr,lmax_kkr(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Lmax-Step Func',               &
-                              ind_lmax_step,lmax_step(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Lmax-Wave Func',               &
-                              ind_lmax_phi,lmax_phi(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Lmax-Potential',lmax_pot(0),default_param=.false.) /= 0) then
+      if (getPotentialTypeParam() == ASA .or. getPotentialTypeParam() == MuffinTin .or. &
+          getPotentialTypeParam() == MuffinTinASA) then
+         lmax_pot(0) = 0
+      else
+         lmax_pot(0) = 2*lmax_kkr(0)
+      endif
+   endif
+   ind_lmax_pot = 0
    rstatus = getKeyIndexValue(info_id,'Lmax-Potential',               &
                               ind_lmax_pot,lmax_pot(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Lmax-Wave Func',lmax_phi(0),default_param=.false.) /= 0) then
+      lmax_phi(0) = lmax_kkr(0)
+   endif
+   ind_lmax_phi = 0
+   rstatus = getKeyIndexValue(info_id,'Lmax-Wave Func',               &
+                              ind_lmax_phi,lmax_phi(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Lmax-Step Func',lmax_step(0),default_param=.false.) /= 0) then
+!     call ErrorHandler('initAtom','Lmax for step function is missing from input')
+      lmax_step(0) = 4*lmax_kkr(0)
+   endif
+   ind_lmax_step = 0
+   rstatus = getKeyIndexValue(info_id,'Lmax-Step Func',               &
+                              ind_lmax_step,lmax_step(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Lmax-Trunc Pot',lmax_pot_trunc(0),default_param=.false.) /= 0) then
+      lmax_pot_trunc(0) = lmax_pot(0)
+   endif
+   ind_lmax_pot_trunc = 0
    rstatus = getKeyIndexValue(info_id,'Lmax-Trunc Pot',               &
                               ind_lmax_pot_trunc,lmax_pot_trunc(1:GlobalNumAtoms),GlobalNumAtoms)
    if (rstatus /= 0) then
-      lmax_pot_trunc(1:GlobalNumAtoms) = lmax_pot(1:GlobalNumAtoms) + lmax_step(1:GlobalNumAtoms)
+      lmax_pot_trunc(1:GlobalNumAtoms) = lmax_pot(1:GlobalNumAtoms) + 4
    else 
       do ig = 1, GlobalNumAtoms
          if (lmax_pot_trunc(ig) < 0) then
             lmax_pot_trunc(ig) = lmax_pot(ig)
          else if (lmax_pot_trunc(ig) > lmax_pot(ig) + lmax_step(ig)) then
-            lmax_pot_trunc(ig) = lmax_pot(ig) + lmax_step(ig)
+            lmax_pot_trunc(ig) = lmax_pot(ig)
+!           lmax_pot_trunc(ig) = lmax_pot(ig) + lmax_step(ig)
          endif
       enddo
    endif
-!  -------------------------------------------------------------------
+!
+   if (getKeyValue(info_id,'Default Lmax-Charge Den',lmax_rho(0),default_param=.false.) /= 0) then
+      lmax_rho(0) = lmax_pot(0)
+   endif
+   ind_lmax_rho = 0
    rstatus = getKeyIndexValue(info_id,'Lmax-Charge Den',              &
                               ind_lmax_rho,lmax_rho(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default LIZ # Neighbors',nmax_liz(0)) /= 0) then
+      call ErrorHandler('initAtom','Default LIZ # Neighbors is missing from input')
+   endif
+   ind_nmax_liz = 0
    rstatus = getKeyIndexValue(info_id,'LIZ # Neighbors',              &
                               ind_nmax_liz,nmax_liz(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default LIZ # NN Shells',num_shells(0),default_param=.false.) /= 0) then
+      num_shells(0) = 8
+   endif
+   ind_num_shells = 0
    rstatus = getKeyIndexValue(info_id,'LIZ # NN Shells',              &
                               ind_num_shells,num_shells(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default LIZ Shell Lmax',lmax_shell(0)) /= 0) then
+      write(s2,'(i2)')lmax_kkr(0)
+      lmax_shell(0) = s2
+      do i = 2, num_shells(0)
+         lmax_shell(0) = trim(lmax_shell(0))//' '//s2
+      enddo
+   endif
+   ind_lmax_shell = 0
    rstatus = getKeyIndexValue(info_id,'LIZ Shell Lmax',               &
                               ind_lmax_shell,lmax_shell(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default LIZ Cutoff Radius',cutoff_r(0)) /= 0) then
+      call ErrorHandler('initAtom','Default LIZ Cutoff Radius is missing from input')
+   endif
+   ind_cutoff_r = 0
    rstatus = getKeyIndexValue(info_id,'LIZ Cutoff Radius',            &
                               ind_cutoff_r,cutoff_r(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Desired Muffin-tin Radius',      &
-                              ind_rmt_desire,rmt_desire(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Desired Core Radius',            &
-                              ind_rcr_desire,rcr_desire(1:GlobalNumAtoms),GlobalNumAtoms)
-   rstatus = getKeyIndexValue(info_id,'Screen Potential',             &
-                              ind_potScreen,potScreen(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   rstatus = getKeyValue(info_id,'Default Rcut-Screen',cutoff_r_s(0))
+   ind_cutoff_r_s = 0
    rstatus = getKeyIndexValue(info_id,'Rcut-Screen',                  &
                               ind_cutoff_r_s,cutoff_r_s(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   rstatus = getKeyValue(info_id,'Default Pseudo Charge Radius',pseudo_r(0))
+   ind_pseudo_r = 0
    rstatus = getKeyIndexValue(info_id,'Pseudo Charge Radius',         &
                               ind_pseudo_r,pseudo_r(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Rho  Mix Param.',alpha_rho(0),default_param=.false.) /= 0) then
+      if (getKeyValue(info_id,'Default Mixing Parameter',alpha_rho(0)) /= 0) then
+         call ErrorHandler('initAtom','Rho  Mix Param. is missing from input')
+      endif
+   endif
+   ind_alpha_rho = 0
    rstatus = getKeyIndexValue(info_id,'Rho  Mix Param.',              &
                               ind_alpha_rho,alpha_rho(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Pot  Mix Param.',alpha_pot(0),default_param=.false.) /= 0) then
+      if (getKeyValue(info_id,'Default Mixing Parameter',alpha_pot(0)) /= 0) then
+         call ErrorHandler('initAtom','Pot  Mix Param. is missing from input')
+      endif
+   endif
+   ind_alpha_pot = 0
    rstatus = getKeyIndexValue(info_id,'Pot  Mix Param.',              &
                               ind_alpha_pot,alpha_pot(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Mom  Mix Param.',alpha_mom(0),default_param=.false.) /= 0) then
+      if (getKeyValue(info_id,'Default Mixing Parameter',alpha_mom(0)) /= 0) then
+         call ErrorHandler('initAtom','Mom  Mix Param. is missing from input')
+      endif
+   endif
+   ind_alpha_mom = 0
    rstatus = getKeyIndexValue(info_id,'Mom  Mix Param.',              &
                               ind_alpha_mom,alpha_mom(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Chg  Mix Param.',alpha_chg(0)) /= 0) then
+      call ErrorHandler('initAtom','Default Chg  Mix Param is missing from input')
+   endif
+   ind_alpha_chg = 0
    rstatus = getKeyIndexValue(info_id,'Chg  Mix Param.',              &
                               ind_alpha_chg,alpha_chg(1:GlobalNumAtoms),GlobalNumAtoms)
-   if (rstatus /= 0) then
-      alpha_chg(1:GlobalNumAtoms) = ONE
+!
+   if (getKeyValue(info_id,'Default No. Rad Points ndivin',ndivin(0)) /= 0) then
+      call ErrorHandler('initAtom','Default No. Rad Points ndivin is missing from input')
    endif
+   ind_ndivin = 0
    rstatus = getKeyIndexValue(info_id,'No. Rad Points ndivin',        &
                               ind_ndivin,ndivin(1:GlobalNumAtoms), GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default No. Rad Points ndivout',ndivout(0)) /= 0) then
+      call ErrorHandler('initAtom','No. Rad Points ndivout is missing from input')
+   endif
+   ind_ndivout = 0
    rstatus = getKeyIndexValue(info_id,'No. Rad Points ndivout',       &
                               ind_ndivout,ndivout(1:GlobalNumAtoms), GlobalNumAtoms)
+!
+   if (getKeyValue(info_id,'Default Integer Factor nmult',nmult(0)) /= 0) then
+      call ErrorHandler('initAtom','Integer Factor nmult is missing from input')
+   endif
+   ind_nmult = 0
    rstatus = getKeyIndexValue(info_id,'Integer Factor nmult',         &
                               ind_nmult,nmult(1:GlobalNumAtoms), GlobalNumAtoms)
-!  -------------------------------------------------------------------
+!
+   rstatus = getKeyValue(info_id,'Default Screen Potential',potScreen(0))
+   ind_potScreen = 0
+   rstatus = getKeyIndexValue(info_id,'Screen Potential',             &
+                              ind_potScreen,potScreen(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   rstatus = getKeyValue(info_id,'Desired Muffin-tin Radius',rmt_desire(0))
+   ind_rmt_desire = 0
+   rstatus = getKeyIndexValue(info_id,'Desired Muffin-tin Radius',    &
+                              ind_rmt_desire,rmt_desire(1:GlobalNumAtoms),GlobalNumAtoms)
+!
+   rstatus = getKeyValue(info_id,'Desired Core Radius',rcr_desire(0))
+   ind_rcr_desire = 0
+   rstatus = getKeyIndexValue(info_id,'Desired Core Radius',          &
+                              ind_rcr_desire,rcr_desire(1:GlobalNumAtoms),GlobalNumAtoms)
 !
 !  ===================================================================
 !  Process ind_potinname(:) to taking care of the fact that potinname(0)
@@ -1228,7 +1317,7 @@ contains
    function getIPFN0() result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
 !
    s=InPotFileName
 !
@@ -1241,7 +1330,7 @@ contains
    function getIPFN1(id) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getInPotFileName','Invalid atom index',id)
@@ -1259,7 +1348,7 @@ contains
    function getIPFN2(id,ia) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id, ia
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getInPotFileName','Invalid atom index',id)
@@ -1306,7 +1395,7 @@ contains
    function getOPFN0() result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
 !
    s=OutPotFileName
 !
@@ -1319,7 +1408,7 @@ contains
    function getOPFN1(id) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getOutPotFileName','Invalid atom index',id)
@@ -1337,7 +1426,7 @@ contains
    function getOPFN2(id,ia) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id, ia
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getOutPotFileName','Invalid atom index',id)
@@ -1384,7 +1473,7 @@ contains
    function getIVDFN0(id) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getInValDenFileName','Invalid atom index',id)
@@ -1402,7 +1491,7 @@ contains
    function getIVDFN1(id,ia) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id, ia
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getInValDenFileName','Invalid atom index',id)
@@ -1436,7 +1525,7 @@ contains
    function getOVDFN0(id) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getOutValDenFileName','Invalid atom index',id)
@@ -1454,7 +1543,7 @@ contains
    function getOVDFN1(id,ia) result(s)
 !  ===================================================================
    implicit none
-   character (len=100) :: s
+   character (len=MaxLenFileName) :: s
    integer (kind=IntKind), intent(in) :: id, ia
    if (id<1 .or. id>LocalNumAtoms) then
       call ErrorHandler('getOutValDenFileName','Invalid atom index',id)

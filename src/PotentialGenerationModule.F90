@@ -50,20 +50,19 @@ private
 !
       type (GridStruct), pointer :: Grid
 !
-      real (kind=RealKind), pointer :: potr_sph(:,:)
+      real (kind=RealKind), pointer :: potr_sph(:,:,:)
 !
-      complex (kind=CmplxKind), pointer :: potL(:,:,:)
-      complex (kind=CmplxKind), pointer :: potL_Tilda(:,:)
+      complex (kind=CmplxKind), pointer :: potL(:,:,:,:) ! = potL_Coulomb + potL_Exch
+      complex (kind=CmplxKind), pointer :: potL_Tilda(:,:,:) ! Intra site potential
       complex (kind=CmplxKind), pointer :: potL_Madelung(:,:)
       complex (kind=CmplxKind), pointer :: potL_Pseudo(:,:)
-      complex (kind=CmplxKind), pointer :: potL_Coulomb(:,:)
+      complex (kind=CmplxKind), pointer :: potL_Coulomb(:,:,:) ! = potL_Tilda + potL_Madelung + potL_Pseudo
 !
-      complex (kind=CmplxKind), pointer :: potL_Exch(:,:,:)
+      complex (kind=CmplxKind), pointer :: potL_Exch(:,:,:,:)
+      complex (kind=CmplxKind), pointer :: enL_Exch(:,:,:,:)
 !
-      complex (kind=CmplxKind), pointer :: potL_XCHat(:,:,:)
-!
-      complex (kind=CmplxKind), pointer :: enL_Exch(:,:,:)
-      complex (kind=CmplxKind), pointer :: enL_XCHat(:,:,:)
+      complex (kind=CmplxKind), pointer :: potL_XCHat(:,:,:,:) ! Seems not used
+      complex (kind=CmplxKind), pointer :: enL_XCHat(:,:,:,:) ! Seems not used
 !
       integer (kind=IntKind), pointer :: PotCompFlag(:)
       integer (kind=IntKind), pointer :: potL_Tilda_flag(:)
@@ -71,7 +70,7 @@ private
       integer (kind=IntKind), pointer :: potL_Pseudo_flag(:)
       integer (kind=IntKind), pointer :: potL_Coulomb_flag(:)
       integer (kind=IntKind), pointer :: potL_Exch_flag(:)
-      integer (kind=IntKind), pointer :: potL_XCHat_flag(:)
+      integer (kind=IntKind), pointer :: potL_XCHat_flag(:) ! Seems not used
 !
    end type NewPotentialStruct
 !
@@ -262,12 +261,13 @@ contains
    integer (kind=IntKind), intent(in) :: npola
 !
    integer (kind=IntKind), allocatable :: DataSize(:), DataSizeL(:)
+   integer (kind=IntKind), allocatable :: SpeciesDataSize(:), SpeciesDataSizeL(:)
 !
    type (GridStruct), pointer :: Grid
 !
-   integer (kind=IntKind) :: i, jl, kl, l, m, j, id, nr, ir
+   integer (kind=IntKind) :: jl, kl, l, m, ig, id, nr, ir
    integer (kind=IntKind) :: kmax_max, lmax_pot, jmax_pot
-   integer (kind=IntKind) :: jmt, jend
+   integer (kind=IntKind) :: jmt, jend, num_species
    integer (kind=IntKind) :: grid_start(3), grid_end(3), gir(3,3), ng_uniform(3)
 !
    real (kind=RealKind) :: alpha, r, alpha_min, alpha_max
@@ -301,8 +301,8 @@ contains
 !
    allocate(Print_Level(nlocal))
    Print_Level(1:nlocal) = iprint(1:nlocal)
-   allocate( DataSize(LocalNumAtoms))
-   allocate( DataSizeL(LocalNumAtoms) )
+   allocate( DataSize(LocalNumAtoms), SpeciesDataSize(LocalNumAtoms))
+   allocate( DataSizeL(LocalNumAtoms), SpeciesDataSizeL(LocalNumAtoms) )
 !
    StopRoutine = istop
 !
@@ -318,7 +318,9 @@ contains
    do id = 1, LocalNumAtoms
       lmax_max=max(lmax_max, lmax_p(id), lmax_r(id))
       DataSize(id) = getNumRmesh(id)
+      SpeciesDataSize(id) = DataSize(id)*getLocalNumSpecies(id)
       DataSizeL(id) = getNumRmesh(id)*(((lmax_p(id)+1)*(lmax_p(id)+2))/2)
+      SpeciesDataSizeL(id) = DataSizeL(id)*getLocalNumSpecies(id)
       jend_max=max(jend_max,DataSize(id))
       node_print_level = max(node_print_level,Print_Level(id))
    enddo
@@ -342,28 +344,26 @@ contains
    if (.not.isDataStorageExisting('NewSphericalPotential')) then
 !     ----------------------------------------------------------------
       call createDataStorage(LocalNumAtoms,'NewSphericalPotential',    &
-                             DataSize*n_spin_pola,RealType)
+                             SpeciesDataSize*n_spin_pola,RealType)
 !     ----------------------------------------------------------------
       call setDataStorage2Value('NewSphericalPotential',ZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
-         nr = DataSize(id)
 !        -------------------------------------------------------------
-         call setDataStorageLDA(id,'NewSphericalPotential',nr)
+         call setDataStorageLDA(id,'NewSphericalPotential',getNumRmesh(id))
 !        -------------------------------------------------------------
       enddo
    endif
    if (.not.isDataStorageExisting('L-Potential')) then
 !     ----------------------------------------------------------------
       call createDataStorage(LocalNumAtoms,'L-Potential',             &
-                             DataSizeL*n_spin_pola,ComplexType)
+                             SpeciesDataSizeL*n_spin_pola,ComplexType)
 !     ----------------------------------------------------------------
       call setDataStorage2Value('L-Potential',CZERO)
 !     ----------------------------------------------------------------
       do id = 1,LocalNumAtoms
-         nr = DataSize(id)
 !        -------------------------------------------------------------
-         call setDataStorageLDA(id,'L-Potential',nr)
+         call setDataStorageLDA(id,'L-Potential',getNumRmesh(id))
 !        -------------------------------------------------------------
       enddo
    endif
@@ -371,14 +371,13 @@ contains
       if (.not.isDataStorageExisting('TildaPotential')) then
 !        -------------------------------------------------------------
          call createDataStorage(LocalNumAtoms,'TildaPotential',        &
-                                DataSizeL,ComplexType)
+                                SpeciesDataSizeL,ComplexType)
 !        -------------------------------------------------------------
          call setDataStorage2Value('TildaPotential',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            nr = DataSize(id)
 !           ----------------------------------------------------------
-            call setDataStorageLDA(id,'TildaPotential',nr)
+            call setDataStorageLDA(id,'TildaPotential',getNumRmesh(id))
 !           ----------------------------------------------------------
          enddo
       endif
@@ -390,51 +389,47 @@ contains
          call setDataStorage2Value('MadelungPotential',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            nr = DataSize(id)
 !           ----------------------------------------------------------
-            call setDataStorageLDA(id,'MadelungPotential',nr)
+            call setDataStorageLDA(id,'MadelungPotential',getNumRmesh(id))
 !           ----------------------------------------------------------
          enddo
       endif
       if (.not.isDataStorageExisting('CoulombPotential')) then
 !        -------------------------------------------------------------
          call createDataStorage(LocalNumAtoms,'CoulombPotential',      &
-                                DataSizeL,ComplexType)
+                                SpeciesDataSizeL,ComplexType)
 !        -------------------------------------------------------------
          call setDataStorage2Value('CoulombPotential',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            nr = DataSize(id)
 !           ----------------------------------------------------------
-            call setDataStorageLDA(id,'CoulombPotential',nr)
+            call setDataStorageLDA(id,'CoulombPotential',getNumRmesh(id))
 !           ----------------------------------------------------------
          enddo
       endif
       if (.not.isDataStorageExisting('XchgCorrPotential')) then
 !        -------------------------------------------------------------
          call createDataStorage(LocalNumAtoms,'XchgCorrPotential',     &
-                                DataSizeL*n_spin_pola,ComplexType)
+                                SpeciesDataSizeL*n_spin_pola,ComplexType)
 !        -------------------------------------------------------------
          call setDataStorage2Value('XchgCorrPotential',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            nr = DataSize(id)
 !           ----------------------------------------------------------
-            call setDataStorageLDA(id,'XchgCorrPotential',nr)
+            call setDataStorageLDA(id,'XchgCorrPotential',getNumRmesh(id))
 !           ----------------------------------------------------------
          enddo
       endif
       if (.not.isDataStorageExisting('XchgCorrEnergy')) then
 !        -------------------------------------------------------------
          call createDataStorage(LocalNumAtoms,'XchgCorrEnergy',        &
-                                DataSizeL*n_spin_pola,ComplexType)
+                                SpeciesDataSizeL*n_spin_pola,ComplexType)
 !        -------------------------------------------------------------
          call setDataStorage2Value('XchgCorrEnergy',CZERO)
 !        -------------------------------------------------------------
          do id = 1,LocalNumAtoms
-            nr = DataSize(id)
 !           ----------------------------------------------------------
-            call setDataStorageLDA(id,'XchgCorrEnergy',nr)
+            call setDataStorageLDA(id,'XchgCorrEnergy',getNumRmesh(id))
 !           ----------------------------------------------------------
          enddo
       endif
@@ -447,37 +442,34 @@ contains
             call setDataStorage2Value('PseudoPotential',CZERO)
 !           ----------------------------------------------------------
             do id = 1,LocalNumAtoms
-               nr = DataSize(id)
 !              -------------------------------------------------------
-               call setDataStorageLDA(id,'PseudoPotential',nr)
+               call setDataStorageLDA(id,'PseudoPotential',getNumRmesh(id))
 !              -------------------------------------------------------
             enddo
          endif
          if (.not.isDataStorageExisting('XchgCorrHatPotential')) then
 !           ----------------------------------------------------------
             call createDataStorage(LocalNumAtoms,'XchgCorrHatPotential',  &
-                                   DataSizeL*n_spin_pola,ComplexType)
+                                   SpeciesDataSizeL*n_spin_pola,ComplexType)
 !           ----------------------------------------------------------
             call setDataStorage2Value('XchgCorrHatPotential',CZERO)
 !           ----------------------------------------------------------
             do id = 1,LocalNumAtoms
-               nr = DataSize(id)
 !              -------------------------------------------------------
-               call setDataStorageLDA(id,'XchgCorrHatPotential',nr)
+               call setDataStorageLDA(id,'XchgCorrHatPotential',getNumRmesh(id))
 !              -------------------------------------------------------
             enddo
          endif
          if (.not.isDataStorageExisting('XchgCorrHatEnergy')) then
 !           ----------------------------------------------------------
             call createDataStorage(LocalNumAtoms,'XchgCorrHatEnergy',     &
-                                   DataSizeL*n_spin_pola,ComplexType)
+                                   SpeciesDataSizeL*n_spin_pola,ComplexType)
 !           ----------------------------------------------------------
             call setDataStorage2Value('XchgCorrHatEnergy',CZERO)
 !           ----------------------------------------------------------
             do id = 1,LocalNumAtoms
-               nr = DataSize(id)
 !              -------------------------------------------------------
-               call setDataStorageLDA(id,'XchgCorrHatEnergy',nr)
+               call setDataStorageLDA(id,'XchgCorrHatEnergy',getNumRmesh(id))
 !              -------------------------------------------------------
             enddo
          endif
@@ -498,11 +490,12 @@ contains
 !
    isChargeSymmOn = isChargeSymm()
 !
-   do i = 1,LocalNumAtoms
-      Potential(i)%NumSpecies = getLocalNumSpecies(i)
-      p_Pot => Potential(i)
-      lmax_pot = lmax_p(i)
-      Grid => getGrid(i)
+   do id = 1,LocalNumAtoms
+      num_species = getLocalNumSpecies(id)
+      Potential(id)%NumSpecies = num_species
+      p_Pot => Potential(id)
+      lmax_pot = lmax_p(id)
+      Grid => getGrid(id)
       p_Pot%Grid   => Grid
       jmax_pot = ((lmax_pot+1)*(lmax_pot+2))/2
       jend = Grid%jend
@@ -515,33 +508,33 @@ contains
 !     ----------------------------------------------------------------
       p_Pot%ifit_XC = ir
 !     ================================================================
-      p_Pot%potr_sph    => getDataStorage( i, 'NewSphericalPotential', &
-                                 jend, n_spin_pola, RealMark )
+      p_Pot%potr_sph => getDataStorage( id, 'NewSphericalPotential',  &
+                                        jend, n_spin_pola, num_species, RealMark )
 !     ================================================================
       if ( isFullPot ) then
-         p_Pot%potL        => getDataStorage( i, 'L-Potential',        &
-                     jend, jmax_pot, n_spin_pola, ComplexMark )
-         p_Pot%potL_Tilda  => getDataStorage( i, 'TildaPotential',     &
-                                  jend, jmax_pot, ComplexMark )
-         p_Pot%potL_Madelung => getDataStorage( i, 'MadelungPotential',&
-                                  jend, jmax_pot, ComplexMark )
-         p_Pot%potL_Coulomb => getDataStorage( i, 'CoulombPotential',  &
-                                  jend, jmax_pot, ComplexMark )
-         p_Pot%potL_Exch   => getDataStorage( i, 'XchgCorrPotential',  &
-                     jend, jmax_pot, n_spin_pola, ComplexMark )
-         p_Pot%enL_Exch   => getDataStorage( i, 'XchgCorrEnergy',      &
-                     jend, jmax_pot, n_spin_pola, ComplexMark )
+         p_Pot%potL => getDataStorage( id, 'L-Potential',             &
+                                       jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
+         p_Pot%potL_Tilda => getDataStorage( id, 'TildaPotential',    &
+                                             jend, jmax_pot, num_species, ComplexMark )
+         p_Pot%potL_Madelung => getDataStorage( id, 'MadelungPotential',&
+                                                jend, jmax_pot, ComplexMark )
+         p_Pot%potL_Coulomb => getDataStorage( id, 'CoulombPotential',  &
+                                               jend, jmax_pot, num_species, ComplexMark )
+         p_Pot%potL_Exch => getDataStorage( id, 'XchgCorrPotential',  &
+                                            jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
+         p_Pot%enL_Exch => getDataStorage( id, 'XchgCorrEnergy',      &
+                                           jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
          if (.not.isMTFP) then
-            p_Pot%potL_Pseudo => getDataStorage( i, 'PseudoPotential',    &
-                                 jend, jmax_pot, ComplexMark )
-            p_Pot%potL_XCHat => getDataStorage( i, 'XchgCorrHatPotential',&
-                                jend, jmax_pot, n_spin_pola, ComplexMark )
-            p_Pot%enL_XCHat  => getDataStorage( i, 'XchgCorrHatEnergy',   &
-                                jend, jmax_pot, n_spin_pola, ComplexMark )
+            p_Pot%potL_Pseudo => getDataStorage( id, 'PseudoPotential',    &
+                                                 jend, jmax_pot, ComplexMark )
+            p_Pot%potL_XCHat => getDataStorage( id, 'XchgCorrHatPotential',&
+                                                jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
+            p_Pot%enL_XCHat  => getDataStorage( id, 'XchgCorrHatEnergy',   &
+                                                jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
          endif
       else
-         p_Pot%potL        => getDataStorage( i, 'L-Potential',        &
-                     jend, jmax_pot, n_spin_pola, ComplexMark )
+         p_Pot%potL => getDataStorage( id, 'L-Potential',             &
+                                       jend, jmax_pot, n_spin_pola, num_species, ComplexMark )
          nullify( p_Pot%potL_Tilda, p_Pot%potL_Madelung, p_Pot%potL_Exch, &
                   p_Pot%potL_Pseudo, p_Pot%potL_Coulomb, p_Pot%potL_XCHat )
          nullify( p_Pot%enL_Exch, p_Pot%enL_XCHat )
@@ -588,20 +581,20 @@ contains
    alpha_max = -1.0d+20
    MadelungSum = ZERO
    radius = TEN2m6
-   do i = 1, LocalNumAtoms
-      madmat => getMadelungMatrix(i)
+   do id = 1, LocalNumAtoms
+      madmat => getMadelungMatrix(id)
       alpha=ZERO
-      do j=1,GlobalNumAtoms
-         alpha=alpha+madmat(j)
+      do ig=1,GlobalNumAtoms
+         alpha=alpha+madmat(ig)
       enddo
       alpha_min = min(alpha_min,alpha)
       alpha_max = max(alpha_max,alpha)
       MadelungSum = MadelungSum + alpha
-      alpha_mad(i)=TWO*alpha*getVolume(i)
-      GlobalIndex(i) = getGlobalIndex(i)
-      LocalAtomPosi(1:3,i)=getLocalAtomPosition(i)
-      radius(i) = getOutscrSphRadius(i)
-radius(i) = getGridRadius(i)
+      alpha_mad(id)=TWO*alpha*getVolume(id)
+      GlobalIndex(id) = getGlobalIndex(id)
+      LocalAtomPosi(1:3,id)=getLocalAtomPosition(id)
+!     radius(id) = getOutscrSphRadius(id)
+      radius(id) = getGridRadius(id)
    enddo
 !
 !  ===================================================================
@@ -622,14 +615,14 @@ radius(i) = getGridRadius(i)
 !     ----------------------------------------------------------------
    endif
 !
-   deallocate(DataSize)
+   deallocate(DataSize, SpeciesDataSize)
+   deallocate( DataSizeL, SpeciesDataSizeL )
    if ( isFullPot ) then
 #ifdef POT_DEBUG
       call initSurfElements(istop,-1)
       call genGaussPoints()
       call genGaussSphHarmonics(lmax_max)
 #endif
-      deallocate( DataSizeL )
    endif
 !
    allocate( sqrt_r(0:jend_max) )
@@ -796,10 +789,12 @@ radius(i) = getGridRadius(i)
       call ErrorHandler('getSphPotr','invalid id',id)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getSphPotr','invalid spin index',is)
+   else if (ia < 1 .or. ia > Potential(id)%NumSpecies) then
+      call ErrorHandler('getSphPotr','invalid species index',ia)
    endif
 !
    npts = Potential(id)%Grid%jend
-   potr => Potential(id)%potr_sph(1:npts,is)
+   potr => Potential(id)%potr_sph(1:npts,is,ia)
 !
    end function getSphPotr
 !  ===================================================================
@@ -889,19 +884,17 @@ radius(i) = getGridRadius(i)
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function isPotComponentZero(id,is,jl) result(flag)
+   function isPotComponentZero(id,jl) result(flag)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id,is
+   integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: jl
 !
    logical :: flag
 !
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('isPotComponentZero','invalid id',id)
-   else if (is < 1 .or. is > n_spin_pola) then
-      call ErrorHandler('isPotComponentZero','invalid spin index',is)
    else if (jl < 1 .or. jl > Potential(id)%jmax) then
       flag = .true.
    else if (Potential(id)%PotCompFlag(jl) == 0) then
@@ -940,22 +933,24 @@ radius(i) = getGridRadius(i)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind):: id, is, nr, jl
+   integer (kind=IntKind):: id, is, nr, jl, ia
 !
    integer, pointer :: flag(:)
 !
    do id = 1,LocalNumAtoms
-      do is = 1,n_spin_pola
-         flag => Potential(id)%PotCompFlag(1:Potential(id)%jmax)
-         flag = 0
-         do jl = 1,Potential(id)%jmax
-            LOOP_NR: do nr = 1,Potential(id)%n_Rpts
-!              if ( abs(Potential(id)%potL(nr,jl,is)) > ten2m10) then
-               if ( abs(Potential(id)%potL(nr,jl,is)) > pot_tol) then
-                  flag(jl) = 1
-                  cycle LOOP_NR
-               endif
-            enddo LOOP_NR
+      flag => Potential(id)%PotCompFlag(1:Potential(id)%jmax)
+      flag = 0
+      do ia = 1, Potential(id)%NumSpecies
+         do is = 1,n_spin_pola
+            do jl = 1,Potential(id)%jmax
+               LOOP_NR: do nr = 1,Potential(id)%n_Rpts
+!                 if ( abs(Potential(id)%potL(nr,jl,is)) > ten2m10) then
+                  if ( abs(Potential(id)%potL(nr,jl,is,ia)) > pot_tol) then
+                     flag(jl) = 1
+                     cycle LOOP_NR
+                  endif
+               enddo LOOP_NR
+            enddo
          enddo
       enddo
    enddo
@@ -966,18 +961,16 @@ radius(i) = getGridRadius(i)
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getNumPotComponents(id,is)                   result(ncomp)
+   function getNumPotComponents(id)                   result(ncomp)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id,is
+   integer (kind=IntKind), intent(in) :: id
 !
    integer (kind=IntKind) :: ncomp
 !
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('getNumPotComponents','invalid id',id)
-   else if (is < 1 .or. is > n_spin_pola) then
-      call ErrorHandler('getNumPotComponents','invalid spin index',is)
    endif
 !
    ncomp = Potential(id)%NumFlagJl
@@ -988,13 +981,13 @@ radius(i) = getGridRadius(i)
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getPotentialAtPosi(potentialType,id,ia,is,posi) result(pot)
+   function getPotentialAtPosi(potentialType,site,atom,is,posi) result(pot)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: PotentialType
 !
-   integer (kind=IntKind), intent(in) :: id, ia, is
+   integer (kind=IntKind), intent(in) :: site, atom, is
 !
    real (kind=RealKind), intent(in) :: posi(3)
    real (kind=RealKind) :: pot
@@ -1010,10 +1003,12 @@ radius(i) = getGridRadius(i)
       end function getValueAtPosi
    end interface
 !
-   if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getPotential','invalid id',id)
+   if (site < 1 .or. site > LocalNumAtoms) then
+      call ErrorHandler('getPotential','invalid site',site)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getPotential','invalid is',is)
+   else if (atom < 1 .or. atom > Potential(site)%NumSpecies) then
+      call ErrorHandler('getPotential','invalid species index',atom)
    else if (isMTFP .and. PotentialType=="Pseudo" ) then
       call ErrorHandler('getPotential','invalid potential type','Pseudo')
    endif
@@ -1023,29 +1018,29 @@ radius(i) = getGridRadius(i)
          pot = -1.0d12
          return
       endif
-      pot_l => Potential(id)%potL(:,:,is)
+      pot_l => Potential(site)%potL(:,:,is,atom)
    else if ( PotentialType=="Pseudo" ) then
-      pot_l => Potential(id)%potL_Pseudo(:,:)
+      pot_l => Potential(site)%potL_Pseudo(:,:)
    else if ( PotentialType=="Tilda" ) then
-      pot_l => Potential(id)%potL_Tilda(:,:)
+      pot_l => Potential(site)%potL_Tilda(:,:,atom)
    else if ( PotentialType=="Coulomb" ) then
       if ( sqrt(posi(1)**2+posi(2)**2+posi(3)**2) < TEN2m8 ) then
          pot = -1.0d12
          return
       endif
-      pot_l => Potential(id)%potL_Coulomb(:,:)
+      pot_l => Potential(site)%potL_Coulomb(:,:,atom)
    else if ( PotentialType=="Madelung" ) then
-      pot_l => Potential(id)%potL_Madelung(:,:)
+      pot_l => Potential(site)%potL_Madelung(:,:)
    else if ( PotentialType=="Exchg" ) then
-      pot_l => Potential(id)%potL_Exch(:,:,is)
+      pot_l => Potential(site)%potL_Exch(:,:,is,atom)
    else if ( PotentialType=="En_Exchg" ) then
-      pot_l => Potential(id)%enL_Exch(:,:,is)
+      pot_l => Potential(site)%enL_Exch(:,:,is,atom)
    else
       call ErrorHandler("getPot_L","Undefined potential type")
    endif
 !
 !  -------------------------------------------------------------------
-   pot = getValueAtPosi(Potential(id)%Grid%r_mesh,posi,pot_l)
+   pot = getValueAtPosi(Potential(site)%Grid%r_mesh,posi,pot_l)
 !  -------------------------------------------------------------------
 !
    end function getPotentialAtPosi
@@ -1054,44 +1049,46 @@ radius(i) = getGridRadius(i)
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getPot_Lj(potentialType,id,ia,is,jl) result(pot_l)
+   function getPot_Lj(potentialType,site,atom,is,jl) result(pot_l)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: PotentialType
 !
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: site, atom
    integer (kind=IntKind), intent(in) :: is
    integer (kind=IntKind), intent(in) :: jl
    integer (kind=IntKind) :: iend
 !
    complex (kind=CmplxKind), pointer :: pot_l(:)
 !
-   if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getPotential','invalid id',id)
+   if (site < 1 .or. site > LocalNumAtoms) then
+      call ErrorHandler('getPotential','invalid site',site)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getPotential','invalid is',is)
-   else if (jl < 1 .or. jl > Potential(id)%jmax) then
+   else if (atom < 1 .or. atom > Potential(site)%NumSpecies) then
+      call ErrorHandler('getPotential','invalid species index',atom)
+   else if (jl < 1 .or. jl > Potential(site)%jmax) then
       call ErrorHandler('getPotential','invalid jl',jl)
    else if (isMTFP .and. nocaseCompare(PotentialType,"Pseudo") ) then
       call ErrorHandler('getPot_Lj','invalid potential type','Pseudo')
    endif
 !
-   iend = Potential(id)%Grid%jend
+   iend = Potential(site)%Grid%jend
    if ( nocaseCompare(PotentialType,"Total") ) then
-      pot_l => Potential(id)%potL(1:iend,jl,is)
+      pot_l => Potential(site)%potL(1:iend,jl,is,atom)
    else if ( nocaseCompare(PotentialType,"Pseudo") ) then
-      pot_l => Potential(id)%potL_Pseudo(1:iend,jl)
+      pot_l => Potential(site)%potL_Pseudo(1:iend,jl)
    else if ( nocaseCompare(PotentialType,"Tilda") ) then
-      pot_l => Potential(id)%potL_Tilda(1:iend,jl)
+      pot_l => Potential(site)%potL_Tilda(1:iend,jl,atom)
    else if ( nocaseCompare(PotentialType,"Madelung") ) then
-      pot_l => Potential(id)%potL_Madelung(1:iend,jl)
+      pot_l => Potential(site)%potL_Madelung(1:iend,jl)
    else if ( nocaseCompare(PotentialType,"Coulomb") ) then
-      pot_l => Potential(id)%potL_Coulomb(1:iend,jl)
+      pot_l => Potential(site)%potL_Coulomb(1:iend,jl,atom)
    else if ( nocaseCompare(PotentialType,"Exchg") ) then
-      pot_l => Potential(id)%potL_Exch(1:iend,jl,is)
+      pot_l => Potential(site)%potL_Exch(1:iend,jl,is,atom)
    else if ( nocaseCompare(PotentialType,"En_Exchg") ) then
-      pot_l => Potential(id)%enL_Exch(1:iend,jl,is)
+      pot_l => Potential(site)%enL_Exch(1:iend,jl,is,atom)
    else
       call ErrorHandler("getPot_Lj","Undefined potential type")
    endif
@@ -1102,42 +1099,44 @@ radius(i) = getGridRadius(i)
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getPot_L(potentialType,id,ia,is) result(pot_l)
+   function getPot_L(potentialType,site,atom,is) result(pot_l)
 !  ===================================================================
    implicit none
 !
    character (len=*), intent(in) :: PotentialType
 !
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: site, atom
    integer (kind=IntKind), intent(in) :: is
    integer (kind=IntKind) :: iend, jmax
 !
    complex (kind=CmplxKind), pointer :: pot_l(:,:)
 !
-   if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getPotential','invalid id',id)
+   if (site < 1 .or. site > LocalNumAtoms) then
+      call ErrorHandler('getPotential','invalid site',site)
    else if (is < 1 .or. is > n_spin_pola) then
       call ErrorHandler('getPotential','invalid is',is)
+   else if (atom < 1 .or. atom > Potential(site)%NumSpecies) then
+      call ErrorHandler('getPotential','invalid species index',atom)
    else if (isMTFP .and. nocaseCompare(PotentialType,"Pseudo") ) then
       call ErrorHandler('getPot_L','invalid potential type','Pseudo')
    endif
 !
-   iend = Potential(id)%Grid%jend
-   jmax = Potential(id)%jmax
+   iend = Potential(site)%Grid%jend
+   jmax = Potential(site)%jmax
    if ( nocaseCompare(PotentialType,"Total") ) then
-      pot_l => Potential(id)%potL(1:iend,1:jmax,is)
+      pot_l => Potential(site)%potL(1:iend,1:jmax,is,atom)
    else if ( nocaseCompare(PotentialType,"Pseudo") ) then
-      pot_l => Potential(id)%potL_Pseudo(1:iend,1:jmax)
+      pot_l => Potential(site)%potL_Pseudo(1:iend,1:jmax)
    else if ( nocaseCompare(PotentialType,"Tilda") ) then
-      pot_l => Potential(id)%potL_Tilda(1:iend,1:jmax)
+      pot_l => Potential(site)%potL_Tilda(1:iend,1:jmax,atom)
    else if ( nocaseCompare(PotentialType,"Coulomb") ) then
-      pot_l => Potential(id)%potL_Coulomb(1:iend,1:jmax)
+      pot_l => Potential(site)%potL_Coulomb(1:iend,1:jmax,atom)
    else if ( nocaseCompare(PotentialType,"Madelung") ) then
-      pot_l => Potential(id)%potL_Madelung(1:iend,1:jmax)
+      pot_l => Potential(site)%potL_Madelung(1:iend,1:jmax)
    else if ( nocaseCompare(PotentialType,"Exchg") ) then
-      pot_l => Potential(id)%potL_Exch(1:iend,1:jmax,is)
+      pot_l => Potential(site)%potL_Exch(1:iend,1:jmax,is,atom)
    else if ( nocaseCompare(PotentialType,"En_Exchg") ) then
-      pot_l => Potential(id)%enL_Exch(1:iend,1:jmax,is)
+      pot_l => Potential(site)%enL_Exch(1:iend,1:jmax,is,atom)
    else
       call ErrorHandler("getPot_L","Undefined potential type")
    endif
@@ -1154,9 +1153,9 @@ radius(i) = getGridRadius(i)
    use GroupCommModule, only : GlobalSumInGroup
    use Atom2ProcModule, only : getMaxLocalNumAtoms
    use Atom2ProcModule, only : getLocalIndex, getAtom2ProcInGroup
+   use AtomModule, only : getLocalSpeciesContent
 !
 #ifdef POT_DEBUG
-   use AtomModule, only : getLocalSpeciesContent
    use SurfElementsModule, only : getSurfAverage
 #endif
 !
@@ -1183,7 +1182,7 @@ radius(i) = getGridRadius(i)
    integer (kind=IntKind) :: MaxLocalAtoms
    integer (kind=IntKind), pointer :: flag_jl(:), p_flags(:)
 !
-   real (kind=RealKind) :: pot_r, pot_i, vol_ints, vtmp, vs, vs_mt
+   real (kind=RealKind) :: pot_r, pot_i, vol_ints, vtmp, vs, vs_mt, rfac
 #ifdef POT_DEBUG
    real (kind=RealKind) :: pot_aver(2), vol_int(6)
    real (kind=RealKind) :: potaver_tilda, potaver_hat,                 &
@@ -1241,9 +1240,9 @@ radius(i) = getGridRadius(i)
          r_mesh => Potential(id)%Grid%r_mesh(1:nRpts)
          do ia = 1, Potential(id)%NumSpecies
             do is = 1,n_spin_pola
-               pot_l => Potential(id)%potL(1:nRpts,1:Potential(id)%jmax,is)
+               pot_l => Potential(id)%potL(1:nRpts,1:Potential(id)%jmax,is,ia)
                do ir = 1,nRpts
-                  pot_l(ir,1) = Potential(id)%potr_sph(ir,is)/(Y0*r_mesh(ir))
+                  pot_l(ir,1) = Potential(id)%potr_sph(ir,is,ia)/(Y0*r_mesh(ir))
                enddo
             enddo
          enddo
@@ -1322,25 +1321,25 @@ radius(i) = getGridRadius(i)
                do jl = 1,Potential(id)%jmax
                   if ( is==1 ) then
                      if (isMTFP) then
-                        Potential(id)%potL_Coulomb(1:nRpts,jl) =  &
-                                   Potential(id)%potL_Tilda(1:nRpts,jl) +    &
+                        Potential(id)%potL_Coulomb(1:nRpts,jl,ia) =          &
+                                   Potential(id)%potL_Tilda(1:nRpts,jl,ia) + &
                                    Potential(id)%potL_Madelung(1:nRpts,jl)
                      else
-                        Potential(id)%potL_Coulomb(1:nRpts,jl) =  &
-                                   Potential(id)%potL_Tilda(1:nRpts,jl) +    &
+                        Potential(id)%potL_Coulomb(1:nRpts,jl,ia) =          &
+                                   Potential(id)%potL_Tilda(1:nRpts,jl,ia) + &
                                    Potential(id)%potL_Madelung(1:nRpts,jl) + &
                                    Potential(id)%potL_Pseudo(1:nRpts,jl)
                      endif
                   endif
-                  Potential(id)%potL(1:nRpts,jl,is) =  &
-                                Potential(id)%potL_Coulomb(1:nRpts,jl) +  &
-                                Potential(id)%potL_Exch(1:nRpts,jl,is)
+                  Potential(id)%potL(1:nRpts,jl,is,ia) =                     &
+                                Potential(id)%potL_Coulomb(1:nRpts,jl,ia) +  &
+                                Potential(id)%potL_Exch(1:nRpts,jl,is,ia)
                enddo
 !
                r_mesh => Potential(id)%Grid%r_mesh(1:nRpts)
                do ir = 1,nRpts
-                  pot_r = real(Potential(id)%potL(ir,1,is),kind=RealKind)
-                  Potential(id)%potr_sph(ir,is) = Y0*r_mesh(ir)*pot_r
+                  pot_r = real(Potential(id)%potL(ir,1,is,ia),kind=RealKind)
+                  Potential(id)%potr_sph(ir,is,ia) = Y0*r_mesh(ir)*pot_r
                enddo
             enddo
          enddo
@@ -1365,25 +1364,25 @@ radius(i) = getGridRadius(i)
          jmt  = Potential(id)%jmt
          do ia = 1, Potential(id)%NumSpecies
             do is = 1,n_spin_pola
-               pot_l => Potential(id)%potL(:,:,is)
+               pot_l => Potential(id)%potL(:,:,is,ia)
                pot_aver(is) = pot_aver(is) + &
                               getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
             enddo
-            pot_l => Potential(id)%potL_Tilda(:,:)
+            pot_l => Potential(id)%potL_Tilda(:,:,ia)
             pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
             potaver_tilda = potaver_tilda + pot_r*getLocalSpeciesContent(id,ia)
-            pot_l => Potential(id)%potL_Coulomb(:,:)
+            pot_l => Potential(id)%potL_Coulomb(:,:,ia)
             pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
             potaver_Coulomb = potaver_Coulomb + pot_r*getLocalSpeciesContent(id,ia)
-            pot_l => Potential(id)%potL_Madelung(:,:)
-            pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
-            potaver_madelung = potaver_madelung + pot_r*getLocalSpeciesContent(id,ia)
-            if (.not.isMTFP) then
-               pot_l => Potential(id)%potL_Pseudo(:,:)
-               pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
-               potaver_hat = potaver_hat + pot_r*getLocalSpeciesContent(id,ia)
-            endif
          enddo
+         pot_l => Potential(id)%potL_Madelung(:,:)
+         pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
+         potaver_madelung = potaver_madelung + pot_r
+         if (.not.isMTFP) then
+            pot_l => Potential(id)%potL_Pseudo(:,:)
+            pot_r = getSurfAverage(id,nRpts,lmax,r_mesh,pot_l)
+            potaver_hat = potaver_hat + pot_r*getLocalSpeciesContent(id,ia)
+         endif
       enddo
 !
       write(6,'(/,a,/)')   'Surface average potential before global sum:'
@@ -1424,274 +1423,334 @@ radius(i) = getGridRadius(i)
          kmax = (lmax+1)*(lmax+1)
          jend = Potential(id)%jend
          vol_ints = getVolume(id)-getInscrSphVolume(id)
-         do ia = 1, Potential(id)%NumSpecies
-            do is = 1,n_spin_pola
-               flag_jl => Potential(id)%PotCompFlag(1:jmax)
-               if ( isChargeSymmOn ) then
-                  p_flags => getSymmetryFlags(id)
-                  flag_jl(1:jmax) = p_flags(1:jmax)
+         flag_jl => Potential(id)%PotCompFlag(1:jmax)
+         if ( isChargeSymmOn ) then
+            p_flags => getSymmetryFlags(id)
+            flag_jl(1:jmax) = p_flags(1:jmax)
+            do ia = 1, Potential(id)%NumSpecies
+               do is = 1,n_spin_pola
                   do jl = 1,jmax
                      if ( flag_jl(jl) ==0 ) then
-                        Potential(id)%potL(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Exch(1:nRpts,jl,is) = CZERO
-                        Potential(id)%enL_Exch(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Coulomb(1:nRpts,jl)  = CZERO
-                        Potential(id)%potL_Tilda(1:nRpts,jl)    = CZERO
-                        Potential(id)%potL_Madelung(1:nRpts,jl) = CZERO
-                     endif
-                  enddo
-                  if (.not.isMTFP) then
-                     do jl = 1,jmax
-                        if ( flag_jl(jl) ==0 ) then
-                           Potential(id)%potL_Pseudo(1:nRpts,jl) = CZERO
-                        endif
-                     enddo
-                  endif
-               else
-                  flag_jl(1) = 1
-                  do jl = 2,jmax
-                     flag_jl(jl) = 0
-                     l = lofj(jl)
-                     LOOP_ir: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL(ir,jl,is)) > ONE/(10.0d0**(l+4)) ) then
-!                       if ( abs(Potential(id)%potL(ir,jl,is)) > pot_tol ) then
-                           flag_jl(jl) = 1
-                           exit LOOP_ir
-                        endif
-                     enddo LOOP_ir
-                     if ( flag_jl(jl) == 0 ) then
-                        Potential(id)%potL(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Exch(1:nRpts,jl,is)  = CZERO
-                        Potential(id)%enL_Exch(1:nRpts,jl,is)   = CZERO
-                     else
-                        if ( mofj(jl) /= 0 ) then
-                           do ir = 1,nRpts
-                              pot_r = real(Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              pot_i = real(cfact*Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              if ( abs(pot_r) /= ZERO  .and. abs(pot_i)/abs(pot_r)<TEN2m7 ) then
-                                 flag_jl(jl) = 1
-                                 Potential(id)%potL(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                                 pot_r = real(Potential(id)%potL_Coulomb(ir,jl),kind=RealKind)
-                              else if ( abs(pot_i)/=ZERO .and. abs(pot_r)/abs(pot_i)< TEN2m7 ) then
-                                 Potential(id)%potL(ir,jl,is) = cmplx(ZERO,pot_i,kind=CmplxKind)
-                                 flag_jl(jl) = 2
-                              else
-                                 flag_jl(jl) = 3
-                              endif
-                           enddo
-                        else
-                           do ir = 1,nRpts
-                              pot_r = real(Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              Potential(id)%potL(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           enddo
-                        endif
-                     endif
-                  enddo
-               endif
-!
-if (.false.) then
-               if ( isChargeSymmOn ) then
-                  p_flags => getSymmetryFlags(id)
-                  flag_jl(1:jmax) = p_flags(1:jmax)
-                  do jl = 1,jmax
-                     if ( flag_jl(jl) ==0 ) then
-                        Potential(id)%potL(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Coulomb(1:nRpts,jl)  = CZERO
-                        Potential(id)%potL_Exch(1:nRpts,jl,is)  = CZERO
-                        Potential(id)%enL_Exch(1:nRpts,jl,is)   = CZERO
-                        Potential(id)%potL_Tilda(1:nRpts,jl)    = CZERO
-                        Potential(id)%potL_Madelung(1:nRpts,jl) = CZERO
-                        Potential(id)%potL_Pseudo(1:nRpts,jl) = CZERO
+                        Potential(id)%potL(1:nRpts,jl,is,ia) = CZERO
+                        Potential(id)%potL_Exch(1:nRpts,jl,is,ia) = CZERO
+                        Potential(id)%enL_Exch(1:nRpts,jl,is,ia) = CZERO
+#ifdef UNCOMMENT
                      else if ( flag_jl(jl) == 1 ) then
                         do ir = 1,nRpts
-                           pot_r = real(Potential(id)%potL(ir,jl,is),kind=RealKind)
-                           Potential(id)%potL(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%potL_Coulomb(ir,jl),kind=RealKind)
-                           Potential(id)%potL_Coulomb(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%potL_Exch(ir,jl,is),kind=RealKind)
-                           Potential(id)%potL_Exch(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%enL_Exch(ir,jl,is),kind=RealKind)
-                           Potential(id)%enL_Exch(ir,jl,is)  = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%potL_Tilda(ir,jl),kind=RealKind)
-                           Potential(id)%potL_Tilda(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%potL_Madelung(ir,jl),kind=RealKind)
-                           Potential(id)%potL_Madelung(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           pot_r = real(Potential(id)%potL_Pseudo(ir,jl),kind=RealKind)
-                           Potential(id)%potL_Pseudo(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           pot_r = real(Potential(id)%potL(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%potL(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           pot_r = real(Potential(id)%potL_Exch(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%potL_Exch(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           pot_r = real(Potential(id)%enL_Exch(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%enL_Exch(ir,jl,is,ia)  = cmplx(pot_r,ZERO,kind=CmplxKind)
                         enddo
                      else if ( flag_jl(jl) == 2 ) then
                         do ir = 1,nRpts
-                           pot_r = real( cfact*Potential(id)%potL(ir,jl,is),kind=RealKind )
-                           Potential(id)%potL(ir,jl,is) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%potL_Coulomb(ir,jl),kind=RealKind )
-                           Potential(id)%potL_Coulomb(ir,jl) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%potL_Exch(ir,jl,is),kind=RealKind )
-                           Potential(id)%potL_Exch(ir,jl,is) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%enL_Exch(ir,jl,is),kind=RealKind )
-                           Potential(id)%enL_Exch(ir,jl,is)  = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%potL_Tilda(ir,jl),kind=RealKind )
-                           Potential(id)%potL_Tilda(ir,jl) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%potL_Madelung(ir,jl),kind=RealKind )
-                           Potential(id)%potL_Madelung(ir,jl)  = cmplx(ZERO,pot_r,kind=CmplxKind)
-                           pot_r = real( cfact*Potential(id)%potL_Pseudo(ir,jl),kind=RealKind )
-                           Potential(id)%potL_Pseudo(ir,jl)  = cmplx(ZERO,pot_r,kind=CmplxKind)
+                           pot_r = real( cfact*Potential(id)%potL(ir,jl,is,ia),kind=RealKind )
+                           Potential(id)%potL(ir,jl,is,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                           pot_r = real( cfact*Potential(id)%potL_Exch(ir,jl,is,ia),kind=RealKind )
+                           Potential(id)%potL_Exch(ir,jl,is,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                           pot_r = real( cfact*Potential(id)%enL_Exch(ir,jl,is,ia),kind=RealKind )
+                           Potential(id)%enL_Exch(ir,jl,is,ia)  = cmplx(ZERO,pot_r,kind=CmplxKind)
+                        enddo
+#endif
+                     endif
+                  enddo
+               enddo
+               do jl = 1,jmax
+                  if ( flag_jl(jl) ==0 ) then
+                     Potential(id)%potL_Coulomb(1:nRpts,jl,ia)  = CZERO
+                     Potential(id)%potL_Tilda(1:nRpts,jl,ia)    = CZERO
+#ifdef UNCOMMENT
+                  else if ( flag_jl(jl) == 1 ) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Coulomb(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Coulomb(ir,jl,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                        pot_r = real(Potential(id)%potL_Tilda(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Tilda(ir,jl,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+                  else if ( flag_jl(jl) == 2 ) then
+                     do ir = 1,nRpts
+                        pot_r = real( cfact*Potential(id)%potL_Coulomb(ir,jl,ia),kind=RealKind )
+                        Potential(id)%potL_Coulomb(ir,jl,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                        pot_r = real( cfact*Potential(id)%potL_Tilda(ir,jl,ia),kind=RealKind )
+                        Potential(id)%potL_Tilda(ir,jl,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                     enddo
+#endif
+                  endif
+               enddo
+            enddo
+            do jl = 1,jmax
+               if ( flag_jl(jl) ==0 ) then
+                  Potential(id)%potL_Madelung(1:nRpts,jl) = CZERO
+#ifdef UNCOMMENT
+               else if ( flag_jl(jl) == 1 ) then
+                  do ir = 1,nRpts
+                     pot_r = real(Potential(id)%potL_Madelung(ir,jl),kind=RealKind)
+                     Potential(id)%potL_Madelung(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                  enddo
+               else if ( flag_jl(jl) == 2 ) then
+                  do ir = 1,nRpts
+                     pot_r = real( cfact*Potential(id)%potL_Madelung(ir,jl),kind=RealKind )
+                     Potential(id)%potL_Madelung(ir,jl)  = cmplx(ZERO,pot_r,kind=CmplxKind)
+                  enddo
+#endif
+               endif
+            enddo
+            if (.not.isMTFP) then
+               do jl = 1,jmax
+                  if ( flag_jl(jl) ==0 ) then
+                     Potential(id)%potL_Pseudo(1:nRpts,jl) = CZERO
+#ifdef UNCOMMENT
+                  else if ( flag_jl(jl) == 1 ) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Pseudo(ir,jl),kind=RealKind)
+                        Potential(id)%potL_Pseudo(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+                  else if ( flag_jl(jl) == 2 ) then
+                     do ir = 1,nRpts
+                        pot_r = real( cfact*Potential(id)%potL_Pseudo(ir,jl),kind=RealKind )
+                        Potential(id)%potL_Pseudo(ir,jl)  = cmplx(ZERO,pot_r,kind=CmplxKind)
+                     enddo
+#endif
+                  endif
+               enddo
+            endif
+         else
+            flag_jl(1) = 1
+            do ia = 1, Potential(id)%NumSpecies
+               do is = 1,n_spin_pola
+                  do jl = 2,jmax
+                     flag_jl(jl) = 0
+                     l = lofj(jl)
+                     LOOP_nr0: do ir = 1,nRpts
+                        if ( abs(Potential(id)%potL(ir,jl,is,ia)) > ONE/(10.0d0**(l+4)) ) then
+!                       if ( abs(Potential(id)%potL(ir,jl,is,ia)) > pot_tol ) then
+                           flag_jl(jl) = 1
+                           exit LOOP_nr0
+                        endif
+                     enddo LOOP_nr0
+                  enddo
+               enddo
+            enddo
+            do ia = 1, Potential(id)%NumSpecies
+               do is = 1,n_spin_pola
+                  do jl = 2,jmax
+                     if ( flag_jl(jl) == 0 ) then
+                        Potential(id)%potL(1:nRpts,jl,is,ia) = CZERO
+                        Potential(id)%potL_Exch(1:nRpts,jl,is,ia)  = CZERO
+                        Potential(id)%enL_Exch(1:nRpts,jl,is,ia)   = CZERO
+                     else if (mofj(jl) == 0) then
+                        do ir = 1,nRpts
+                           pot_r = real(Potential(id)%potL(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%potL(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           pot_r = real(Potential(id)%potL_Exch(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%potL_Exch(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           pot_r = real(Potential(id)%enL_Exch(ir,jl,is,ia),kind=RealKind)
+                           Potential(id)%enL_Exch(ir,jl,is,ia)  = cmplx(pot_r,ZERO,kind=CmplxKind)
+                        enddo
+                     else
+                        do ir = 1,nRpts
+                           pot_r = real(Potential(id)%potL(ir,jl,is,ia),kind=RealKind)
+                           pot_i = real(cfact*Potential(id)%potL(ir,jl,is,ia),kind=RealKind)
+                           if ( abs(pot_r) /= ZERO  .and. abs(pot_i)/abs(pot_r)<TEN2m7 ) then
+                              flag_jl(jl) = 1
+                              Potential(id)%potL(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                              pot_r = real(Potential(id)%potL_Exch(ir,jl,is,ia),kind=RealKind)
+                              Potential(id)%potL_Exch(ir,jl,is,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                              pot_r = real(Potential(id)%enL_Exch(ir,jl,is,ia),kind=RealKind)
+                              Potential(id)%enL_Exch(ir,jl,is,ia)  = cmplx(pot_r,ZERO,kind=CmplxKind)
+                           else if ( abs(pot_i)/=ZERO .and. abs(pot_r)/abs(pot_i)< TEN2m7 ) then
+                              Potential(id)%potL(ir,jl,is,ia) = cmplx(ZERO,pot_i,kind=CmplxKind)
+                              flag_jl(jl) = 2
+                              pot_r = real(cfact*Potential(id)%potL_Exch(ir,jl,is,ia),kind=RealKind )
+                              Potential(id)%potL_Exch(ir,jl,is,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                              pot_r = real(cfact*Potential(id)%enL_Exch(ir,jl,is,ia),kind=RealKind )
+                              Potential(id)%enL_Exch(ir,jl,is,ia)  = cmplx(ZERO,pot_r,kind=CmplxKind)
+                           else
+                              flag_jl(jl) = 3
+                           endif
                         enddo
                      endif
- 
-                  enddo
-               else
-                  flag_jl = 0
-                  do jl = 2,jmax
+#ifdef UNCOMMENT
                      l = lofj(jl)
-                     LOOP_NR: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL(ir,jl,is)) > ONE/(10.0d0**(L+4)) ) then
-                           flag_jl(jl) = 1
-                           exit LOOP_NR
-                        endif
-                     enddo LOOP_NR
-                     if ( flag_jl(jl) == 0 ) then
-                        Potential(id)%potL(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Exch(1:nRpts,jl,is)  = CZERO
-                        Potential(id)%enL_Exch(1:nRpts,jl,is)   = CZERO
-                     endif
-!
-                     LOOP_NR1: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_Tilda(ir,jl)) > ONE/(10.0d0**(L+4)) ) then
-                           Potential(id)%potL_Tilda_flag(jl) = 1
-                           exit LOOP_NR1
-                        endif
-                     enddo LOOP_NR1
-                     LOOP_NR2: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_Madelung(ir,jl)) > ONE/(10.0d0**(L+4)) ) then
-                           Potential(id)%potL_Madelung_flag(jl) = 1
-                           exit LOOP_NR2
-                        endif
-                     enddo LOOP_NR2
-                     LOOP_NR3: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_Pseudo(ir,jl)) > ONE/(10.0d0**(L+4)) ) then
-                           Potential(id)%potL_Pseudo_flag(jl) = 1
-                           exit LOOP_NR3
-                        endif
-                     enddo LOOP_NR3
-                     LOOP_NR4: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_Coulomb(ir,jl)) > ONE/(10.0d0**(L+4)) ) then
-                           Potential(id)%potL_Coulomb_flag(jl) = 1 
-                           exit LOOP_NR4
-                        endif
-                     enddo LOOP_NR4
                      LOOP_NR5: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_Exch(ir,jl,is)) > ONE/(10.0d0**(L+4)) ) then
+                        if ( abs(Potential(id)%potL_Exch(ir,jl,is,ia)) > ONE/(10.0d0**(l+4)) ) then
                            Potential(id)%potL_Exch_flag(jl) = 1
                            exit LOOP_NR5
                         endif
                      enddo LOOP_NR5
                      LOOP_NR6: do ir = 1,nRpts
-                        if ( abs(Potential(id)%potL_XCHat(ir,jl,is)) > ONE/(10.0d0**(L+4)) ) then
+                        if ( abs(Potential(id)%potL_XCHat(ir,jl,is,ia)) > ONE/(10.0d0**(l+4)) ) then
                            Potential(id)%potL_XCHat_flag(jl) = 1
                            exit LOOP_NR6
                         endif
                      enddo LOOP_NR6
-!
-                     if ( flag_jl(jl) /= 0 ) then
-                        if ( mofj(jl) /= 0 ) then
-                           do ir = 1,nRpts
-                              pot_r = real(Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              pot_i = real(cfact*Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              if ( abs(pot_r) /= ZERO  .and. abs(pot_i)/abs(pot_r)<TEN2m7 ) then
-                                 flag_jl(jl) = 1
-                                 Potential(id)%potL(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                                 pot_r = real(Potential(id)%potL_Coulomb(ir,jl),kind=RealKind)
-                                 Potential(id)%potL_Coulomb(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                                 pot_r = real(Potential(id)%potL_Exch(ir,jl,is),kind=RealKind)
-                                 Potential(id)%potL_Exch(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                                 pot_r = real(Potential(id)%enL_Exch(ir,jl,is),kind=RealKind)
-                                 Potential(id)%enL_Exch(ir,jl,is)  = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              else if ( abs(pot_i)/=ZERO .and. abs(pot_r)/abs(pot_i)< TEN2m7 ) then
-                                 Potential(id)%potL(ir,jl,is) = cmplx(ZERO,pot_i,kind=CmplxKind)
-                                 flag_jl(jl) = 2
-                                 pot_r = real(cfact*Potential(id)%potL_Coulomb(ir,jl),kind=RealKind )
-                                 Potential(id)%potL_Coulomb(ir,jl) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                                 pot_r = real(cfact*Potential(id)%potL_Exch(ir,jl,is),kind=RealKind )
-                                 Potential(id)%potL_Exch(ir,jl,is) = cmplx(ZERO,pot_r,kind=CmplxKind)
-                                 pot_r = real(cfact*Potential(id)%enL_Exch(ir,jl,is),kind=RealKind )
-                                 Potential(id)%enL_Exch(ir,jl,is)  = cmplx(ZERO,pot_r,kind=CmplxKind)
-                              else
-                                 flag_jl(jl) = 3
-                              endif
-                           enddo
-                        else
-                           do ir = 1,nRpts
-                              pot_r = real(Potential(id)%potL(ir,jl,is),kind=RealKind)
-                              Potential(id)%potL(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%potL_Coulomb(ir,jl),kind=RealKind)
-                              Potential(id)%potL_Coulomb(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%potL_Exch(ir,jl,is),kind=RealKind)
-                              Potential(id)%potL_Exch(ir,jl,is) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%enL_Exch(ir,jl,is),kind=RealKind)
-                              Potential(id)%enL_Exch(ir,jl,is)  = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%potL_Tilda(ir,jl),kind=RealKind)
-                              Potential(id)%potL_Tilda(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%potL_Madelung(ir,jl),kind=RealKind)
-                              Potential(id)%potL_Madelung(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                              pot_r = real(Potential(id)%potL_Pseudo(ir,jl),kind=RealKind)
-                              Potential(id)%potL_Pseudo(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
-                           enddo
-                        endif
-                     else
-                        Potential(id)%potL(1:nRpts,jl,is) = CZERO
-                        Potential(id)%potL_Coulomb(1:nRpts,jl)  = CZERO
-                        Potential(id)%potL_Exch(1:nRpts,jl,is)  = CZERO
-                        Potential(id)%enL_Exch(1:nRpts,jl,is)   = CZERO
-                        Potential(id)%potL_Tilda(1:nRpts,jl)    = CZERO
-                        Potential(id)%potL_Madelung(1:nRpts,jl) = CZERO
-                        Potential(id)%potL_Pseudo(1:nRpts,jl) = CZERO
+#endif
+                  enddo
+               enddo
+               do jl = 2,jmax
+                  if ( flag_jl(jl) == 0 ) then
+                     Potential(id)%potL_Coulomb(1:nRpts,jl,ia) = CZERO
+                     Potential(id)%potL_Tilda(1:nRpts,jl,ia) = CZERO
+                  else if ( flag_jl(jl) == 1 ) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Coulomb(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Coulomb(ir,jl,ia) = cmplx(pot_r,ZERO,kind=RealKind)
+                        pot_r = real(Potential(id)%potL_Tilda(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Tilda(ir,jl,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+#ifdef UNCOMMENT
+                  else if (mofj(jl) == 0) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Coulomb(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Coulomb(ir,jl,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                        pot_r = real(Potential(id)%potL_Tilda(ir,jl,ia),kind=RealKind)
+                        Potential(id)%potL_Tilda(ir,jl,ia) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+                  else if (flag_jl(jl) == 2) then
+                     do ir = 1,nRpts
+                        pot_r = real(cfact*Potential(id)%potL_Coulomb(ir,jl,ia),kind=RealKind )
+                        Potential(id)%potL_Coulomb(ir,jl,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                        pot_r = real(cfact*Potential(id)%potL_Tilda(ir,jl,ia),kind=RealKind )
+                        Potential(id)%potL_Tilda(ir,jl,ia) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                     enddo
+#endif
+                  endif
+#ifdef UNCOMMENT
+                  l = lofj(jl)
+                  LOOP_NR4: do ir = 1,nRpts
+                     if ( abs(Potential(id)%potL_Coulomb(ir,jl,ia)) > ONE/(10.0d0**(l+4)) ) then
+                        Potential(id)%potL_Coulomb_flag(jl) = 1 
+                        exit LOOP_NR4
                      endif
+                  enddo LOOP_NR4
+                  LOOP_NR1: do ir = 1,nRpts
+                     if ( abs(Potential(id)%potL_Tilda(ir,jl,ia)) > ONE/(10.0d0**(l+4)) ) then
+                        Potential(id)%potL_Tilda_flag(jl) = 1
+                        exit LOOP_NR1
+                     endif
+                  enddo LOOP_NR1
+#endif
+               enddo
+            enddo
+            do jl = 2,jmax
+               if ( flag_jl(jl) == 0 ) then
+                  Potential(id)%potL_Madelung(1:nRpts,jl) = CZERO
+               else if ( flag_jl(jl) == 1 ) then
+                  do ir = 1,nRpts
+                     pot_r = real(Potential(id)%potL_Madelung(ir,jl),kind=RealKind)
+                     Potential(id)%potL_Madelung(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                  enddo
+#ifdef UNCOMMENT
+               else if (mofj(jl) == 0) then
+                  do ir = 1,nRpts
+                     pot_r = real(Potential(id)%potL_Madelung(ir,jl),kind=RealKind)
+                     Potential(id)%potL_Madelung(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                  enddo
+#endif
+               else if ( flag_jl(jl) == 2 ) then
+                  do ir = 1,nRpts
+                     pot_r = real( cfact*Potential(id)%potL_Madelung(ir,jl),kind=RealKind )
+                     Potential(id)%potL_Madelung(ir,jl)  = cmplx(ZERO,pot_r,kind=CmplxKind)
                   enddo
                endif
-endif
-!
-               do jl = 1,jmax
-                  Potential(id)%potL(jend+1:nRpts,jl,is) = CZERO
+#ifdef UNCOMMENT
+               l = lofj(jl)
+               LOOP_NR2: do ir = 1,nRpts
+                  if ( abs(Potential(id)%potL_Madelung(ir,jl)) > ONE/(10.0d0**(L+4)) ) then
+                     Potential(id)%potL_Madelung_flag(jl) = 1
+                     exit LOOP_NR2
+                  endif
+               enddo LOOP_NR2
+#endif
+            enddo
+            if (.not.isMTFP) then
+               do jl = 2,jmax
+                  if ( flag_jl(jl) == 0 ) then
+                     Potential(id)%potL_Pseudo(1:nRpts,jl) = CZERO
+                  else if ( flag_jl(jl) == 1 ) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Pseudo(ir,jl),kind=RealKind)
+                        Potential(id)%potL_Pseudo(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+#ifdef UNCOMMENT
+                  else if (mofj(jl) == 0) then
+                     do ir = 1,nRpts
+                        pot_r = real(Potential(id)%potL_Pseudo(ir,jl),kind=RealKind)
+                        Potential(id)%potL_Pseudo(ir,jl) = cmplx(pot_r,ZERO,kind=CmplxKind)
+                     enddo
+#endif
+                  else if ( flag_jl(jl) == 2 ) then
+                     do ir = 1,nRpts
+                        pot_r = real( cfact*Potential(id)%potL_Pseudo(ir,jl),kind=RealKind )
+                        Potential(id)%potL_Pseudo(ir,jl) = cmplx(ZERO,pot_r,kind=CmplxKind)
+                     enddo
+                  endif
+#ifdef UNCOMMENT
+                  l = lofj(jl)
+                  LOOP_NR3: do ir = 1,nRpts
+                     if ( abs(Potential(id)%potL_Pseudo(ir,jl)) > ONE/(10.0d0**(l+4)) ) then
+                        Potential(id)%potL_Pseudo_flag(jl) = 1
+                        exit LOOP_NR3
+                     endif
+                  enddo LOOP_NR3
+#endif
                enddo
-               Potential(id)%potr_sph(jend+1:nRpts,is) = ZERO
+            endif
+         endif
+!
+         do ia = 1, Potential(id)%NumSpecies
+            do is = 1,n_spin_pola
+               do jl = 1,jmax
+                  Potential(id)%potL(jend+1:nRpts,jl,is,ia) = CZERO
+               enddo
+               Potential(id)%potr_sph(jend+1:nRpts,is,ia) = ZERO
 !
                if (.not.isMTFP) then
                   r_mesh => Potential(id)%Grid%r_mesh(1:nRpts)
-                  pot_l => Potential(id)%potL(1:nRpts,1:jmax,is)
+                  pot_l => Potential(id)%potL(1:nRpts,1:jmax,is,ia)
+!                 ====================================================
+!                 Integration of potential over the intestitial region
+!                 ====================================================
                   vs = getVolumeIntegration( id, nRpts, r_mesh,         &
                                             kmax, jmax, 0, pot_l, vs_mt)
-                  V0_inter(is) = V0_inter(is) + vs - vs_mt  ! Integration of potential over 
-                                                            ! the intestitial region
+                  V0_inter(is) = V0_inter(is) + getLocalSpeciesContent(id,ia)*(vs - vs_mt)
                endif
+            enddo
+         enddo
 !
 #ifdef POT_DEBUG
-               pot_l => Potential(id)%potL(1:nRpts,1:jmax,is)
-               vol_int(1) = vol_int(1) + getVolumeIntegration( id, nRpts, &
+         do ia = 1, Potential(id)%NumSpecies
+            rfac = getLocalSpeciesContent(id,ia)
+            do is = 1,n_spin_pola
+               pot_l => Potential(id)%potL(1:nRpts,1:jmax,is,ia)
+               vol_int(1) = vol_int(1) + rfac*getVolumeIntegration( id, nRpts, &
                                             r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-               pot_l => Potential(id)%potL_Tilda(1:nRpts,1:jmax)
-               vol_int(2) = vol_int(2) + getVolumeIntegration( id, nRpts, &
+               pot_l => Potential(id)%potL_Exch(1:nRpts,1:jmax,is,ia)
+               vol_int(5) = vol_int(5) + rfac*getVolumeIntegration( id, nRpts, &
                                             r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-               pot_l => Potential(id)%potL_Madelung(1:nRpts,1:jmax)
-               vol_int(3) = vol_int(3) + getVolumeIntegration( id, nRpts, &
-                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-               if (isMTFP) then
-                  vol_int(4) = ZERO
-               else
-                  pot_l => Potential(id)%potL_Pseudo(1:nRpts,1:jmax)
-                  vol_int(4) = vol_int(4) + getVolumeIntegration( id, nRpts, &
-                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-               endif
-               pot_l => Potential(id)%potL_Exch(1:nRpts,1:jmax,is)
-               vol_int(5) = vol_int(5) + getVolumeIntegration( id, nRpts, &
-                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-               pot_l => Potential(id)%potL_Coulomb(1:nRpts,1:jmax)
-               vol_int(6) = vol_int(6) + getVolumeIntegration( id, nRpts, &
-                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
-#endif
             enddo
-!
-            Potential(id)%Madelung_Shift = ZERO
+            pot_l => Potential(id)%potL_Tilda(1:nRpts,1:jmax,ia)
+            vol_int(2) = vol_int(2) + rfac*getVolumeIntegration( id, nRpts, &
+                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
+            pot_l => Potential(id)%potL_Coulomb(1:nRpts,1:jmax,ia)
+            vol_int(6) = vol_int(6) + rfac*getVolumeIntegration( id, nRpts, &
+                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
          enddo
+         pot_l => Potential(id)%potL_Madelung(1:nRpts,1:jmax)
+         vol_int(3) = vol_int(3) + rfac*getVolumeIntegration( id, nRpts, &
+                                            r_mesh, kmax, jmax, 0, pot_l, vs_mt )
+         if (isMTFP) then
+            vol_int(4) = ZERO
+         else
+            pot_l => Potential(id)%potL_Pseudo(1:nRpts,1:jmax)
+            vol_int(4) = vol_int(4) + rfac*getVolumeIntegration( id, nRpts, &
+                                              r_mesh, kmax, jmax, 0, pot_l, vs_mt )
+         endif
+#endif
+!
+         Potential(id)%Madelung_Shift = ZERO
       enddo
       if (MyPE == 0) then
          write(6,'(/,a,f10.5,/)')'Time:: computeNewPotentail:: Loop_id 2: ',getTime()-t1
@@ -1718,10 +1777,10 @@ endif
          do ia = 1, Potential(id)%NumSpecies
             do is = 1,n_spin_pola
                do ir = 1,jend
-                  Potential(id)%potL(ir,1,is)= Potential(id)%potL(ir,1,is) - &
-                                               cmplx(V0_inter(is)/Y0,Zero,kind=CmplxKind)
-                  pot_r = real(Potential(id)%potL(ir,1,is),kind=RealKind)
-                  Potential(id)%potr_sph(ir,is) = Y0*r_mesh(ir)*pot_r
+                  Potential(id)%potL(ir,1,is,ia)= Potential(id)%potL(ir,1,is,ia) - &
+                                                  cmplx(V0_inter(is)/Y0,Zero,kind=CmplxKind)
+                  pot_r = real(Potential(id)%potL(ir,1,is,ia),kind=RealKind)
+                  Potential(id)%potr_sph(ir,is,ia) = Y0*r_mesh(ir)*pot_r
                enddo
             enddo
          enddo
@@ -1773,7 +1832,7 @@ endif
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind) :: j, is, ir, jmt
+   integer (kind=IntKind) :: j, is, ir, jmt, ia
 !
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: NewSphPotr(:)
@@ -1783,13 +1842,15 @@ endif
    do j = 1,LocalNumAtoms
       jmt = Potential(j)%jmt
       r_mesh => Potential(j)%Grid%r_mesh(1:jmt)
-      do is = 1,n_spin_pola
-         if (abs(v0(is)) > TEN2m8) then
-            NewSphPotr => Potential(j)%potr_sph(1:jmt,is)
-            do ir = 1, jmt
-               NewSphPotr(ir) = NewSphPotr(ir) - v0(is)*r_mesh(ir)
-            enddo
-         endif
+      do ia = 1, Potential(j)%NumSpecies
+         do is = 1,n_spin_pola
+            if (abs(v0(is)) > TEN2m8) then
+               NewSphPotr => Potential(j)%potr_sph(1:jmt,is,ia)
+               do ir = 1, jmt
+                  NewSphPotr(ir) = NewSphPotr(ir) - v0(is)*r_mesh(ir)
+               enddo
+            endif
+         enddo
       enddo
    enddo
 !
@@ -1810,9 +1871,11 @@ endif
    use InterpolationModule, only : FitInterp
    use IntegrationModule, only : calIntegration
 !
-   use AtomModule, only : getLocalAtomicNumber
+   use AtomModule, only : getLocalAtomicNumber, getLocalNumSpecies
+   use AtomModule, only : getLocalSpeciesContent
 !
-   use SystemModule, only : getAtomicNumber
+   use SystemModule, only : getAtomicNumber, getAlloyElementContent, &
+                            getNumAlloyElements
 !
    use SystemVolumeModule, only : getAtomicVPVolume
    use SystemVolumeModule, only : getSystemVolume
@@ -1823,7 +1886,8 @@ endif
 !
    use ChargeDistributionModule, only : getGlobalOnSiteElectronTableOld,   &
                                         getGlobalMTSphereElectronTableOld, &
-                                        getInterstitialElectronDensityOld
+                                        getInterstitialElectronDensityOld, &
+                                        getGlobalTableLine
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
@@ -1838,17 +1902,18 @@ endif
    real (kind=RealKind), pointer :: Q_Table(:)
    real (kind=RealKind), pointer :: Qmt_Table(:)
 !
-   integer (kind=IntKind) :: na, j, ia
+   integer (kind=IntKind) :: na, j, ia, lig
    integer (kind=IntKind) :: ir
    integer (kind=IntKind) :: is
    integer (kind=IntKind) :: jmt, jmt_max
    integer (kind=IntKind) :: n_Rpts
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind) :: dps
    real (kind=RealKind) :: ztotss
    real (kind=RealKind) :: surfamt
    real (kind=RealKind) :: rmt
-   real (kind=RealKind) :: qsub, dq
+   real (kind=RealKind) :: qsub, dq, dq_mt
    real (kind=RealKind) :: V2rmt
    real (kind=RealKind) :: sums(2)
    real (kind=RealKind) :: vsum, vmad_corr
@@ -1864,6 +1929,7 @@ endif
 !   real (kind=RealKind), allocatable :: vmt1(:)
 !
    rhoint = getInterstitialElectronDensityOld()
+   global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTableOld()
    Qmt_Table => getGlobalMTSphereElectronTableOld()
 !
@@ -1889,7 +1955,12 @@ endif
       madmat => getMadelungMatrix(na)
       vmt1(na) = ZERO
       do j=1,GlobalNumAtoms
-         qsub=(getAtomicNumber(j)-Q_Table(j))+rhoint*getAtomicVPVolume(j)
+         qsub = ZERO
+         do ia = 1, getNumAlloyElements(j)
+            lig = global_table_line(j) + ia
+            qsub = qsub + getAlloyElementContent(j,ia)*(getAtomicNumber(j,ia)-Q_Table(lig))
+         enddo
+         qsub = qsub + rhoint*getAtomicVPVolume(j)
          vmt1(na) = vmt1(na) + madmat(j)*qsub
       enddo
       vsum = vsum + TWO*vmt1(na)
@@ -1924,9 +1995,13 @@ endif
          j = GlobalIndex(na)
          dq = getDQinter(j,rhoint)
          vmt1(na)=vmt1(na)-TWO*dq/rmt
-         sums(1) = sums(1)                                            &
-                  +dq*( vmt1(na)+TWO*( (getLocalAtomicNumber(na)      &
-                                        -Qmt_Table(j))-dq )/rmt)
+         dq_mt = ZERO
+         do ia = 1, getLocalNumSpecies(na)
+            lig = global_table_line(j) + ia
+            dq_mt = dq_mt +                                           &
+                  getLocalSpeciesContent(na,ia)*(getLocalAtomicNumber(na,ia)-Qmt_Table(lig))
+         enddo
+         sums(1) = sums(1) + dq*(vmt1(na)+TWO*(dq_mt-dq)/rmt)
          sums(2) = sums(2) + dq
       enddo
 !     ----------------------------------------------------------------
@@ -2044,19 +2119,19 @@ endif
          do is =1, n_spin_pola
             Vexc => getExchCorrPot(jmt,is)
             do ir = 1, jmt
-               Potential(na)%potr_sph(ir,is) =                                  &
+               Potential(na)%potr_sph(ir,is,ia) =                                  &
                      TWO*(-ztotss+PI8*(V1_r(ir)+(V2rmt-V2_r(ir))*r_mesh(ir))) + &
                      (Vexc(ir) - vmt1(na))*r_mesh(ir)
             enddo
             do ir = jmt+1, n_Rpts
-               Potential(na)%potr_sph(ir,is) = ZERO
+               Potential(na)%potr_sph(ir,is,ia) = ZERO
             enddo
          enddo
-         Potential(na)%Madelung_Shift = -vmt1(na)
       enddo
+      Potential(na)%Madelung_Shift = -vmt1(na)
    enddo
 !
-!   deallocate( vmt1 )
+!  deallocate( vmt1 )
    deallocate(der_rho_ws, der_mom_ws)
    nullify( r_mesh, Vexc)
 !
@@ -2072,7 +2147,8 @@ endif
 !
    use PolyhedraModule, only : getVolume
 !
-   use SystemModule, only : getAtomicNumber
+   use SystemModule, only : getAtomicNumber, getNumAlloyElements,     &
+                            getAlloyElementContent
 !
    use SystemVolumeModule, only : getAtomicVPVolume, getTotalInterstitialVolume
 !
@@ -2082,7 +2158,8 @@ endif
 !
    use ChargeDistributionModule, only : getGlobalOnSiteElectronTableOld,   &
                                         getInterstitialElectronDensityOld, &
-                                        getInterstitialMomentDensity
+                                        getInterstitialMomentDensity,      &
+                                        getGlobalTableLine
 !
    use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
@@ -2093,7 +2170,8 @@ endif
    real (kind=RealKind) :: mdenint
    real (kind=RealKind), pointer :: Q_Table(:)
 !
-   integer (kind=IntKind) :: j, na, is
+   integer (kind=IntKind) :: j, na, is, lig, ia
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind), pointer :: madmat(:)
 !
@@ -2114,6 +2192,7 @@ endif
    else
       mdenint = ZERO
    endif
+   global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTableOld()
 !
 !  ===================================================================
@@ -2135,12 +2214,22 @@ endif
       madmat => getMadelungMatrix(na)
       term3 = ZERO
       do j = 1, GlobalNumAtoms
-         qsub=(getAtomicNumber(j)-Q_Table(j))+rhoint*getAtomicVPVolume(j)
+         qsub = ZERO
+         do ia = 1, getNumAlloyElements(j)
+            lig = global_table_line(j) + ia
+            qsub = qsub + getAlloyElementContent(j,ia)*(getAtomicNumber(j,ia)-Q_Table(lig))
+         enddo
+         qsub = qsub + rhoint*getAtomicVPVolume(j)
          term3=term3+madmat(j)*qsub
       enddo
 !
       j = GlobalIndex(na)
-      qsub=(getAtomicNumber(j)-Q_Table(j))+rhoint*getAtomicVPVolume(j)
+      qsub = ZERO
+      do ia = 1, getNumAlloyElements(j)
+         lig = global_table_line(j) + ia
+         qsub = qsub + getAlloyElementContent(j,ia)*(getAtomicNumber(j,ia)-Q_Table(lig))
+      enddo
+      qsub = qsub + rhoint*getAtomicVPVolume(j)
       vmt = vmt + (surfamt*(FIFTH*omegmt*rhoint+qsub) + term3*TWO*omegmt)
    enddo
    vmt = vmt/getTotalInterstitialVolume()
@@ -2187,6 +2276,7 @@ endif
       endif
 #endif
    enddo
+   nullify(global_table_line)
 !
    end subroutine calZeroPotential_MT
 !  ===================================================================
@@ -2198,9 +2288,9 @@ endif
 !
    use PolyhedraModule, only : getVolume
 !
-   use SystemModule, only : getAtomicNumber
-!
    use SystemVolumeModule, only : getSystemVolume, getTotalInterstitialVolume
+!
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
 !
    use MadelungModule, only : getMadelungMatrix
 !
@@ -2215,7 +2305,7 @@ endif
 !
    integer (kind=IntKind) :: id, nRpts, jmax
 
-   integer (kind=IntKind) :: j, na, is
+   integer (kind=IntKind) :: j, na, is, ia
 !
    real (kind=RealKind), pointer :: madmat(:)
 !
@@ -2231,9 +2321,11 @@ endif
       nRpts = Potential(id)%n_Rpts
       r_mesh => Potential(id)%Grid%r_mesh(1:nRpts)
       jmax = Potential(id)%jmax
-      pot_l => Potential(id)%potL_Tilda(1:nRpts,1:jmax)
-      vtmp = getVolumeIntegration( id, nRpts, r_mesh, jmax, 0, pot_l, volmt_int)
-      vol_int = vol_int + vtmp - volmt_int
+      do ia = 1, getLocalNumSpecies(id)
+         pot_l => Potential(id)%potL_Tilda(1:nRpts,1:jmax,ia)
+         vtmp = getVolumeIntegration( id, nRpts, r_mesh, jmax, 0, pot_l, volmt_int)
+         vol_int = vol_int + getLocalSpeciesContent(id,ia)*(vtmp - volmt_int)
+      enddo
       pot_l => Potential(id)%potL_Madelung(1:nRpts,1:jmax)
       vtmp = getVolumeIntegration( id, nRpts, r_mesh, jmax, 0, pot_l, volmt_int)
       vol_int = vol_int + vtmp - volmt_int
@@ -2297,6 +2389,7 @@ endif
    use AtomModule, only : getLocalAtomicNumber, getLocalSpeciesContent
 !
    use ChargeDistributionModule, only : getGlobalMTSphereElectronTableOld
+   use ChargeDistributionModule, only : getGlobalTableLine
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
@@ -2307,11 +2400,12 @@ endif
 !
    real (kind=RealKind), pointer :: Qmt_Table(:)
 !
-   integer (kind=IntKind) :: na, is, ir, n_Rpts, jmt, j, ia
+   integer (kind=IntKind) :: na, is, ir, n_Rpts, jmt, j, ia, lig
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind) :: rmt, dq_mt, rhoint_tmp, mdenint_tmp
    real (kind=RealKind) :: dps, vxout(2), sums(3)
-   real (kind=RealKind) :: vmt
+   real (kind=RealKind) :: vmt, rho_rmt, mden_rmt
    real (kind=RealKind), pointer :: rho0(:), mom0(:)
    real (kind=RealKind), pointer :: r_mesh(:)
 !
@@ -2324,13 +2418,19 @@ endif
 !  where:
 !       dQmt_i = Qmt_i - Z_i
 !  ===================================================================
+   global_table_line => getGlobalTableLine()
    Qmt_Table => getGlobalMTSphereElectronTableOld()
    vmt=ZERO
    do na = 1, LocalNumAtoms
       j     = GlobalIndex(na)
       rmt   = Potential(na)%Grid%rmt
-      dq_mt = Qmt_Table(j)-getLocalAtomicNumber(na)
-      vmt   = vmt+dq_mt/rmt
+      dq_mt = ZERO
+      do ia = 1, Potential(na)%NumSpecies
+         lig = global_table_line(j) + ia
+         dq_mt = dq_mt +                                              &
+           getLocalSpeciesContent(na,ia)*(Qmt_Table(lig)-getLocalAtomicNumber(na,ia))
+      enddo
+      vmt = vmt + dq_mt/rmt
    enddo
    vmt = TWO*vmt/real(GlobalNumAtoms,kind=RealKind)
 !  -------------------------------------------------------------------
@@ -2344,61 +2444,65 @@ endif
       rmt = Potential(na)%Grid%rmt
       r_mesh => Potential(na)%Grid%r_mesh(1:n_Rpts)
 !
+      rhoint_tmp = ZERO
+      mdenint_tmp = ZERO
       do ia = 1, Potential(na)%NumSpecies
          rho0 => getSphChargeDensity("TotalNew",na,ia)
          if (abs(rmt-r_mesh(jmt)) > TEN2m8) then
             do ir = 1, n_Rpts
                sqrt_r(ir) = sqrt(r_mesh(ir))
             enddo
-!        -------------------------------------------------------------
+!           ----------------------------------------------------------
             call FitInterp( n_Rpts, sqrt_r(1:n_Rpts), rho0(1:n_Rpts),     &
-                            sqrt(rmt), rhoint_tmp, dps )
-!        -------------------------------------------------------------
+                            sqrt(rmt), rho_rmt, dps )
+!           ----------------------------------------------------------
          else
-            rhoint_tmp = rho0(jmt)
+            rho_rmt = rho0(jmt)
          endif
+         rhoint_tmp = rhoint_tmp + getLocalSpeciesContent(na,ia)*rho_rmt
 !
          if (n_spin_pola == 2 .and. isInterstitialElectronPolarized()) then
             mom0 => getSphMomentDensity("TotalNew",na,ia)
             if (abs(rmt-r_mesh(jmt)) > TEN2m8) then
-!           ----------------------------------------------------------
+!              -------------------------------------------------------
                call FitInterp( n_Rpts, sqrt_r(1:n_Rpts), mom0(1:n_Rpts),  &
-                               sqrt(rmt), mdenint_tmp, dps )
-!           ----------------------------------------------------------
+                               sqrt(rmt), mden_rmt, dps )
+!              -------------------------------------------------------
             else
-               mdenint_tmp = mom0(jmt)
+               mden_rmt = mom0(jmt)
             endif
          else
-            mdenint_tmp = ZERO
+            mden_rmt = ZERO
          endif
-!
-         if (gga_functional) then
-            if (n_spin_pola == 1) then
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
-!              -------------------------------------------------------
-            else
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
-                                              mag_den=mdenint_tmp,der_mag_den=ZERO)
-!              -------------------------------------------------------
-            endif
-         else
-            if (n_spin_pola == 1) then
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp)
-!              -------------------------------------------------------
-            else
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
-!              -------------------------------------------------------
-            endif
-         endif
-         do is = 1,n_spin_pola
-            sums(is) = sums(is) + getExchCorrPot(is)
-         enddo
-         sums(3) = sums(3) + rhoint_tmp*getLocalSpeciesContent(na,ia)
+         mdenint_tmp = mdenint_tmp + getLocalSpeciesContent(na,ia)*mden_rmt
       enddo
+!
+      if (gga_functional) then
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
+                                           mag_den=mdenint_tmp,der_mag_den=ZERO)
+!           ----------------------------------------------------------
+         endif
+      else
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
+!           ----------------------------------------------------------
+         endif
+      endif
+      do is = 1,n_spin_pola
+         sums(is) = sums(is) + getExchCorrPot(is)
+      enddo
+      sums(3) = sums(3) + rhoint_tmp*getLocalSpeciesContent(na,ia)
    enddo
 !
    sums(1:3) = sums(1:3)/real(GlobalNumAtoms,kind=RealKind)
@@ -2418,6 +2522,7 @@ endif
 !
 !  rhoint_sav = rhoint_tmp
 !
+   nullify(global_table_line)
    nullify( rho0, mom0)
 !
    end subroutine calZeroPotential_ASA
@@ -2433,27 +2538,32 @@ endif
 !
    use PolyhedraModule, only : getVolume, getInscrSphRadius
 !
-   use SystemModule, only : getAtomicNumber
+   use SystemModule, only : getAtomicNumber, getNumAlloyElements, &
+                            getAlloyElementContent
 !
    use SystemVolumeModule, only : getAtomicVPVolume, getTotalInterstitialVolume
-
 !
    use MadelungModule, only : getMadelungMatrix
 !
    use ChargeDistributionModule, only : getGlobalOnSiteElectronTableOld, &
                                         getInterstitialElectronDensityOld
+   use ChargeDistributionModule, only : getGlobalTableLine
 !
    use ChargeDensityModule, only : getSphChargeDensity, getSphMomentDensity
 !
    use ExchCorrFunctionalModule, only : calSphExchangeCorrelation
    use ExchCorrFunctionalModule, only : getExchCorrPot
 !
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent, &
+                          getLocalAtomicNumber
+!
    implicit   none
 !
    real (kind=RealKind) :: rhoint
    real (kind=RealKind), pointer :: Q_Table(:)
 !
-   integer (kind=IntKind) :: j, na, is, ir, jmt, n_Rpts, ia
+   integer (kind=IntKind) :: j, na, is, ir, jmt, n_Rpts, ia, lig
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind), pointer :: madmat(:)
    real (kind=RealKind), pointer :: rho0(:)
@@ -2465,7 +2575,7 @@ endif
    real (kind=RealKind) :: omegmt
    real (kind=RealKind) :: qsub, term3, dps, vxout(2), dq
    real (kind=RealKind) :: rhoint_tmp, mdenint_tmp
-   real (kind=RealKind) :: vmt
+   real (kind=RealKind) :: vmt, rho_rmt, mden_rmt
    real (kind=RealKind) :: sums(3)
 !
    real (kind=RealKind), parameter :: FIFTH = ONE/FIVE
@@ -2483,6 +2593,7 @@ endif
 !  ===================================================================
 !
    rhoint = getInterstitialElectronDensityOld()
+   global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTableOld()
    vmt = zero
    do na = 1, LocalNumAtoms
@@ -2493,12 +2604,22 @@ endif
       madmat => getMadelungMatrix(na)
       term3 = ZERO
       do j = 1, GlobalNumAtoms
-         qsub=(getAtomicNumber(j)-Q_Table(j))+rhoint*getAtomicVPVolume(j)
+         qsub = ZERO
+         do ia = 1, getNumAlloyElements(j)
+            lig = global_table_line(j) + ia
+            qsub = qsub + getAlloyElementContent(j,ia)*(getAtomicNumber(j,ia)-Q_Table(lig))
+         enddo
+         qsub = qsub + rhoint*getAtomicVPVolume(j)
          term3 = term3 + madmat(j)*qsub
       enddo
 !
       j = GlobalIndex(na)
-      qsub=(getAtomicNumber(j)-Q_Table(j))+rhoint*getAtomicVPVolume(j)
+      qsub = ZERO
+      do ia = 1, getLocalNumSpecies(na)
+         lig = global_table_line(j) + ia
+         qsub = qsub + getLocalSpeciesContent(na,ia)*(getLocalAtomicNumber(na,ia)-Q_Table(lig))
+      enddo
+      qsub = qsub + rhoint*getAtomicVPVolume(j)
       vmt = vmt + (surfamt*(FIFTH*omegmt*rhoint+qsub) + term3*TWO*omegmt)
    enddo
    vmt = vmt/getTotalInterstitialVolume()
@@ -2523,65 +2644,69 @@ endif
       width = sqrt_r(jmt)-sqrt_r(jmt-1)
       sqrmt = sqrt(getInscrSphRadius(na))
 !
+      rhoint_tmp = ZERO
+      mdenint_tmp = ZERO
       do ia = 1, Potential(na)%NumSpecies
          do is = 1, n_spin_pola
              do ir = 1, jmt
-               Potential(na)%potr_sph(ir,is) = Potential(na)%potr_sph(ir,is) &
+               Potential(na)%potr_sph(ir,is,ia) = Potential(na)%potr_sph(ir,is,ia) &
                                             +vmt/(ONE+exp((sqrmt-sqrt_r(ir))/width))
             enddo
          enddo
 !
          rho0 => getSphChargeDensity("TotalNew",na,ia)
          if (abs(rmt-r_mesh(jmt)) > TEN2m8) then
-!        -------------------------------------------------------------
+!           ----------------------------------------------------------
             call FitInterp(n_Rpts,sqrt_r(1:n_Rpts),rho0(1:n_Rpts),sqrt(rmt),    &
-                           rhoint_tmp,dps)
-!        -------------------------------------------------------------
+                           rho_rmt,dps)
+!           ----------------------------------------------------------
          else
-            rhoint_tmp = rho0(jmt)
+            rho_rmt = rho0(jmt)
          endif
+         rhoint_tmp = rhoint_tmp + getLocalSpeciesContent(na,ia)*rho_rmt
 !
          if (n_spin_pola == 2) then
             mom0 => getSphMomentDensity("TotalNew",na,ia)
             if (abs(rmt-r_mesh(jmt)) > TEN2m8) then
-!           ----------------------------------------------------------
+!              -------------------------------------------------------
                call FitInterp(n_Rpts,sqrt_r(1:n_Rpts),mom0(1:n_Rpts),sqrt(rmt), &
-                              mdenint_tmp,dps)
-!           ----------------------------------------------------------
+                              mden_rmt,dps)
+!              -------------------------------------------------------
             else
-               mdenint_tmp = mom0(jmt)
+               mden_rmt = mom0(jmt)
             endif
          else
-            mdenint_tmp = ZERO
+            mden_rmt = ZERO
          endif
+         mdenint_tmp = mdenint_tmp + getLocalSpeciesContent(na,ia)*mden_rmt
+      enddo
 !
-         dq = getDQinter(j,rhoint_tmp)
-         sums(3) = sums(3) + dq
-         if (gga_functional) then
-            if (n_spin_pola == 1) then
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
-!              -------------------------------------------------------
-            else
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
-                                              mag_den=mdenint_tmp,der_mag_den=ZERO)
-!              -------------------------------------------------------
-            endif
+      dq = getDQinter(j,rhoint_tmp)
+      sums(3) = sums(3) + dq
+      if (gga_functional) then
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO)
+!           ----------------------------------------------------------
          else
-            if (n_spin_pola == 1) then
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp)
-!              -------------------------------------------------------
-            else
-!              -------------------------------------------------------
-               call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
-!              -------------------------------------------------------
-            endif
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,der_rho_den=ZERO, &
+                                           mag_den=mdenint_tmp,der_mag_den=ZERO)
+!           ----------------------------------------------------------
          endif
-         do is = 1,n_spin_pola
-            sums(is) = sums(is) + dq*getExchCorrPot(is)
-         enddo
+      else
+         if (n_spin_pola == 1) then
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp)
+!           ----------------------------------------------------------
+         else
+!           ----------------------------------------------------------
+            call calSphExchangeCorrelation(rhoint_tmp,mag_den=mdenint_tmp)
+!           ----------------------------------------------------------
+         endif
+      endif
+      do is = 1,n_spin_pola
+         sums(is) = sums(is) + dq*getExchCorrPot(is)
       enddo
    enddo
 !
@@ -2600,6 +2725,7 @@ endif
 !
    rhoint_sav = rhoint_tmp
 !
+   nullify(global_table_line)
    nullify( rho0, mom0)
 !
    end subroutine calZeroPotential_MTASA
@@ -2611,9 +2737,11 @@ endif
    subroutine printMadelungShiftTable(iter,fu)
 !  ===================================================================
    use ChargeDistributionModule, only : getGlobalMTSphereElectronTableOld, &
-                                        getGlobalOnSiteElectronTableOld
+                                        getGlobalOnSiteElectronTableOld, &
+                                        getGlobalTableLine
 !
    use SystemModule, only : getAtomicNumber, getAtomName, getAtomEnergy
+   use SystemModule, only : getNumAlloyElements
 !
    implicit none
 !
@@ -2621,7 +2749,8 @@ endif
 !
    integer (kind=IntKind), intent(in) :: iter
    integer (kind=IntKind), intent(in) :: fu
-   integer (kind=IntKind) :: ig
+   integer (kind=IntKind) :: ig, ia, na, lig
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind), pointer :: Qmt_Table(:)
    real (kind=RealKind), pointer :: Q_Table(:)
@@ -2663,22 +2792,46 @@ endif
       write(fu,'(60(''=''))')
    endif
 !
-   write(fu,'(a)')' Atom   Index      Q          Qmt        dQ        Vmad        Local Energy'
+   na = 1
+   LOOP_ig: do ig = 1, GlobalNumAtoms
+      na = getNumAlloyElements(ig)
+      if (na > 1) then
+         exit LOOP_ig
+      endif
+   enddo LOOP_ig
+!
+   if (na == 1) then
+      write(fu,'(a)')' Atom   Index      Q          Qmt        dQ        Vmad        Local Energy'
+   else
+      write(fu,'(a)')' Atom   Index           Q          Qmt        dQ        Vmad        Local Energy'
+   endif
+   global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTableOld()
    Qmt_Table => getGlobalMTSphereElectronTableOld()
    atom_en => getAtomEnergy()
    do ig = 1, GlobalNumAtoms
-!     write(fu,'(2x,a3,2x,i6,4(2x,f20.16))')getAtomName(ig), ig,         &
-      write(fu,'(2x,a3,2x,i6,4(2x,f9.5),6x,f12.5)')getAtomName(ig), ig,     &
-                                           Q_Table(ig),Qmt_Table(ig),       &
-                                           Q_Table(ig)-getAtomicNumber(ig), &
-                                           MadelungShiftTable(ig),atom_en(1,ig)
+      do ia = 1, getNumAlloyElements(ig)
+!        write(fu,'(2x,a3,2x,i6,4(2x,f20.16))')getAtomName(ig,ia), ig, ia,     &
+         if (na == 1) then
+            write(fu,'(2x,a3,2x,i6,4(2x,f9.5),6x,f12.5)')getAtomName(ig), ig,  &
+                                                 Q_Table(ig),Qmt_Table(ig),    &
+                                                 Q_Table(ig)-getAtomicNumber(ig), &
+                                                 MadelungShiftTable(ig),atom_en(1,ig)
+         else
+            lig = global_table_line(ig) + ia
+            write(fu,'(2x,a3,2x,i6,2x,i2,4(2x,f9.5),6x,f12.5)')getAtomName(ig,ia), ig, ia,  &
+                                                 Q_Table(lig),Qmt_Table(lig),         &
+                                                 Q_Table(lig)-getAtomicNumber(ig,ia), &
+                                                 MadelungShiftTable(lig),atom_en(1,ig)
+         endif
+      enddo
    enddo
    if (fu == 6) then
       write(fu,'(80(''=''),/)')
    else
       close(unit=fu)
    endif
+   nullify(global_table_line)
 !
    end subroutine printMadelungShiftTable
 !  ===================================================================
@@ -2750,14 +2903,19 @@ endif
 !  ===================================================================
    use SystemVolumeModule, only : getAtomicMTVolume, getAtomicVPVolume
 !
+   use SystemModule, only : getNumAlloyElements, getAlloyElementContent
+!
    use PotentialTypeModule, only : isASAPotential
 !
    use ChargeDistributionModule, only : getGlobalMTSphereElectronTableOld, &
-                                        getGlobalVPCellElectronTableOld
+                                        getGlobalVPCellElectronTableOld, &
+                                        getGlobalTableLine
 !
    implicit none
 !
    integer (kind=IntKind), intent(in) :: ig
+   integer (kind=IntKind) :: ia, lig
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind), intent(in) :: rhoint
    real (kind=RealKind), pointer :: Qmt_Table(:)
@@ -2770,14 +2928,24 @@ endif
 !
 !     dq_i = Q_i - Qmt_i - rho_0*Omega0_i = dQ_i - Z_i + Q_i
 !  *******************************************************************
+   global_table_line => getGlobalTableLine()
    Qmt_Table => getGlobalMTSphereElectronTableOld()
    Qvp_Table => getGlobalVPCellElectronTableOld()
    if (isASAPotential()) then
-      dq = Qvp_Table(ig) - Qmt_Table(ig)
+      dq = ZERO
+      do ia = 1, getNumAlloyElements(ig)
+         lig = global_table_line(ig) + ia
+         dq = dq + getAlloyElementContent(ig,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
+      enddo
    else
-      dq = Qvp_Table(ig) - Qmt_Table(ig)                              &
-          -rhoint*(getAtomicVPVolume(ig)-getAtomicMTVolume(ig))
+      dq = ZERO
+      do ia = 1, getNumAlloyElements(ig)
+         lig = global_table_line(ig) + ia
+         dq = dq + getAlloyElementContent(ig,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
+      enddo
+      dq = dq -rhoint*(getAtomicVPVolume(ig)-getAtomicMTVolume(ig))
    endif
+   nullify(global_table_line)
 !
    end function getDQinter
 !  ===================================================================
@@ -2839,13 +3007,13 @@ endif
          sqrt_r(ir) = sqrt(r_mesh(ir))
       enddo
 !
+      Potential(id)%potL_Tilda = CZERO  ! set ZERO here
       do ia = 1, Potential(id)%NumSpecies
          Zi = getLocalAtomicNumber(id,ia)
-         Potential(id)%potL_Tilda = CZERO  ! set ZERO here
          LoopJl:  do jl = 1,jmin
             l = lofj(jl)
             m = mofj(jl)
-            potl => Potential(id)%potL_Tilda(1:nRpts,jl)
+            potl => Potential(id)%potL_Tilda(1:nRpts,jl,ia)
 !           potl = CZERO
             rhol => getChargeDensity("Tilda",id, ia, jl)
             if ( l == 0 ) then
@@ -2969,7 +3137,8 @@ endif
    subroutine calInterPlusMadPot()
 !  ===================================================================
    use AtomModule, only : getLocalAtomicNumber
-   use SystemModule, only : getAtomicNumber, getAdditionalElectrons
+   use SystemModule, only : getAtomicNumber, getAdditionalElectrons,  &
+                            getNumAlloyElements, getAlloyElementContent
    use SystemVolumeModule, only : getSystemVolume
    use MadelungModule, only : getDLMatrix, getDLFactor, getMadelungMatrix
    use ChargeDensityModule, only : getMultipoleMoment,                &
@@ -2986,7 +3155,8 @@ endif
    integer (kind=IntKind) :: jl_pot, jmax_pot, kl_pot, m_pot, l_pot
    integer (kind=IntKind) :: kl_rho, kmax_rho, m_rho, l_rho, jl_rho
    integer (kind=IntKind) :: mdif, lsum,  jmax_rho
-   integer (kind=IntKind) :: local_id, id, kl, ir, n_RPts, jmt
+   integer (kind=IntKind) :: local_id, ig, ia, kl, ir, n_RPts, jmt, lig
+   integer (kind=IntKind), pointer :: table_line(:)
 !
    real (kind=RealKind)   :: Zi, Zj, a0, rho_neutral, rho_nj, alpha_mad
    real (kind=RealKind), target :: dlf_0(1:1)
@@ -2995,7 +3165,7 @@ endif
    real (kind=RealKind) :: t0
 #endif
 !
-   complex (kind=CmplxKind) :: sumjl, sumat
+   complex (kind=CmplxKind) :: sumjl, sumat, ql_av
    complex (kind=CmplxKind), allocatable, target :: dlm_0(:,:)
    complex (kind=CmplxKind), pointer :: dlm(:,:)
    complex (kind=CmplxKind), pointer :: v_tilt(:,:), ql(:)
@@ -3052,48 +3222,70 @@ endif
             lsum = l_pot+l_rho
             kl = (lsum+1)*(lsum+1)-lsum+mdif
 !
-            ql => getMultipoleMoment(jl_rho)
+            ql => getMultipoleMoment(jl_rho,table_line)
 !
             if (maxval(print_level) >= 1) then
-               do id = 1,GlobalNumAtoms
-                  if (l_rho == 0) then
-                     write(6,'(a,i4,a,2f18.14)')'id = ',id,', Q0*Y0-Zi, Q0*Y0        = ',  &
-           real(ql(id),kind=RealKind)*Y0-getAtomicNumber(id), real(ql(id),kind=RealKind)*Y0
-                     write(6,'(11x,a,2f18.14)')             'rho0, rho_neutral      = ',  &
-                          getInterstitialElectronDensity(),rho_neutral*Y0      
-                     write(6,'(11x,a,f18.14)')              'Zi-Q0*Y0+rho0*Omega_mt = ',  &
-           getAtomicNumber(id)-real(ql(id),kind=RealKind)*Y0+getInterstitialElectronDensity()*getInscrSphVolume(id)
-                  endif
+               do ig = 1,GlobalNumAtoms
+                  do ia = 1, getNumAlloyElements(ig)
+                     lig = table_line(ig)+ia
+                     if (l_rho == 0) then
+                        write(6,'(a,i4,a,i4,a,2f18.14)')                          &
+                           'ig = ',ig,', ia = ',ia,', Q0*Y0-Zi, Q0*Y0 = ',        &
+                           real(ql(lig),kind=RealKind)*Y0-getAtomicNumber(ig,ia), &
+                           real(ql(lig),kind=RealKind)*Y0
+                        write(6,'(14x,a,f18.14)')   'Zi-Q0*Y0+rho0*Omega_mt = ',  &
+                           getAtomicNumber(ig,ia)-real(ql(lig),kind=RealKind)*Y0+ &
+                           getInterstitialElectronDensity()*getInscrSphVolume(ig)
+                     endif
+                  enddo
+                  write(6,'(14x,a,2f18.14)')        'rho0, rho_neutral      = ',  &
+                           getInterstitialElectronDensity(),rho_neutral*Y0      
                   if (m_rho < 0) then
-                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',id,local_id, &
-                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',dlf(kl_rho)*m1m(m_rho)*dlm(id,kl)/a0**lsum
+                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',ig,local_id, &
+                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',           &
+                          dlf(kl_rho)*m1m(m_rho)*dlm(ig,kl)/a0**lsum
                   else
-                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',id,local_id, &
-                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',dlf(kl_rho)*dlm(id,kl)/a0**lsum
+                     write(6,'(a,6i4,a,2f18.14)')'i,j,L,Lp = ',ig,local_id, &
+                          l_pot,m_pot,l_rho,m_rho,', alpha_M = ',dlf(kl_rho)*dlm(ig,kl)/a0**lsum
                   endif
                enddo
             endif
 !
             sumat  = czero
             if ( m_rho<0 ) then
-               do id = 1,GlobalNumAtoms
-                  sumat = sumat + dlm(id,kl)*m1m(m_rho)*conjg(ql(id))/a0**lsum
+               do ig = 1,GlobalNumAtoms
+                  ql_av = CZERO
+                  do ia = 1, getNumAlloyElements(ig)
+                     lig = table_line(ig)+ia
+                     ql_av = ql_av + getAlloyElementContent(ig,ia)*ql(lig)
+                  enddo
+                  sumat = sumat + dlm(ig,kl)*m1m(m_rho)*conjg(ql_av)/a0**lsum
                enddo
             else
                if ( l_rho==0 ) then
-                  do id = 1,GlobalNumAtoms
-                     Zj = getAtomicNumber(id)
-                     sumat = sumat + dlm(id,kl)*(ql(id)-Zj/Y0)/a0**lsum
+                  do ig = 1,GlobalNumAtoms
+                     ql_av = CZERO
+                     do ia = 1, getNumAlloyElements(ig)
+                        lig = table_line(ig)+ia
+                        Zj = getAtomicNumber(ig,ia)
+                        ql_av = ql_av + getAlloyElementContent(ig,ia)*(ql(lig)-Zj/Y0)
+                     enddo
+                     sumat = sumat + dlm(ig,kl)*ql_av/a0**lsum
                   enddo
                else
-                  do id = 1,GlobalNumAtoms
-                     sumat = sumat + dlm(id,kl)*ql(id)/a0**lsum
+                  do ig = 1,GlobalNumAtoms
+                     ql_av = CZERO
+                     do ia = 1, getNumAlloyElements(ig)
+                        lig = table_line(ig)+ia
+                        ql_av = ql_av + getAlloyElementContent(ig,ia)*ql(lig)
+                     enddo
+                     sumat = sumat + dlm(ig,kl)*ql_av/a0**lsum
                   enddo
                endif
             endif
             sumjl = sumjl + dlf(kl_rho)*sumat
          enddo
-!         sumjl = ZERO
+!        sumjl = ZERO
 !
          if ( l_pot==0 ) then
             do ir = 1,n_RPts
@@ -3123,6 +3315,7 @@ endif
 !
    enddo
 !
+   nullify(table_line)
    deallocate( dlm_0 )
 !
 #ifdef TIMING
@@ -3527,9 +3720,9 @@ endif
    jend  = Potential(id)%jend
    r_mesh => Potential(id)%Grid%r_mesh
 !
-   potL_Exch => Potential(id)%potL_Exch
+   potL_Exch => Potential(id)%potL_Exch(:,:,:,ia)
    potL_Exch = CZERO
-   enL_Exch  => Potential(id)%enL_Exch
+   enL_Exch  => Potential(id)%enL_Exch(:,:,:,ia)
    enL_Exch  = CZERO
 !
 !  Early exit
@@ -3587,12 +3780,12 @@ endif
          endif
       endif
       do is = 1,n_spin_pola
-         V_exc => Potential(id)%potL_Exch(1:jend,1,is)
+         V_exc => Potential(id)%potL_Exch(1:jend,1,is,ia)
          V_tmp => getExchCorrPot(jend,is)
          do ir = 1,jend
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
          enddo
-         V_exc => Potential(id)%enL_Exch(1:jend,1,is)
+         V_exc => Potential(id)%enL_Exch(1:jend,1,is,ia)
          V_tmp => getExchCorrEnDen(jend)
          do ir = 1,jend
             V_exc(ir) = cmplx(V_tmp(ir)/Y0,ZERO,kind=CmplxKind)
@@ -4000,7 +4193,7 @@ endif
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printPot_L( i, jmax_in, pot_type, flag_rl, aux_name )
+   subroutine printPot_L( id, jmax_in, pot_type, flag_rl, aux_name )
 !  ===================================================================
    use MathParamModule, only: Ten2m12
    use MPPModule, only : MyPE
@@ -4010,11 +4203,11 @@ endif
    character (len=*), intent(in), optional :: pot_type, aux_name
 !
    integer (kind=IntKind), intent(in), optional :: flag_rl
-   integer (kind=IntKind), intent(in) :: i, jmax_in
+   integer (kind=IntKind), intent(in) :: id, jmax_in
 !
    character(len=50) :: file_potl
    character(len=9)  :: char_lm
-   integer (kind=IntKind) :: l, m, jl, is, jmax, ir, NumRs
+   integer (kind=IntKind) :: l, m, jl, is, jmax, ir, NumRs, ia
    integer (kind=IntKind) :: funit, ns, nc, len_potname
    integer (kind=IntKind) :: offset    = 100000
    integer (kind=IntKind) :: offset_at = 1000
@@ -4023,7 +4216,8 @@ endif
 !
    real (kind=RealKind), pointer :: r_mesh(:)
 !
-   complex (kind=CmplxKind), pointer :: potl_is(:,:,:), potl(:,:)
+   complex (kind=CmplxKind), pointer :: potl4(:,:,:,:), potl3(:,:,:), potl2(:,:)
+   complex (kind=CmplxKind), pointer :: potl(:,:)
 !
    if (isMTFP .and. nocaseCompare(pot_type,"Pseudo") ) then
       call ErrorHandler('printPot_L','invalid potential type','Pseudo')
@@ -4073,71 +4267,68 @@ endif
    write(file_potl(nc+1:nc+6),'(i6)') offset+MyPE
    file_potl(nc+1:nc+1) = 'n'
    file_potl(nc+7:nc+7) = '_'
-   write(file_potl(nc+8:nc+11),'(i4)') offset_at+i
+   write(file_potl(nc+8:nc+11),'(i4)') offset_at+id
    file_potl(nc+8:nc+8) = 'a'
-   funit = 55+MyPE+i
+   funit = 55+MyPE+id
    open(unit=funit,file=trim(file_potl),status='unknown')
 !
-   NumRs = Potential(i)%Grid%jend
-   r_mesh => Potential(i)%Grid%r_mesh(1:NumRs)
+   NumRs = Potential(id)%Grid%jend
+   r_mesh => Potential(id)%Grid%r_mesh(1:NumRs)
    if ( jmax_in>0 ) then
-      jmax =  min(jmax_in,Potential(i)%jmax)
+      jmax =  min(jmax_in,Potential(id)%jmax)
    else
-      jmax = Potential(i)%jmax
+      jmax = Potential(id)%jmax
    endif
 !
    if ( present(pot_type) ) then
       if ( nocaseCompare(pot_type,"Total") ) then
-         potl_is => Potential(i)%potL(:,:,:)
-         flag_jl => Potential(i)%PotCompFlag
-         ns = 2
+         potl4 => Potential(id)%potL
+         flag_jl => Potential(id)%PotCompFlag
+         ns = 4
       else if ( nocaseCompare(pot_type,"Tilda") ) then
-         potl => Potential(i)%potL_Tilda
-         flag_jl => Potential(i)%potL_Tilda_flag
-         ns = 1
+         potl3 => Potential(id)%potL_Tilda
+         flag_jl => Potential(id)%potL_Tilda_flag
+         ns = 3
       else if ( nocaseCompare(pot_type,"Coulomb") ) then
-         potl => Potential(i)%potL_Coulomb
-         flag_jl => Potential(i)%potL_Coulomb_flag
-         ns = 1
+         potl3 => Potential(id)%potL_Coulomb
+         flag_jl => Potential(id)%potL_Coulomb_flag
+         ns = 3
       else if ( nocaseCompare(pot_type,"Pseudo") ) then
-         potl => Potential(i)%potL_Pseudo
-         flag_jl => Potential(i)%potL_Pseudo_flag
-         ns = 1
+         potl2 => Potential(id)%potL_Pseudo
+         flag_jl => Potential(id)%potL_Pseudo_flag
+         ns = 2
       else if ( nocaseCompare(pot_type,"Madelung") ) then
-         potl => Potential(i)%potL_Madelung
-         flag_jl => Potential(i)%potL_Madelung_flag
-         ns = 1
+         potl2 => Potential(id)%potL_Madelung
+         flag_jl => Potential(id)%potL_Madelung_flag
+         ns = 2
       else if ( nocaseCompare(pot_type,"Exchg") ) then
-         potl_is => Potential(i)%potL_Exch
-         flag_jl => Potential(i)%potL_Exch_flag
-         ns = 2
+         potl4 => Potential(id)%potL_Exch
+         flag_jl => Potential(id)%potL_Exch_flag
+         ns = 4
       else if ( nocaseCompare(pot_type,"XCHat") ) then
-         potl_is => Potential(i)%potL_XCHat
-         flag_jl => Potential(i)%potL_XCHat_flag
-         ns = 2
+         potl4 => Potential(id)%potL_XCHat
+         flag_jl => Potential(id)%potL_XCHat_flag
+         ns = 4
       else if ( nocaseCompare(pot_type,"En_Exchg") ) then
-         potl_is => Potential(i)%enL_Exch
-         flag_jl => Potential(i)%potL_Exch_flag
-         ns = 2
+         potl4 => Potential(id)%enL_Exch
+         flag_jl => Potential(id)%potL_Exch_flag
+         ns = 4
       else if ( nocaseCompare(pot_type,"En_XCHat") ) then
-         potl_is => Potential(i)%enL_XCHat
-         flag_jl => Potential(i)%potL_XCHat_flag
-         ns = 2
+         potl4 => Potential(id)%enL_XCHat
+         flag_jl => Potential(id)%potL_XCHat_flag
+         ns = 4
       else
-         potl_is => Potential(i)%potL(:,:,:)
-         flag_jl => Potential(i)%PotCompFlag
-         ns = 2
+         potl4 => Potential(id)%potL
+         flag_jl => Potential(id)%PotCompFlag
+         ns = 4
       endif
    else
-      potl_is => Potential(i)%potL(:,:,:)
-      flag_jl => Potential(i)%PotCompFlag
-      ns = 2
+      potl4 => Potential(id)%potL
+      flag_jl => Potential(id)%PotCompFlag
+      ns = 4
    endif
 !
    do is = 1,n_spin_pola
-      if ( ns==2 ) then
-         potl => potl_is(:,:,is)
-      endif
       write(funit,'(a,$)') "# Ind       r_mesh"
       do jl = 1,jmax
          if ( flag_jl(jl) /= 0 ) then
@@ -4154,23 +4345,32 @@ endif
          endif
       enddo
       write(funit,'(a)') "  "
-      do ir = 1, NumRs
-         write(funit,'(i4,1x,d16.8,$)') i, r_mesh(ir)
-         JlLoop: do jl = 1,jmax
-            if ( flag_jl(jl) /= 0 ) then
-               l = lofj(jl)
-               if ( present(flag_rl) ) then
-                  if (flag_rl==0) then
-                      write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl) ! /(r_mesh(ir)**l)
+      do ia = 1, Potential(id)%NumSpecies
+         if (ns == 4) then
+            potl => potl4(:,:,is,ia)
+         else if (ns == 3) then
+            potl => potl3(:,:,ia)
+         else if (ns == 2) then
+            potl => potl2(:,:)
+         endif
+         do ir = 1, NumRs
+            write(funit,'(i4,1x,i4,1x,d16.8,$)') id,ia,r_mesh(ir)
+            JlLoop: do jl = 1,jmax
+               if ( flag_jl(jl) /= 0 ) then
+                  l = lofj(jl)
+                  if ( present(flag_rl) ) then
+                     if (flag_rl==0) then
+                         write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl) ! /(r_mesh(ir)**l)
+                     else
+                         write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl)/(r_mesh(ir)**l)
+                     endif
                   else
-                      write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl)/(r_mesh(ir)**l)
+                     write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl) ! /(r_mesh(ir)**l)
                   endif
-               else
-                  write(funit,'(1x,(2(1x,d16.8)),$)') potl(ir,jl) ! /(r_mesh(ir)**l)
                endif
-            endif
-         enddo JlLoop
-         write(funit,'(a)') " "
+            enddo JlLoop
+            write(funit,'(a)') " "
+         enddo
       enddo
    enddo
 !
@@ -4183,7 +4383,7 @@ endif
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printDensity_r(denType, id, nrs, r_mesh, den_r)
+   subroutine printDensity_r(denType, id, ia, nrs, r_mesh, den_r)
 !  ===================================================================
    use MathParamModule, only: Ten2m8
    use MPPModule, only : MyPE
@@ -4192,7 +4392,7 @@ endif
 !
    character (len=*), intent(in) :: denType
 !
-   integer (kind=IntKind), intent(in) :: id, nrs
+   integer (kind=IntKind), intent(in) :: id, ia, nrs
 !
    real (kind=RealKind), pointer :: r_mesh(:)
 !
@@ -4212,14 +4412,14 @@ endif
    file_den(lenDenName:lenDenName) = "_"
 !
    if ( id == 1 ) then
-      write(file_den(lenDenName+1:lenDenName+6),'(i6)') offset+MyPE+id
+      write(file_den(lenDenName+1:lenDenName+6),'(i6)') offset+MyPE+id*10+ia
       file_den(lenDenName+1:lenDenName+1) = 'n'
-      funit = 55+MyPE+id
+      funit = 55+MyPE+id*10+ia
       open(unit=funit,file=trim(file_den),status='unknown')
-      write(funit,'(a)') "#Ind     r_mesh   (lm):"
+      write(funit,'(a)') "#Ind   atom    r_mesh   (lm):"
       write(funit,'(a)') "  "
       do ir = 1, nrs
-         write(funit,'(i4,2(1x,d16.8))') id, r_mesh(ir), den_r(ir)
+         write(funit,'(2i5,2(1x,d16.8))') id, ia, r_mesh(ir), den_r(ir)
       enddo
       write(funit,'(a)') " "
       close(funit)
@@ -4274,13 +4474,15 @@ endif
    end interface
 !
    if (id < 1 .or. id > LocalNumAtoms) then
-      call ErrorHandler('getPotentialAtPoint','invalid id',id)
+      call ErrorHandler('getPotentialAtPoint','invalid site index',id)
    else if (isMTFP) then
       if ( nocaseCompare(potType,"Pseudo") .or. &
            nocaseCompare(potType,"XCHat") .or.  &
            nocaseCompare(potType,"En_XCHat") ) then
          call ErrorHandler('getPotentialAtPoint','invalid potential type for MTFP case',potType)
       endif
+   else if (ia < 1 .or. ia > Potential(id)%NumSpecies) then
+      call ErrorHandler('getPotentialAtPoint','invalid atom index on the site',ia,id)
    endif
 !
    if (present(jmax_in)) then
@@ -4332,23 +4534,23 @@ endif
    if ( .not.present(spin) ) then
       do ns = 1,n_spin_pola
          if ( nocaseCompare(potType,"Tilda") ) then
-            pot_l => Potential(id)%potL_Tilda(1:iend,1:jmax)
+            pot_l => Potential(id)%potL_Tilda(1:iend,1:jmax,ia)
          else if ( nocaseCompare(potType,"Madelung") ) then
             pot_l => Potential(id)%potL_Madelung(1:iend,1:jmax)
          else if ( nocaseCompare(potType,"Total") ) then
-            pot_l => Potential(id)%potL(1:iend,1:jmax,ns)
+            pot_l => Potential(id)%potL(1:iend,1:jmax,ns,ia)
          else if ( nocaseCompare(potType,"Pseudo") ) then
             pot_l => Potential(id)%potL_Pseudo(1:iend,1:jmax)
          else if ( nocaseCompare(potType,"Exchg") ) then
-            pot_l => Potential(id)%potL_Exch(1:iend,1:jmax,ns)
+            pot_l => Potential(id)%potL_Exch(1:iend,1:jmax,ns,ia)
          else if ( nocaseCompare(potType,"Coulomb") ) then
-            pot_l => Potential(id)%potL_Coulomb(1:iend,1:jmax)
+            pot_l => Potential(id)%potL_Coulomb(1:iend,1:jmax,ia)
          else if ( nocaseCompare(potType,"XCHat") ) then
-            pot_l => Potential(id)%potL_XCHat(1:iend,1:jmax,ns)
+            pot_l => Potential(id)%potL_XCHat(1:iend,1:jmax,ns,ia)
          else if ( nocaseCompare(potType,"En_Exchg") ) then
-            pot_l => Potential(id)%enL_Exch(1:iend,1:jmax,ns)
+            pot_l => Potential(id)%enL_Exch(1:iend,1:jmax,ns,ia)
          else if ( nocaseCompare(potType,"En_XCHat") ) then
-            pot_l => Potential(id)%enL_XCHat(1:iend,1:jmax,ns)
+            pot_l => Potential(id)%enL_XCHat(1:iend,1:jmax,ns,ia)
          else
             call ErrorHandler('getPotentialAtPoint','invalid potential type',potType)
 !           pot_l => Potential(id)%potL(1:iend,1:jmax,ns)
@@ -4374,23 +4576,23 @@ endif
          call ErrorHandler('getPotentialAtPoint','invalid spin index',spin)
       endif
       if ( nocaseCompare(potType,"Tilda") ) then
-         pot_l => Potential(id)%potL_Tilda(1:iend,1:jmax)
+         pot_l => Potential(id)%potL_Tilda(1:iend,1:jmax,ia)
       else if ( nocaseCompare(potType,"Madelung") ) then
          pot_l => Potential(id)%potL_Madelung(1:iend,1:jmax)
       else if ( nocaseCompare(potType,"Total") ) then
-         pot_l => Potential(id)%potL(1:iend,1:jmax,spin)
+         pot_l => Potential(id)%potL(1:iend,1:jmax,spin,ia)
       else if ( nocaseCompare(potType,"Pseudo") ) then
          pot_l => Potential(id)%potL_Pseudo(1:iend,1:jmax)
       else if ( nocaseCompare(potType,"Exchg") ) then
-         pot_l => Potential(id)%potL_Exch(1:iend,1:jmax,spin)
+         pot_l => Potential(id)%potL_Exch(1:iend,1:jmax,spin,ia)
       else if ( nocaseCompare(potType,"Coulomb") ) then
-         pot_l => Potential(id)%potL_Coulomb(1:iend,1:jmax)
+         pot_l => Potential(id)%potL_Coulomb(1:iend,1:jmax,ia)
       else if ( nocaseCompare(potType,"XCHat") ) then
-         pot_l => Potential(id)%potL_XCHat(1:iend,1:jmax,spin)
+         pot_l => Potential(id)%potL_XCHat(1:iend,1:jmax,spin,ia)
       else if ( nocaseCompare(potType,"En_Exchg") ) then
-         pot_l => Potential(id)%enL_Exch(1:iend,1:jmax,spin)
+         pot_l => Potential(id)%enL_Exch(1:iend,1:jmax,spin,ia)
       else if ( nocaseCompare(potType,"En_XCHat") ) then
-         pot_l => Potential(id)%enL_XCHat(1:iend,1:jmax,spin)
+         pot_l => Potential(id)%enL_XCHat(1:iend,1:jmax,spin,ia)
       else
          call ErrorHandler('getPotentialAtPoint','invalid potential type',potType)
 !        pot_l => Potential(id)%potL(1:iend,1:jmax,spin)

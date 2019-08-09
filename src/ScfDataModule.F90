@@ -1,6 +1,7 @@
 module ScfDataModule
    use KindParamModule, only : IntKind, RealKind
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
+   use PublicParamDefinitionsModule, only : MaxLenFileName
 !
 public :: initScfData,                 &
           endScfData,                  &
@@ -53,6 +54,7 @@ public :: initScfData,                 &
           getUJfile,                   &
           setSCFMethod,                &
           getPoleSearchStep,           &
+          retreiveEffectiveMediumParams,   &
           printScfData
 !
 public
@@ -159,11 +161,22 @@ public
    integer (kind=IntKind), private :: nFrozenCore = 0
    character (len=50), private :: FrozenCoreFile_name = ' '
 !
+!  ===================================================================
+!  Effective medium parameters
+!  ===================================================================
+   integer (kind=IntKind), private :: EM_mix_type=2
+   integer (kind=IntKind), private :: EM_max_iter = 30
+   real (kind=RealKind), private ::   EM_mix_0 = 0.1d0
+   real (kind=RealKind), private ::   EM_mix_1 = 0.01d0
+   real (kind=RealKind), private ::   EM_tol = 0.0000001d0
+   real (kind=RealKind), private ::   EM_switch = 0.003
+!
 contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initScfData(tbl_id)
 !  ===================================================================
    use MathParamModule, only : TEN2m6, TEN2m8, ZERO, TEN2m4, ONE
+   use PublicParamDefinitionsModule, only : ASA, MuffinTin, MuffinTinASA
    use InputModule, only : getKeyValue
    implicit none
 !
@@ -171,9 +184,9 @@ contains
 !
    integer (kind=IntKind) :: rstatus, n
 !
-   logical :: isDefined
-!
    character (len=50) :: s50
+!
+   real (kind=RealKind) :: rp(3)
 !
    TableID = tbl_id
 !
@@ -203,12 +216,27 @@ contains
    rstatus = getKeyValue(tbl_id,'Val. Electron Rel (>= 0)',nrelv)
    rstatus = getKeyValue(tbl_id,'Core Electron Rel (>= 0)',nrelc)
    rstatus = getKeyValue(tbl_id,'Charge Symmetry (>=0)',ChargeSymmetry)
-   rstatus = getKeyValue(tbl_id,'Single Site Solver (>= 0)',ss_solver_type)
    rstatus = getKeyValue(tbl_id,'SS Integration Method (>=0)',ss_integral_method)
+   rstatus = getKeyValue(tbl_id,'Potential Type (>= 0)',pot_type)
+!  rstatus = getKeyValue(tbl_id,'Single Site Solver (>= 0)',ss_solver_type)
+   if (getKeyValue(tbl_id,'Single Site Solver (>= 0)',ss_solver_type,default_param=.false.) /= 0) then
+      if (nrelv < 2) then
+         if (pot_type == ASA .or. pot_type == MuffinTin .or. pot_type == MuffinTinASA) then
+            ss_solver_type = 0
+         else
+            ss_solver_type = 2
+         endif
+      else
+         if (pot_type == ASA .or. pot_type == MuffinTin .or. pot_type == MuffinTinASA) then
+            ss_solver_type = 1
+         else
+            ss_solver_type = 3
+         endif
+      endif
+   endif
+!
    rstatus = getKeyValue(tbl_id,'SS Solutions Method (>=0)',ss_solution_method)
-   isDefined = .false.
-   rstatus = getKeyValue(tbl_id,'Single Site Solution Method (>=-1)',sss_method,isDefined)
-   if ( .not.isDefined ) then
+   if ( getKeyValue(tbl_id,'Single Site Solution Method (>=-1)',sss_method) /= 0) then
       if (ss_integral_method == 0) then
          sss_method = -1
       else if (ss_integral_method == 1 .and. ss_solution_method == 0) then
@@ -219,15 +247,22 @@ contains
          sss_method = 2
       endif
    endif
-   rstatus = getKeyValue(tbl_id,'SS Lmax Potential Solver',lmax_pot_solver,isDefined)
-   if ( .not.isDefined ) then
+   if ( getKeyValue(tbl_id,'SS Lmax Potential Solver',lmax_pot_solver) /= 0) then
       lmax_pot_solver = -1
    endif
-   rstatus = getKeyValue(tbl_id,'Solutions Lmax Cutoff',lmax_sol_cutoff,isDefined)
-   if ( .not.isDefined ) then
+   if ( getKeyValue(tbl_id,'Solutions Lmax Cutoff',lmax_sol_cutoff) /= 0) then
       lmax_sol_cutoff = -1
    endif
-   rstatus = getKeyValue(tbl_id,'Irregular Solutions (>=0)',ss_irrsol)
+!
+   if (getKeyValue(tbl_id,'Irregular Solutions (>=0)',ss_irrsol,default_param=.false.) /= 0) then
+      if (getKeyValue(tbl_id,'Irregular Solutions (>=0)',ss_irrsol,default_param=.true.) == 0) then
+         if (ss_irrsol == 0 .and. pot_type /= 3 .and. pot_type /= 5 .and. pot_type /= 6) then
+            ss_irrsol = 1  ! In case of default case and muffin-tin potential, enable irr. sol. calc.
+         endif
+      else
+         call ErrorHandler('initScfData','Input parameter is not found','Irregular Solutions (>=0)')
+      endif
+   endif
    if (ss_irrsol==1) then
 !     necessary to account for the boundary conditions of irregular solutions
       ss_solution_method = 1
@@ -238,7 +273,6 @@ contains
       pole_step = 0.010d0
    endif
    rstatus = getKeyValue(tbl_id,'Compute Phase Shifts (>=0)',ss_phaseshift)
-   rstatus = getKeyValue(tbl_id,'Potential Type (>= 0)',pot_type)
    rstatus = getKeyValue(tbl_id,'Exch-Corr. LDA Type (>= 0)',excorr_name)
    rstatus = getKeyValue(tbl_id,'Spin Index Param (>= 1)',nspin)
    if (nspin > 1) then
@@ -341,6 +375,16 @@ contains
       FrozenCoreFile_name = ' '
       FrozenCoreFile_specified = .false.
    endif
+!
+   rstatus = getKeyValue(tbl_id,'Effective Medium Mixing Scheme',EM_mix_type)
+   rstatus = getKeyValue(tbl_id,'Maximum Effective Medium Iterations',EM_max_iter)
+   if ( getKeyValue(tbl_id,'Effective Medium Mixing Parameters',2,rp) == 0) then
+      EM_mix_0 = rp(1); EM_mix_1 = rp(2)
+   else
+      call ErrorHandler('initScfData','Effective Medium Mixing Parameters are not found')
+   endif
+   rstatus = getKeyValue(tbl_id,'Effective Medium T-matrix Tol (> 0)',EM_tol)
+   rstatus = getKeyValue(tbl_id,'Effective Medium Mixing eSwitch Value',EM_switch)
 !
    end subroutine initScfData
 !  ===================================================================
@@ -756,7 +800,7 @@ contains
    function getKmeshFileName() result(fn)
 !  ===================================================================
    implicit none
-   character (len=100) :: fn
+   character (len=MaxLenFileName) :: fn
    fn = trim(adjustl(inputpath))//'kmeshs.inp'
    end function getKmeshFileName
 !  ===================================================================
@@ -767,7 +811,7 @@ contains
    function getEmeshFileName() result(fn)
 !  ===================================================================
    implicit none
-   character (len=100) :: fn
+   character (len=MaxLenFileName) :: fn
    fn = trim(adjustl(inputpath))//'emeshs.inp'
    end function getEmeshFileName
 !  ===================================================================
@@ -794,7 +838,7 @@ contains
 !
    logical :: isIrrSolOn
 !
-   if (ss_IrrSol == 0 ) then
+   if (ss_irrsol == 0 ) then
       isIrrSolOn = .false.
    else
       isIrrSolOn = .true.
@@ -812,7 +856,7 @@ contains
 !
    logical :: isChargeFitted
 !
-   if (ss_IrrSol == 0 .or. ss_IrrSol == 2 ) then
+   if (ss_irrsol == 0 .or. ss_irrsol == 2 ) then
       isChargeFitted = .false.
    else
       isChargeFitted = .true.
@@ -1251,7 +1295,7 @@ contains
    use InputModule, only : getKeyValue
    implicit none
 !
-   character (len=100) :: fn
+   character (len=MaxLenFileName) :: fn
 !
    integer (kind=IntKind) :: rstatus
 !
@@ -1275,5 +1319,31 @@ contains
    endif
 !
    end function getUJfile
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine retrieveEffectiveMediumParams(mix_type, max_iter,       &
+                                            alpha_0, alpha_1, eSwitch, tol)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), intent(out) :: mix_type
+   integer (kind=IntKind), intent(out) :: max_iter
+!
+   real (kind=RealKind), intent(out) ::  alpha_0
+   real (kind=RealKind), intent(out) ::  alpha_1
+   real (kind=RealKind), intent(out) ::  tol
+   real (kind=RealKind), intent(out) ::  eSwitch
+!
+   mix_type = EM_mix_type
+   max_iter = EM_max_iter
+   alpha_0  = EM_mix_0
+   alpha_1  = EM_mix_1
+   tol      = EM_tol
+   eSwitch  = EM_switch
+!
+   end subroutine retrieveEffectiveMediumParams
 !  ===================================================================
 end module ScfDataModule

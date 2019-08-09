@@ -437,7 +437,7 @@ contains
             do l = 0, lmax_pot(id)
                do m = 0, l
                   jl = jl + 1
-                  if (.not.isPotComponentZero(id,is,jl)) then
+                  if (.not.isPotComponentZero(id,jl)) then
                      write(6,'(a,i2,a,i2,a)')'Non-zero potential component at (l,m) channel: (',l,',',m,')'
                   endif
                enddo

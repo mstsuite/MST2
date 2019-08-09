@@ -1,7 +1,3 @@
-#ifdef CRAY
-#define dcopy scopy
-#endif
-!
 module PotentialModule
    use KindParamModule, only : IntKind, RealKind, CmplxKind
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
@@ -120,10 +116,10 @@ private
    real (kind=RealKind) :: v0(2)
    real (kind=RealKind), parameter :: pot_tol = TEN2m7
 !
+   integer (kind=IntKind) :: MaxNumSpecies
    integer (kind=IntKind), allocatable :: LdaPlusU_DataAccum(:)
    integer (kind=IntKind), allocatable :: NonSphPot_DataAccum(:)
    integer (kind=IntKind), allocatable :: NumSpecies(:)
-   integer (kind=IntKind) :: MaxSpecies = 1
 !
 contains
 !
@@ -170,7 +166,7 @@ contains
    integer (kind=IntKind) :: lmax_max_step
    integer (kind=IntKind) :: lmax_pot, jmax_pot, jend, jmt
    integer (kind=IntKind) :: lmax_max, jmax_max, l, m, ip, glb_lmax_max
-   integer (kind=IntKind) :: numc, ig, msg(4), MaxLocalNumAtoms
+   integer (kind=IntKind) :: numc, ig, msg(5), MaxLocalNumAtoms
 !
    integer (kind=IntKind), allocatable :: DataSize(:)
    integer (kind=IntKind), allocatable :: DataSize_trunc(:)
@@ -209,7 +205,7 @@ contains
    lmax_max = 0
    lmax_max_trunc = 0
    lmax_max_step  = 0
-   MaxSpecies = 0
+   MaxNumSpecies = 0
    do id = 1, LocalNumAtoms
       lmax_max=max(lmax_max, lmax(id))
       if ( isTruncatedPotential) then
@@ -219,7 +215,7 @@ contains
       endif
       ig = getGlobalIndex(id)
       NumSpecies(id) = getNumAlloyElements(ig)
-      MaxSpecies = max(MaxSpecies, NumSpecies(id))
+      MaxNumSpecies = max(MaxNumSpecies, NumSpecies(id))
    enddo
    jmax_max = (lmax_max+1)*(lmax_max+2)/2
    if ( .not.isTruncatedPotential ) then
@@ -372,7 +368,7 @@ contains
 !     ---------------------------------------------------------------
    endif
 !
-   allocate( Potential(LocalNumAtoms), efermi_in(MaxSpecies, LocalNumAtoms) )
+   allocate( Potential(LocalNumAtoms), efermi_in(MaxNumSpecies, LocalNumAtoms) )
    allocate( SiteMaxNumc(LocalNumAtoms) )
    SiteMaxNumc(1:LocalNumAtoms) = 0
    numcmax = 0
@@ -450,13 +446,15 @@ contains
    msg(2) = jwsmax
    msg(3) = numcmax
    msg(4) = lmax_max
+   msg(5) = MaxNumSpecies
 !  ------------------------------------------------------------------
-   call GlobalMaxInGroup(GroupID,msg,4)
+   call GlobalMaxInGroup(GroupID,msg,5)
 !  ------------------------------------------------------------------
    jmtmax = msg(1)
    jwsmax = msg(2)
    numcmax = msg(3)
    glb_lmax_max = msg(4)
+   MaxNumSpecies = msg(5)
 !
 !  ==================================================================
 !  determine the data size to be written for orbital dependent potentials
@@ -469,7 +467,7 @@ contains
       do id = 1, LocalNumAtoms
          ig = getGlobalIndex(id)
          if (checkLdaCorrection(id,1)) then ! temporary fix.....
-            LdaPlusU_DataAccum(ig) = getDataPackSize(id)
+            LdaPlusU_DataAccum(ig) = getDataPackSize(id)*NumSpecies(id)
          endif
       enddo
 !     ---------------------------------------------------------------
@@ -632,19 +630,17 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function isPotComponentZero(id,is,jl) result(flag)
+   function isPotComponentZero(id,jl) result(flag)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id,is
+   integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: jl
 !
    logical :: flag
 !
    if (id < 1 .or. id > LocalNumAtoms) then
       call ErrorHandler('isPotComponentZero','invalid id',id)
-   else if (is < 1 .or. is > n_spin_pola) then
-      call ErrorHandler('isPotComponentZero','invalid spin index',is)
    else if (jl < 1 .or. jl > Potential(id)%jmax) then
       flag = .true.
    else if (Potential(id)%PotCompFlag(jl) == 0) then
@@ -1656,11 +1652,11 @@ contains
 !     isChargeSymmOn = .false.
       do id =1, LocalNumAtoms
          Potential(id)%pot_l = CZERO
+!        -------------------------------------------------------------
+         call readFormattedData(id)
+!        -------------------------------------------------------------
          do ia = 1, NumSpecies(id)
-!           ----------------------------------------------------------
-            call readFormattedData(getInPotFileName(id,ia),id,ia)
-!           ----------------------------------------------------------
-            do is=1,n_spin_pola
+            do is = 1, n_spin_pola
 !              -------------------------------------------------------
                call setPotCompFlag(id,is,ia)
 !              -------------------------------------------------------
@@ -1681,11 +1677,11 @@ contains
       endif
       do id =1, LocalNumAtoms
          Potential(id)%pot_l = CZERO
+!        -------------------------------------------------------------
+         call readUnformattedData(vunit,id)
+!        -------------------------------------------------------------
          do ia = 1, NumSpecies(id)
-!           ----------------------------------------------------------
-            call readUnformattedData(vunit,id,ia)
-!           ----------------------------------------------------------
-            do is=1,n_spin_pola
+            do is = 1, n_spin_pola
 !              -------------------------------------------------------
                call setPotCompFlag(id,is,ia)
 !              -------------------------------------------------------
@@ -1766,9 +1762,11 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine readFormattedData(filename,id,ia)
+   subroutine readFormattedData(id)
 !  ===================================================================
    use MathParamModule, only : ZERO
+!
+   use PublicParamDefinitionsModule, only : MaxLenFileName
 !
    use InterpolationModule, only : PolyInterp, getInterpolation
 !
@@ -1795,23 +1793,25 @@ contains
                                        RealMark, ComplexMark, &
                                        IntegerType, IntegerMark
 !
+   use AtomModule, only : getInPotFileName
+!
    implicit none
 !
    logical :: nmd
 !
-   character (len=*), intent(in) :: filename
+   character (len=MaxLenFileName) :: filename
 !
    character (len=1) :: dummy
    character (len=MaxLenOfAtomName) :: atname
-   character (len=100) :: inp
+   character (len=MaxLenFileName) :: inp
    character (len=17), parameter :: sname='readFormattedData'
    character (len=10), parameter :: acc = 'SEQUENTIAL'
 !
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: id
 !
    integer (kind=IntKind), parameter :: funit=91
 !
-   integer (kind=IntKind) :: is, ig, js, n
+   integer (kind=IntKind) :: is, ig, js, n, ia
    integer (kind=IntKind) :: j_inter, irp
    integer (kind=IntKind) :: ns,j,jmt,nrrho,nrcor,jmax
    integer (kind=IntKind) :: numc,jz,jc,ios,lmax,jend,jl,nr,ir,jm,jlr
@@ -1853,307 +1853,311 @@ contains
                              SiteMaxNumc(id), n_spin_pola, NumSpecies(id), IntegerMark)
    endif
 !
-!  -------------------------------------------------------------------
-   open(unit=funit,file=filename,form='formatted',access=acc)
-!  -------------------------------------------------------------------
-!
-   read(funit,'(a)') ThisP%header
-   read(funit,'(i5,3x,d20.13)') ns,vdif(1)
-   if (ns /= n_spin_pola .and. MyPE == 0) then
-      inquire(unit=funit,named=nmd,name=inp)
-      write(6,'(''File Name: '',a)')trim(inp)
-      call WarningHandler(sname,'Spin in file <> n_spin_pola',ns,n_spin_pola)
-   endif
-   do is=1,ns
-      js = min(is,n_spin_pola)
-      read(funit,'(a)')ThisP%jtitle(js,ia)
-!     read(funit,'(f5.0,17x,f12.5,f5.0,e20.13)')ztss,alat,zcss,efermi_in(ia,id)
-      read(funit,*)ztss,alat,zcss,efermi_in(ia,id)
-      jz=ztss
-      ThisP%ztss(ia) = ztss
-      jc=zcss
-      ig = getGlobalIndex(id)
-      atname = getAlloyElementName(ig,ia)
-      if(jz /= getZtot(atname)) then
-         call ErrorHandler(sname,'Inconsistent atom type',ztss)
-      else if (jc /= getZcor(atname)) then
-         zcss = getZcor(atname)
-         jc=zcss
-         call WarningHandler(sname,'Deep core charge is changed to',zcss)
-      endif
-      read(funit,'(17x,2e20.13,i5)') xstart,xmt,jmt
-!
-      if (is == 1) then
-         allocate(vr(jmt,max(ns,n_spin_pola)))
-      endif
-!     ================================================================
-!     read in formatted one-electron LDA potential..............
-!     ================================================================
-      read(funit,'(4e20.13)') (vr(j,is),j=1,jmt)
-      read(funit,'(35x,e20.13)') vzero(is)
-!
-!     ================================================================
-      read(funit,'(i5,e20.13)') nrrho,xvalws(is)
-!     ================================================================
-!
-      if (is == 1) then
-         allocate(rhoin(nrrho,max(ns,n_spin_pola)))
-      endif
-!     ================================================================
-!     read in formatted total charge density....................
-!     ================================================================
-      read(funit,'(4e20.13)') (rhoin(j,is),j=1,nrrho)
-!
-!     ================================================================
-!     read in formatted core state information..................
-!     ================================================================
-      read(funit,'(2i5)') numc,nrcor
-      do j=1,numc
-         if (j <= getNumCoreStates(atname)) then
-            read(funit,*)nc,lc,kc,ec(j,js,ia)
-            pc0(j,js,ia) = getCoreStateIndex(nc,lc,kc)
-!           if (nc /= getCoreStateN(atname,j)) then
-!              call ErrorHandler(sname,'nc <> getCoreStateN()',nc,     &
-!                                getCoreStateN(atname,j))
-!           else if (lc /= getCoreStateL(atname,j)) then
-!              call ErrorHandler(sname,'lc <> getCoreStateL()',lc,     &
-!                                getCoreStateL(atname,j))
-!           else if (kc /= getCoreStateKappa(atname,j)) then
-!              call ErrorHandler(sname,'kc <> getCoreStateKappa()',kc, &
-!                                getCoreStateKappa(atname,j))
-!           endif
-         else
-            read(funit,*)nc,lc,kc,edum
-         endif
-      enddo
-!
-      if (numc > getNumCoreStates(atname)) then
-         if (print_level(id) >= 0) then
-            call WarningHandler(sname,'numc > getNumCoreStates()',numc,&
-                                getNumCoreStates(atname))
-         endif
-         call setNumCoreStates(atname,numc)
-      else if (numc < getNumCoreStates(atname) ) then
-         if (print_level(id) >= 0) then
-            call WarningHandler(sname,'numc < getNumCoreStates', numc, &
-                                getNumCoreStates(atname))
-         endif
-         call setNumCoreStates(atname,numc)
-      endif
-!
-      if (nrcor > 0) then
-         nrcor=ceiling(nrcor/4.0)       ! data is stored 4 numbers per line
-         read(funit,'(a)')(dummy,j=1,nrcor)
-      endif
-   enddo
-!
-   if (ns < n_spin_pola) then
-      xvalws(1) = HALF*xvalws(1)
-      xvalws(2) = xvalws(1)
-      do j = 1, jmt
-         vr(j,2) = vr(j,1)
-      enddo
-      vzero(2) = vzero(1)
-      do j=1,numc
-         if (j <= getNumCoreStates(atname)) then
-            ec(j,2,ia) = ec(j,1,ia)
-            pc0(j,2,ia)=pc0(j,1,ia)
-         endif
-      enddo
-      do j = 1, nrrho
-         rhoin(j,1) = HALF*rhoin(j,1)
-      enddo
-      do j = 1, nrrho
-         rhoin(j,2) = rhoin(j,1)
-      enddo
-   else if (ns > n_spin_pola) then
-      xvalws(1) = xvalws(1)+ xvalws(2)
-      do j = 1, jmt
-         vr(j,1) = HALF*(vr(j,1)+vr(j,2))
-      enddo
-      do j = 1, nrrho
-         rhoin(j,1) = rhoin(j,1)+rhoin(j,2)
-      enddo
-   endif
-!
-!  ===================================================================
-!  generate grid for potential read-in ......................
-!  ===================================================================
-   nrrho=max(nrrho,jmt)
-!
-   allocate(x_mesh(nrrho), r_mesh(nrrho))
-!
-   h=(xmt-xstart)/dble(jmt-1)
-   do j=1,nrrho
-      x_mesh(j)=xstart+(j-1)*h
-   enddo
-   do j=1,nrrho
-      r_mesh(j)=exp(x_mesh(j))
-   enddo
-!
    nr = getNumRmesh(id)
-!
    allocate(rhotot(nr))
+   rho0 => getDataStorage( id, 'OldSphericalElectronDensity',         &
+                           nr+1, NumSpecies(id), RealMark )
+   if (n_spin_pola == 2) then
+      mom0 => getDataStorage(id,'OldSphericalMomentDensity',          &
+                             nr+1, NumSpecies(id), RealMark )
+   endif
 !
-   do is = 1, n_spin_pola
-      do j=1,jmt
-         vr(j,is)=vr(j,is)-vzero(is)*r_mesh(j)
+   efermi = 100.0d0
+   do ia = 1, NumSpecies(id)
+      filename = getInPotFileName(id,ia)
+!     ----------------------------------------------------------------
+      open(unit=funit,file=filename,form='formatted',access=acc)
+!     ----------------------------------------------------------------
+!
+      read(funit,'(a)') ThisP%header
+      read(funit,'(i5,3x,d20.13)') ns,vdif(1)
+      if (ns /= n_spin_pola .and. MyPE == 0) then
+         inquire(unit=funit,named=nmd,name=inp)
+         write(6,'(''File Name: '',a)')trim(inp)
+         call WarningHandler(sname,'Spin in file <> n_spin_pola',ns,n_spin_pola)
+      endif
+      do is=1,ns
+         js = min(is,n_spin_pola)
+         read(funit,'(a)')ThisP%jtitle(js,ia)
+!        read(funit,'(f5.0,17x,f12.5,f5.0,e20.13)')ztss,alat,zcss,efermi_in(ia,id)
+         read(funit,*)ztss,alat,zcss,efermi_in(ia,id)
+         jz=ztss
+         ThisP%ztss(ia) = ztss
+         jc=zcss
+         ig = getGlobalIndex(id)
+         atname = getAlloyElementName(ig,ia)
+         if(jz /= getZtot(atname)) then
+            call ErrorHandler(sname,'Inconsistent atom type',ztss)
+         else if (jc /= getZcor(atname)) then
+            zcss = getZcor(atname)
+            jc=zcss
+            call WarningHandler(sname,'Deep core charge is changed to',zcss)
+         endif
+         read(funit,'(17x,2e20.13,i5)') xstart,xmt,jmt
+!
+         if (is == 1) then
+            allocate(vr(jmt,max(ns,n_spin_pola)))
+         endif
+!        =============================================================
+!        read in formatted one-electron LDA potential..............
+!        =============================================================
+         read(funit,'(4e20.13)') (vr(j,is),j=1,jmt)
+         read(funit,'(35x,e20.13)') vzero(is)
+!
+!        =============================================================
+         read(funit,'(i5,e20.13)') nrrho,xvalws(is)
+!        =============================================================
+!
+         if (is == 1) then
+            allocate(rhoin(nrrho,max(ns,n_spin_pola)))
+         endif
+!        =============================================================
+!        read in formatted total charge density....................
+!        =============================================================
+         read(funit,'(4e20.13)') (rhoin(j,is),j=1,nrrho)
+!
+!        =============================================================
+!        read in formatted core state information..................
+!        =============================================================
+         read(funit,'(2i5)') numc,nrcor
+         do j=1,numc
+            if (j <= getNumCoreStates(atname)) then
+               read(funit,*)nc,lc,kc,ec(j,js,ia)
+               pc0(j,js,ia) = getCoreStateIndex(nc,lc,kc)
+!              if (nc /= getCoreStateN(atname,j)) then
+!                 call ErrorHandler(sname,'nc <> getCoreStateN()',nc, &
+!                                   getCoreStateN(atname,j))
+!              else if (lc /= getCoreStateL(atname,j)) then
+!                 call ErrorHandler(sname,'lc <> getCoreStateL()',lc, &
+!                                   getCoreStateL(atname,j))
+!              else if (kc /= getCoreStateKappa(atname,j)) then
+!                 call ErrorHandler(sname,'kc <> getCoreStateKappa()',kc, &
+!                                   getCoreStateKappa(atname,j))
+!              endif
+            else
+               read(funit,*)nc,lc,kc,edum
+            endif
+         enddo
+!
+         if (numc > getNumCoreStates(atname)) then
+            if (print_level(id) >= 0) then
+               call WarningHandler(sname,'numc > getNumCoreStates()',numc,&
+                                   getNumCoreStates(atname))
+            endif
+            call setNumCoreStates(atname,numc)
+         else if (numc < getNumCoreStates(atname) ) then
+            if (print_level(id) >= 0) then
+               call WarningHandler(sname,'numc < getNumCoreStates', numc, &
+                                   getNumCoreStates(atname))
+            endif
+            call setNumCoreStates(atname,numc)
+         endif
+!
+         if (nrcor > 0) then
+            nrcor=ceiling(nrcor/4.0)       ! data is stored 4 numbers per line
+            read(funit,'(a)')(dummy,j=1,nrcor)
+         endif
       enddo
+!
+      if (ns < n_spin_pola) then
+         xvalws(1) = HALF*xvalws(1)
+         xvalws(2) = xvalws(1)
+         do j = 1, jmt
+            vr(j,2) = vr(j,1)
+         enddo
+         vzero(2) = vzero(1)
+         do j=1,numc
+            if (j <= getNumCoreStates(atname)) then
+               ec(j,2,ia) = ec(j,1,ia)
+               pc0(j,2,ia)=pc0(j,1,ia)
+            endif
+         enddo
+         do j = 1, nrrho
+            rhoin(j,1) = HALF*rhoin(j,1)
+         enddo
+         do j = 1, nrrho
+            rhoin(j,2) = rhoin(j,1)
+         enddo
+      else if (ns > n_spin_pola) then
+         xvalws(1) = xvalws(1)+ xvalws(2)
+         do j = 1, jmt
+            vr(j,1) = HALF*(vr(j,1)+vr(j,2))
+         enddo
+         do j = 1, nrrho
+            rhoin(j,1) = rhoin(j,1)+rhoin(j,2)
+         enddo
+      endif
 !
 !     ================================================================
-!     interpolate, potential and chg density onto GRID mesh
+!     generate grid for potential read-in ......................
 !     ================================================================
-      if (ThisP%Grid%jmt < n_inter) then
-!        -------------------------------------------------------------
-         call ErrorHandler(sname,'jmt < n_inter',ThisP%Grid%jmt,n_inter)
-!        -------------------------------------------------------------
-      endif
-      j_inter=1
-      do j=1,ThisP%Grid%jmt
-!        -------------------------------------------------------------
-   !!    call hunt(jmt,x_mesh,ThisP%Grid%x_mesh(j),j_inter)
-!        -------------------------------------------------------------
-   !!    if (j_inter > jmt-(n_inter-1)/2) then
-   !!       irp=jmt-n_inter+1
-   !!    else if (2*j_inter+1 > n_inter) then
-   !!       irp=j_inter-(n_inter-1)/2
-   !!    else
-   !!       irp=1
-   !!    endif
-!        -------------------------------------------------------------
-   !!    call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),           &
-   !!                    vr(irp:irp+n_inter-1,is),                    &
-   !!                    ThisP%Grid%x_mesh(j),ThisP%potr_sph(j,is,ia),err)
-   !!    call interp(r_mesh(1:jmt),vr(1:jmt,is),jmt,ThisP%Grid%r_mesh(j), &
-   !!                ThisP%potr_sph(j,is,ia),err)
-         ThisP%potr_sph(j,is,ia) =                                       &
-                     getInterpolation(jmt,x_mesh(1:jmt),vr(1:jmt,is), &
-                                      ThisP%Grid%x_mesh(j),err)
-         ThisP%pot_l(j,1,is,ia)=ThisP%potr_sph(j,is,ia)/(Y0*ThisP%Grid%r_mesh(j))
-!        -------------------------------------------------------------
+      nrrho=max(nrrho,jmt)
+!
+      allocate(x_mesh(nrrho), r_mesh(nrrho))
+!
+      h=(xmt-xstart)/dble(jmt-1)
+      do j=1,nrrho
+         x_mesh(j)=xstart+(j-1)*h
+      enddo
+      do j=1,nrrho
+         r_mesh(j)=exp(x_mesh(j))
       enddo
 !
-      do j=1,nr
-!        -------------------------------------------------------------
-  !!     call hunt(nrrho,x_mesh,ThisP%Grid%x_mesh(j),j_inter)
-!        -------------------------------------------------------------
-  !!     if (j_inter > nrrho-(n_inter-1)/2) then
-  !!        irp=nrrho-n_inter+1
-  !!     else if (2*j_inter+1 > n_inter) then
-  !!        irp=j_inter-(n_inter-1)/2
-  !!     else
-  !!        irp=1
-  !!     endif
-!        -------------------------------------------------------------
-  !!     call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),           &
-  !!                     rhoin(irp:irp+n_inter-1,is),                 &
-  !!                     ThisP%Grid%x_mesh(j),rhotot(j),err)
-!        -------------------------------------------------------------
-         rhotot(j) =                                                  &
-               getInterpolation(nrrho,x_mesh(1:nrrho),                &
-                                rhoin(1:nrrho,is),ThisP%Grid%x_mesh(j),err)
-      enddo
+      do is = 1, n_spin_pola
+         do j=1,jmt
+            vr(j,is)=vr(j,is)-vzero(is)*r_mesh(j)
+         enddo
 !
-      rho0 => getDataStorage( id, 'OldSphericalElectronDensity',      &
-                              nr+1, NumSpecies(id), RealMark )
-      if (is == 1) then
-         do ir = 1,nr
-            rho0(ir,ia) = rhotot(ir)/                                 &
-                         (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
+!        =============================================================
+!        interpolate, potential and chg density onto GRID mesh
+!        =============================================================
+         if (ThisP%Grid%jmt < n_inter) then
+!           ----------------------------------------------------------
+            call ErrorHandler(sname,'jmt < n_inter',ThisP%Grid%jmt,n_inter)
+!           ----------------------------------------------------------
+         endif
+         j_inter=1
+         do j=1,ThisP%Grid%jmt
+!           ----------------------------------------------------------
+   !!       call hunt(jmt,x_mesh,ThisP%Grid%x_mesh(j),j_inter)
+!           ----------------------------------------------------------
+   !!       if (j_inter > jmt-(n_inter-1)/2) then
+   !!          irp=jmt-n_inter+1
+   !!       else if (2*j_inter+1 > n_inter) then
+   !!          irp=j_inter-(n_inter-1)/2
+   !!       else
+   !!          irp=1
+   !!       endif
+!           ----------------------------------------------------------
+   !!       call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),           &
+   !!                       vr(irp:irp+n_inter-1,is),                    &
+   !!                       ThisP%Grid%x_mesh(j),ThisP%potr_sph(j,is,ia),err)
+   !!       call interp(r_mesh(1:jmt),vr(1:jmt,is),jmt,ThisP%Grid%r_mesh(j), &
+   !!                   ThisP%potr_sph(j,is,ia),err)
+            ThisP%potr_sph(j,is,ia) =                                    &
+                        getInterpolation(jmt,x_mesh(1:jmt),vr(1:jmt,is), &
+                                         ThisP%Grid%x_mesh(j),err)
+            ThisP%pot_l(j,1,is,ia)=ThisP%potr_sph(j,is,ia)/(Y0*ThisP%Grid%r_mesh(j))
+!           ----------------------------------------------------------
          enddo
-         rho0(nr+1,ia) = xvalws(is)
-      else
-         do ir = 1,nr
-            rho0(ir,ia) = rho0(ir,ia)+rhotot(ir)/                        &
-                         (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
+!
+         do j=1,nr
+!           ----------------------------------------------------------
+  !!        call hunt(nrrho,x_mesh,ThisP%Grid%x_mesh(j),j_inter)
+!           ----------------------------------------------------------
+  !!        if (j_inter > nrrho-(n_inter-1)/2) then
+  !!           irp=nrrho-n_inter+1
+  !!        else if (2*j_inter+1 > n_inter) then
+  !!           irp=j_inter-(n_inter-1)/2
+  !!        else
+  !!           irp=1
+  !!        endif
+!           ----------------------------------------------------------
+  !!        call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),        &
+  !!                        rhoin(irp:irp+n_inter-1,is),              &
+  !!                        ThisP%Grid%x_mesh(j),rhotot(j),err)
+!           ----------------------------------------------------------
+            rhotot(j) =                                               &
+                  getInterpolation(nrrho,x_mesh(1:nrrho),             &
+                                   rhoin(1:nrrho,is),ThisP%Grid%x_mesh(j),err)
          enddo
-         rho0(nr+1,ia) = rho0(nr+1,ia) + xvalws(is)
-      endif
-      if ( n_spin_pola==2 ) then
-         mom0 => getDataStorage(id,'OldSphericalMomentDensity',       &
-                                nr+1, NumSpecies(id), RealMark )
          if (is == 1) then
             do ir = 1,nr
-               mom0(ir,ia) = rhotot(ir)/                              &
-                         (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
+               rho0(ir,ia) = rhotot(ir)/                              &
+                            (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
             enddo
-            mom0(nr+1,ia) = xvalws(is)
+            rho0(nr+1,ia) = xvalws(is)
          else
             do ir = 1,nr
-               mom0(ir,ia) = mom0(ir,ia) - rhotot(ir)/                &
-                         (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
+               rho0(ir,ia) = rho0(ir,ia)+rhotot(ir)/                  &
+                            (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
             enddo
-            mom0(nr+1,ia) = mom0(nr+1,ia) - xvalws(is)
+            rho0(nr+1,ia) = rho0(nr+1,ia) + xvalws(is)
          endif
-      endif
-   enddo
-!
-   deallocate(vr,rhoin,rhotot)
-   deallocate(x_mesh, r_mesh)
-!
-   v0(1:2) = ZERO
-   call setLatticeConstant(ThisP%Grid%rmt)
-!
-   read(funit,'(5i8)',iostat=ios)lmax,jm,jmt,jend
-   if (ios == 0 .and. lmax > 0) then
-      jmax=min(jm,ThisP%jmax)
-      allocate(x_mesh(jend), r_mesh(jend), pot_l(jend))
-      pot_l = CZERO
-      read(funit,'(4d20.13)')xstart,xmt,hin,hout
-      do ir=1,jmt
-         x_mesh(ir)=xstart+(ir-1)*hin
-      enddo
-      do ir=jmt+1,jend
-         x_mesh(ir)=xmt+(ir-jmt)*hout
-      enddo
-      do ir=1,jend
-         r_mesh(ir)=exp(x_mesh(ir))
-      enddo
-      do is=1,n_spin_pola
-         do jl = 1, jmax
-            read(funit,'(2i5)')jlr,j
-            if (jl /= jlr) then
-               call ErrorHandler('readFormattedData','jl <> jlr',jl,jlr)
-            endif
-            if (j > 0) then
-               read(funit,'(4d20.13)')(pot_l(ir),ir=1,jend)
-               j_inter=1
-               do ir=1,ThisP%Grid%jend
-                  x=ThisP%Grid%x_mesh(ir)
-!                 ----------------------------------------------------
-                  call hunt(jend,x_mesh,x,j_inter)
-!                 ----------------------------------------------------
-                  if (j_inter > jend-(n_inter-1)/2) then
-                     irp=jend-n_inter+1
-                  else if (2*j_inter+1 > n_inter) then
-                     irp=j_inter-(n_inter-1)/2
-                  else
-                     irp=1
-                  endif
-!                 ----------------------------------------------------
-                  call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),     &
-                                  pot_l(irp:irp+n_inter-1),x,vc,err)
-!                 ----------------------------------------------------
-      !           ThisP%pot_l(ir,jlr,is,ia)=vc
-      ThisP%pot_l(ir,jlr,is,ia)=pot_l(ir)
+         if ( n_spin_pola==2 ) then
+            if (is == 1) then
+               do ir = 1,nr
+                  mom0(ir,ia) = rhotot(ir)/                           &
+                            (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
                enddo
+               mom0(nr+1,ia) = xvalws(is)
+            else
+               do ir = 1,nr
+                  mom0(ir,ia) = mom0(ir,ia) - rhotot(ir)/             &
+                            (PI4*ThisP%Grid%r_mesh(ir)*ThisP%Grid%r_mesh(ir))
+               enddo
+               mom0(nr+1,ia) = mom0(nr+1,ia) - xvalws(is)
             endif
-         enddo
+         endif
       enddo
-!     ================================================================
-      deallocate(x_mesh, r_mesh, pot_l)
-!     ================================================================
-      SphericalInputFile = .false.
-   else
-      do is=1,n_spin_pola
-         do ir=1,ThisP%Grid%jmt
-            ThisP%pot_l(ir,1,is,ia)=ThisP%potr_sph(ir,is,ia)/(Y0*ThisP%Grid%r_mesh(ir))
-         enddo
-      enddo
-   endif
-   efermi=min(efermi,efermi_in(ia,id))
 !
-   close(unit=funit)
+      deallocate(vr,rhoin,x_mesh,r_mesh)
+!
+      v0(1:2) = ZERO
+      call setLatticeConstant(ThisP%Grid%rmt)
+!
+      read(funit,'(5i8)',iostat=ios)lmax,jm,jmt,jend
+      if (ios == 0 .and. lmax > 0) then
+         jmax=min(jm,ThisP%jmax)
+         allocate(x_mesh(jend), r_mesh(jend), pot_l(jend))
+         pot_l = CZERO
+         read(funit,'(4d20.13)')xstart,xmt,hin,hout
+         do ir=1,jmt
+            x_mesh(ir)=xstart+(ir-1)*hin
+         enddo
+         do ir=jmt+1,jend
+            x_mesh(ir)=xmt+(ir-jmt)*hout
+         enddo
+         do ir=1,jend
+            r_mesh(ir)=exp(x_mesh(ir))
+         enddo
+         do is=1,n_spin_pola
+            do jl = 1, jmax
+               read(funit,'(2i5)')jlr,j
+               if (jl /= jlr) then
+                  call ErrorHandler('readFormattedData','jl <> jlr',jl,jlr)
+               endif
+               if (j > 0) then
+                  read(funit,'(4d20.13)')(pot_l(ir),ir=1,jend)
+                  j_inter=1
+                  do ir=1,ThisP%Grid%jend
+                     x=ThisP%Grid%x_mesh(ir)
+!                    -------------------------------------------------
+                     call hunt(jend,x_mesh,x,j_inter)
+!                    -------------------------------------------------
+                     if (j_inter > jend-(n_inter-1)/2) then
+                        irp=jend-n_inter+1
+                     else if (2*j_inter+1 > n_inter) then
+                        irp=j_inter-(n_inter-1)/2
+                     else
+                        irp=1
+                     endif
+!                    -------------------------------------------------
+                     call PolyInterp(n_inter,x_mesh(irp:irp+n_inter-1),     &
+                                     pot_l(irp:irp+n_inter-1),x,vc,err)
+!                    -------------------------------------------------
+                     ThisP%pot_l(ir,jlr,is,ia)=vc
+      !!             ThisP%pot_l(ir,jlr,is,ia)=pot_l(ir)
+                  enddo
+               endif
+            enddo
+         enddo
+!        =============================================================
+         deallocate(x_mesh, r_mesh, pot_l)
+!        =============================================================
+         SphericalInputFile = .false.
+      else
+         do is=1,n_spin_pola
+            do ir=1,ThisP%Grid%jmt
+               ThisP%pot_l(ir,1,is,ia)=ThisP%potr_sph(ir,is,ia)/(Y0*ThisP%Grid%r_mesh(ir))
+            enddo
+         enddo
+      endif
+      efermi=min(efermi,efermi_in(ia,id))
+!
+      close(unit=funit)
+   enddo
+   deallocate(rhotot)
 !
    end subroutine readFormattedData
 !  ===================================================================
@@ -2161,7 +2165,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine readUnformattedData(vunit,id,ia)
+   subroutine readUnformattedData(vunit,id)
 !  ===================================================================
    use PotentialTypeModule, only : isMuffinTinPotential, isFullPotential
    use SystemModule, only : setLatticeConstant, getNumAtoms, getAtomName, &
@@ -2185,32 +2189,31 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: vunit
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: id
 !
    character (len=19), parameter :: sname='readUnformattedData'
    character (len=20) :: istop
-   character (len=MaxLenOfAtomName)  :: atname
    character (len=80) :: header
-   character (len=5), allocatable  :: lst(:,:)
+   character (len=5) :: lst(numcmax,n_spin_pola,MaxNumSpecies)
+   character (len=MaxLenOfAtomName) :: atname(MaxNumSpecies)
 !
-   integer (kind=IntKind) :: na, id_g, nspin, iform
-   integer (kind=IntKind) :: jmt, jws, i, is, nr, nrmax, n
-   integer (kind=IntKind) :: numc, DataSize(LocalNumAtoms)
-   integer (kind=IntKind), allocatable :: nc(:,:), lc(:,:), kc(:,:)
+   integer (kind=IntKind) :: na, id_g, nspin
+   integer (kind=IntKind) :: jmt, jws, i, is, nr, nrmax, n, ia
+   integer (kind=IntKind) :: numc(MaxNumSpecies), DataSize(LocalNumAtoms)
+   integer (kind=IntKind) :: nc(numcmax,n_spin_pola,MaxNumSpecies)
+   integer (kind=IntKind) :: lc(numcmax,n_spin_pola,MaxNumSpecies)
+   integer (kind=IntKind) :: kc(numcmax,n_spin_pola,MaxNumSpecies)
    integer (kind=IntKind), pointer :: pc0(:,:,:)
 !
-   real (kind=RealKind) ::  evec(3)
-   real (kind=RealKind) :: ztotss, zcorss
-   real (kind=RealKind) :: xvalws(n_spin_pola)
+   real (kind=RealKind) :: evec(3)
+   real (kind=RealKind) :: ztotss(MaxNumSpecies), zcorss(MaxNumSpecies)
+   real (kind=RealKind) :: xvalws(n_spin_pola,MaxNumSpecies)
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: rho0(:,:)
    real (kind=RealKind), pointer :: mom0(:,:)
    real (kind=RealKind), pointer :: ec0(:,:,:)
-   real (kind=RealKind), pointer :: vr(:,:)
-   real (kind=RealKind), allocatable :: rhotot(:,:)
-   real (kind=RealKind), allocatable :: ec(:,:)
-!
-   complex (kind=CmplxKind), pointer :: pot_l(:,:,:)
+   real (kind=RealKind), allocatable :: rhotot(:,:,:)
+   real (kind=RealKind) :: ec(numcmax,n_spin_pola,MaxNumSpecies)
 !
    type (PotentialStruct), pointer :: ThisP
 !
@@ -2233,7 +2236,6 @@ contains
    r_mesh => ThisP%Grid%r_mesh(1:nr)
    jmt = ThisP%Grid%jmt
    jws = ThisP%Grid%jend
-   vr => ThisP%potr_sph(:,:,ia)
 !
    nrmax = nr+30
 !  nrmax = nr
@@ -2241,69 +2243,45 @@ contains
 !
    id_g = getGlobalIndex(id)
 !
-   atname = getAlloyElementName(id_g,ia)
-   ztotss = getZtot(atname)
-   zcorss = getZcor(atname)
+   do ia = 1, NumSpecies(id)
+      atname(ia) = getAlloyElementName(id_g,ia)
+      ztotss(ia) = getZtot(atname(ia))
+      zcorss(ia) = getZcor(atname(ia))
+   enddo
 !
-   allocate( nc(numcmax,n_spin_pola) )
-   allocate( lc(numcmax,n_spin_pola) )
-   allocate( kc(numcmax,n_spin_pola) )
-   allocate( lst(numcmax,n_spin_pola) )
-   allocate( ec(numcmax,n_spin_pola) )
+   allocate( rhotot(nr,n_spin_pola,NumSpecies(id)) )
 !
-   allocate( rhotot(nr,n_spin_pola) )
-!
-   pot_l => ThisP%pot_l(:,:,:,ia)
 !  -------------------------------------------------------------------
-   call getpotg( id, ia, na, NumSpecies(id), nspin, n_spin_pola,      &
-                 efermi_in(ia,id), evec,                              &
+   call getpotg( id, na, NumSpecies(id), MaxNumSpecies,               &
+                 nspin, n_spin_pola, efermi_in(1,id), evec,           &
                  nr, nrmax, jmt, jws, r_mesh, ThisP%jmax,             &
-                 vr, vdif(1), rhotot, xvalws,                         &
+                 ThisP%potr_sph, vdif(1), rhotot, xvalws,             &
                  ztotss, zcorss, numc, nc, lc, kc, ec, lst, numcmax,  &
-                 pot_l, iform,                                        &
-                 header, vunit, print_level(id), istop )
+                 ThisP%pot_l, SphericalInputFile, header, vunit,      &
+                 print_level(id), istop )
 !  -------------------------------------------------------------------
-   nullify(pot_l)
-   if (iform<0) then
-      SphericalInputFile = .false.
-   else
-      SphericalInputFile = .true.
-   endif
 !
    if ( isFullPotential() .and. .not.SphericalInputFile ) then
-      do is = 1, n_spin_pola
-         do i=1,nr
-            vr(i,is) = ThisP%pot_l(i,1,is,ia)*(Y0*r_mesh(i))
+      do ia = 1, NumSpecies(id)
+         do is = 1, n_spin_pola
+            do i = 1, nr
+               ThisP%potr_sph(i,is,ia) = ThisP%pot_l(i,1,is,ia)*(Y0*r_mesh(i))
+            enddo
          enddo
       enddo
    else
-      do is = 1, n_spin_pola
-         do i=1,nr
-            ThisP%pot_l(i,1,is,ia)=vr(i,is)/(Y0*r_mesh(i))
+      do ia = 1, NumSpecies(id)
+         do is = 1, n_spin_pola
+            do i = 1, nr
+               ThisP%pot_l(i,1,is,ia) = ThisP%potr_sph(i,is,ia)/(Y0*r_mesh(i))
+            enddo
          enddo
       enddo
    endif
 !  ===================================================================
 !
    ThisP%header = header
-   ThisP%ztss(ia) = ztotss
    v0(1:2) = ZERO
-!
-   if ( numc > getNumCoreStates(atname) ) then
-      if (print_level(id) >= 0) then
-         call WarningHandler('readUnformattedData','numc > getNumCoreStates', &
-                             numc,getNumCoreStates(atname))
-      endif
-      call setNumCoreStates(atname,numc)
-   else if (numc < getNumCoreStates(atname) ) then
-      if (print_level(id) >= 0) then
-         call WarningHandler('readUnformattedData','numc < getNumCoreStates', &
-                              numc,getNumCoreStates(atname))
-      endif
-      call setNumCoreStates(atname,numc)
-   endif
-!
-   efermi = min(efermi, efermi_in(ia,id))
 !
    rho0 => getDataStorage( id, 'OldSphericalElectronDensity',         &
                            nr+1, NumSpecies(id), RealMark )
@@ -2313,43 +2291,65 @@ contains
       pc0 => getDataStorage( id, 'OldEstimatedCoreStates',            &
                              SiteMaxNumc(id), n_spin_pola, NumSpecies(id), IntegerMark)
    endif
-!
-   do is = 1, n_spin_pola
-      do i = 1,numc
-         ec0(i,is,ia) = ec(i,is)
-         pc0(i,is,ia) = getCoreStateIndex(nc(i,is),lc(i,is),kc(i,is))
-      enddo
-   enddo
-!
-   if (n_spin_pola == 1) then
-      do i=1,jws
-         rho0(i,ia) = rhotot(i,1)/(PI4*r_mesh(i)*r_mesh(i))
-      enddo
-      do i=jws+1,nr
-         rho0(i,ia) = ZERO
-      enddo
-      rho0(nr+1,ia) = xvalws(1)
-   else
+   if (n_spin_pola == 2) then
       mom0 => getDataStorage(id,'OldSphericalMomentDensity', &
                              nr+1, NumSpecies(id), RealMark )
-      do i = 1,jws
-         rho0(i,ia) = (rhotot(i,1) + rhotot(i,2))/(PI4*r_mesh(i)*r_mesh(i))
-      enddo
-      do i=jws+1,nr
-         rho0(i,ia) = ZERO
-      enddo
-      do i = 1,jws
-         mom0(i,ia) = (rhotot(i,1) - rhotot(i,2))/(PI4*r_mesh(i)*r_mesh(i))
-      enddo
-      do i=jws+1,nr
-         mom0(i,ia) = ZERO
-      enddo
-      rho0(nr+1,ia) = xvalws(1)+xvalws(2)
-      mom0(nr+1,ia) = xvalws(1)-xvalws(2)
    endif
 !
+   efermi = 100.0d0
+   do ia = 1, NumSpecies(id)
+      ThisP%ztss(ia) = ztotss(ia)
+      if ( numc(ia) > getNumCoreStates(atname(ia)) ) then
+         if (print_level(id) >= 0) then
+            call WarningHandler('readUnformattedData','numc > getNumCoreStates', &
+                                numc(ia),getNumCoreStates(atname(ia)))
+         endif
+         call setNumCoreStates(atname(ia),numc(ia))
+      else if (numc(ia) < getNumCoreStates(atname(ia)) ) then
+         if (print_level(id) >= 0) then
+            call WarningHandler('readUnformattedData','numc < getNumCoreStates', &
+                                 numc(ia),getNumCoreStates(atname(ia)))
+         endif
+         call setNumCoreStates(atname(ia),numc(ia))
+      endif
+!
+      efermi = min(efermi, efermi_in(ia,id))
+!
+      do is = 1, n_spin_pola
+         do i = 1, numc(ia)
+            ec0(i,is,ia) = ec(i,is,ia)
+            pc0(i,is,ia) = getCoreStateIndex(nc(i,is,ia),lc(i,is,ia),kc(i,is,ia))
+         enddo
+      enddo
+!
+      if (n_spin_pola == 1) then
+         do i=1,jws
+            rho0(i,ia) = rhotot(i,1,ia)/(PI4*r_mesh(i)*r_mesh(i))
+         enddo
+         do i=jws+1,nr
+            rho0(i,ia) = ZERO
+         enddo
+         rho0(nr+1,ia) = xvalws(1,ia)
+      else
+         do i = 1,jws
+            rho0(i,ia) = (rhotot(i,1,ia) + rhotot(i,2,ia))/(PI4*r_mesh(i)*r_mesh(i))
+         enddo
+         do i=jws+1,nr
+            rho0(i,ia) = ZERO
+         enddo
+         do i = 1,jws
+            mom0(i,ia) = (rhotot(i,1,ia) - rhotot(i,2,ia))/(PI4*r_mesh(i)*r_mesh(i))
+         enddo
+         do i=jws+1,nr
+            mom0(i,ia) = ZERO
+         enddo
+         rho0(nr+1,ia) = xvalws(1,ia)+xvalws(2,ia)
+         mom0(nr+1,ia) = xvalws(1,ia)-xvalws(2,ia)
+      endif
+   enddo
+!
    nullify(ec0,pc0,rho0,mom0)
-   deallocate( nc, lc, kc, lst, ec, rhotot )
+   deallocate( rhotot )
 !
    end subroutine readUnformattedData
 !  ===================================================================
@@ -2360,7 +2360,6 @@ contains
    subroutine writePotential()
 !  ===================================================================
    use MPPModule, only : syncAllPEs
-!
 !
    use AtomModule, only : getOutPotFileName, getOutPotFileForm
 !
@@ -2392,11 +2391,9 @@ contains
    if ( getMyOutputProc() >= 0 ) then
       if (file_form == 'FORMATTED') then
          do id = 1, LocalNumAtoms
-            do ia = 1, NumSpecies(id)
-!              ------------------------------------------------------
-               call writeFormattedData(getOutPotFileName(id,ia),id,ia)
-!              ------------------------------------------------------
-            enddo
+!           ---------------------------------------------------------
+            call writeFormattedData(id)
+!           ---------------------------------------------------------
          enddo
       else if (trim(file_form) == 'UNFORMATTED' .or. trim(file_form) == 'XDR') then
          if( isOutputProc() ) then
@@ -2408,11 +2405,9 @@ contains
 !           ----------------------------------------------------------
          endif
          do id = 1, LocalNumAtoms
-            do ia = 1, NumSpecies(id)
-!              ------------------------------------------------------
-               call writeUnformattedData(wunit,id,ia)
-!              ------------------------------------------------------
-            enddo
+!           ---------------------------------------------------------
+            call writeUnformattedData(wunit,id)
+!           ---------------------------------------------------------
          enddo
          if( isOutputProc() ) then
             call c_close(wunit)
@@ -2429,8 +2424,9 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeFormattedData(filename,id,ia)
+   subroutine writeFormattedData(id)
 !  ===================================================================
+   use PublicParamDefinitionsModule, only : MaxLenFileName
    use ChemElementModule, only : MaxLenOfAtomName
    use ChemElementModule, only : getZcor, getZsem, getZval, getZtot
    use ChemElementModule, only : getCoreStateN, getCoreStateL, getNumCoreStates
@@ -2445,23 +2441,23 @@ contains
 !
    use SystemModule, only : getAtomName, getAlloyElementName
 !
-   use AtomModule, only: getLocalEvecNew
+   use AtomModule, only : getLocalEvecNew
+   use AtomModule, only : getOutPotFileName, getOutPotFileForm
 !
    use RadialGridModule, only : getNumRmesh
 !
    implicit none
 !
-   character (len=*), intent(in) :: filename
-!
+   character (len=MaxLenFileName) :: filename
    character (len=MaxLenOfAtomName) :: atname
    character (len=7) :: stmp
    character (len=80) :: header , jtitle
    character (len=120) :: ofile
    character (len=5), allocatable  :: lst(:,:)
 !
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: id
 !
-   integer (kind=IntKind) :: ns,ir,ic,jl,n
+   integer (kind=IntKind) :: ns,ir,ic,jl,n,ia
    integer (kind=IntKind) :: nspin
    integer (kind=IntKind) :: nr,nrcor,numc,present_atom,jmt,jws
    integer (kind=IntKind), allocatable :: nc(:,:), lc(:,:), kc(:,:)
@@ -2470,7 +2466,7 @@ contains
 !
    real (kind=RealKind) :: ztotss, zcorss, zsemss, zvalss
    real (kind=RealKind) :: xstart,xmt,rmt,xvalws(2),evec(3)
-   real (kind=RealKind), pointer :: vr(:,:), rho0(:,:), mom0(:,:), ec0(:,:,:), r_mesh(:)
+   real (kind=RealKind), pointer :: rho0(:,:), mom0(:,:), ec0(:,:,:), r_mesh(:)
    real (kind=RealKind), allocatable :: ec(:,:), rhotot(:,:)
 !
    type (PotentialStruct), pointer :: ThisP
@@ -2488,14 +2484,6 @@ contains
    evec = getLocalEvecNew(id)
    nr = getNumRmesh(id)
    r_mesh => ThisP%Grid%r_mesh(1:nr)
-   vr => ThisP%potr_sph(1:nr,1:n_spin_pola,ia)
-!
-   atname = getAlloyElementName(present_atom,ia)
-   ztotss = getZtot(atname)
-   zcorss = getZcor(atname)
-   zsemss = getZsem(atname)
-   zvalss = getZval(atname)
-   numc = getNumCoreStates(atname)
 !
    if (n_spin_pola == 1) then
       nspin = 1
@@ -2510,6 +2498,18 @@ contains
    allocate( kc(numcmax,n_spin_pola) )
    allocate( lst(numcmax,n_spin_pola) )
    allocate( ec(numcmax,n_spin_pola) )
+   allocate( rhotot(nr,n_spin_pola) )
+!
+!  -------------------------------------------------------------------
+   rho0 => getDataStorage( id, 'NewSphericalElectronDensity',         &
+                           nr+1, NumSpecies(id), RealMark)
+!  -------------------------------------------------------------------
+   if (n_spin_pola == 2) then
+!     ----------------------------------------------------------------
+      mom0 => getDataStorage(id,'NewSphericalMomentDensity',          &
+                             nr+1, NumSpecies(id), RealMark )
+!     ----------------------------------------------------------------
+   endif
 !
    if (SiteMaxNumc(id) >= 1) then
 !     ----------------------------------------------------------------
@@ -2520,96 +2520,93 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
-   do ns = 1,n_spin_pola
-      do ic=1,numc
-         n = pc0(ic,ns,ia)
-         nc(ic,ns)=getCoreStateN(atname,n)
-         lc(ic,ns)=getCoreStateL(atname,n)
-         kc(ic,ns)=getCoreStateKappa(atname,n)
-         lst(ic,ns)= getCoreStateSymbol(atname,n)
-!        ec(ic,ns) = ec0((ns-1)*SiteMaxNumc(id)+ic,ia)
-         ec(ic,ns) = ec0(ic,ns,ia)
+   do ia = 1, NumSpecies(id)
+      filename = getOutPotFileName(id,ia)
+      atname = getAlloyElementName(present_atom,ia)
+      ztotss = getZtot(atname)
+      zcorss = getZcor(atname)
+      zsemss = getZsem(atname)
+      zvalss = getZval(atname)
+      numc = getNumCoreStates(atname)
+!
+      do ns = 1,n_spin_pola
+         do ic=1,numc
+            n = pc0(ic,ns,ia)
+            nc(ic,ns)=getCoreStateN(atname,n)
+            lc(ic,ns)=getCoreStateL(atname,n)
+            kc(ic,ns)=getCoreStateKappa(atname,n)
+            lst(ic,ns)= getCoreStateSymbol(atname,n)
+            ec(ic,ns) = ec0(ic,ns,ia)
+         enddo
       enddo
-   enddo
 !
-   allocate( rhotot(nr,n_spin_pola) )
-!  -------------------------------------------------------------------
-   rho0 => getDataStorage( id, 'NewSphericalElectronDensity',         &
-                           nr+1, NumSpecies(id), RealMark)
-!  -------------------------------------------------------------------
+      if (n_spin_pola == 1) then
+         do ir = 1,jws
+            rhotot(ir,1) = PI4*rho0(ir,ia)*r_mesh(ir)*r_mesh(ir)
+         enddo
+         xvalws(1) = rho0(nr+1,ia)
+      else
+         do ir = 1,jws
+            rhotot(ir,1) = PI2*(rho0(ir,ia)+mom0(ir,ia))*r_mesh(ir)*r_mesh(ir)
+         enddo
+         do ir = 1,jws
+            rhotot(ir,2) = PI2*(rho0(ir,ia)-mom0(ir,ia))*r_mesh(ir)*r_mesh(ir)
+         enddo
+         xvalws(1) = (rho0(nr+1,ia)+mom0(nr+1,ia))/TWO
+         xvalws(2) = (rho0(nr+1,ia)-mom0(nr+1,ia))/TWO
+      endif
 !
-   if ( n_spin_pola == 1 ) then
-      do ir = 1,jws
-         rhotot(ir,1) = PI4*rho0(ir,ia)*r_mesh(ir)*r_mesh(ir)
-      enddo
-      xvalws(1) = rho0(nr+1,ia)
-   else
-!     ----------------------------------------------------------------
-      mom0 => getDataStorage(id,'NewSphericalMomentDensity',          &
-                             nr+1, NumSpecies(id), RealMark )
-!     ----------------------------------------------------------------
-      do ir = 1,jws
-         rhotot(ir,1) = PI2*(rho0(ir,ia)+mom0(ir,ia))*r_mesh(ir)*r_mesh(ir)
-      enddo
-      do ir = 1,jws
-         rhotot(ir,2) = PI2*(rho0(ir,ia)-mom0(ir,ia))*r_mesh(ir)*r_mesh(ir)
-      enddo
-      xvalws(1) = (rho0(nr+1,ia)+mom0(nr+1,ia))/TWO
-      xvalws(2) = (rho0(nr+1,ia)-mom0(nr+1,ia))/TWO
-   endif
+      write(stmp,'(i5,a,i1)')10000+present_atom,'x',ia
+      stmp(1:1) = '_'
+      write(ofile,'(a,a)')trim(adjustl(filename)),stmp
+      open(unit=ounit,file=trim(ofile),form='formatted',status='unknown')
 !
-   write(stmp,'(i5,a,i1)')10000+present_atom,'x',ia
-   stmp(1:1) = '_'
-   write(ofile,'(a,a)')trim(adjustl(filename)),stmp
-   open(unit=ounit,file=trim(ofile),form='formatted',status='unknown')
+      write(ounit,'(a)') header
+      write(ounit,'(i5,2x,d20.13)') n_spin_pola,vdif(1)
 !
-   write(ounit,'(a)') header
-   write(ounit,'(i5,2x,d20.13)') n_spin_pola,vdif(1)
-!
-   do ns=1,n_spin_pola
-      write(jtitle,'(a,i5,3x,a2,4(a,f3.0),a,f10.5)')                  &
+      do ns = 1, n_spin_pola
+         write(jtitle,'(a,i5,3x,a2,4(a,f3.0),a,f10.5)')               &
             ' PUTPOTG:',present_atom,atname,'  zt=',ztotss,           &
             ' zc=',zcorss,' zs=',zsemss,' zv=',zvalss,                &
             ' xv=',xvalws(ns)
 !
-      write(ounit,'(a,t18,a2,t25,a,f4.0,t35,a,f10.5)')                &
+         write(ounit,'(a,t18,a2,t25,a,f4.0,t35,a,f10.5)')             &
                   ' LSMS:',atname,'z=',ztotss,'xvalws=',xvalws(ns)
-      write(ounit,'(f5.0,17x,f12.5,1x,f5.0,1x,d20.13)')               &
+         write(ounit,'(f5.0,17x,f12.5,1x,f5.0,1x,d20.13)')            &
                     ztotss,rmt,zcorss,efermi
-      write(ounit,'(17x,2d20.13,2i5)') xstart,xmt,jmt,jws
+         write(ounit,'(17x,2d20.13,2i5)') xstart,xmt,jmt,jws
 !
-      write(ounit,'(4d20.13)') (vr(ir,ns),ir=1,jmt)
-      write(ounit,'(35x,d20.13)') ZERO
+         write(ounit,'(4d20.13)') (ThisP%potr_sph(ir,ns,ia),ir=1,jmt)
+         write(ounit,'(35x,d20.13)') ZERO
 !
-      write(ounit,'(i5,d20.13)') jws,xvalws(ns)
-      write(ounit,'(4d20.13)') (rhotot(ir,ns),ir=1,jws)
+         write(ounit,'(i5,d20.13)') jws,xvalws(ns)
+         write(ounit,'(4d20.13)') (rhotot(ir,ns),ir=1,jws)
 !
-      nrcor = 0
-      write(ounit,'(2i5)') numc,nrcor
-      do ic=1,numc
-         write(ounit,'(3i5,f12.5,2x,a5)') nc(ic,ns),lc(ic,ns),kc(ic,ns),ec(ic,ns),lst(ic,ns)
-      enddo
-   enddo
-!
-   if (ThisP%lmax > 0) then
-      write(ounit,'(5i8)')ThisP%lmax,ThisP%jmax,ThisP%Grid%jmt,ThisP%Grid%jend
-      write(ounit,'(4d20.13)')ThisP%Grid%xstart,ThisP%Grid%xmt,ThisP%Grid%hin,ThisP%Grid%hout
-      do ns=1,n_spin_pola
-         do jl = 1, ThisP%jmax
-            write(ounit,'(2i5)')jl,ThisP%PotCompFlag(jl)
-            if (ThisP%PotCompFlag(jl) > 0) then
-               write(ounit,'(4d20.13)')(ThisP%pot_l(ir,jl,ns,ia),ir=1,ThisP%Grid%jend)
-            endif
+         nrcor = 0
+         write(ounit,'(2i5)') numc,nrcor
+         do ic = 1, numc
+            write(ounit,'(3i5,f12.5,2x,a5)') nc(ic,ns),lc(ic,ns),     &
+                                             kc(ic,ns),ec(ic,ns),lst(ic,ns)
          enddo
       enddo
-   endif
-   close(unit=ounit)
 !
-   deallocate( nc, lc, kc )
-   deallocate( lst )
-   deallocate( ec )
-   deallocate( rhotot )
-   nullify( ec0, rho0, r_mesh )
+      if (ThisP%lmax > 0) then
+         write(ounit,'(5i8)')ThisP%lmax,ThisP%jmax,ThisP%Grid%jmt,ThisP%Grid%jend
+         write(ounit,'(4d20.13)')ThisP%Grid%xstart,ThisP%Grid%xmt,ThisP%Grid%hin,ThisP%Grid%hout
+         do ns = 1,n_spin_pola
+            do jl = 1, ThisP%jmax
+               write(ounit,'(2i5)')jl,ThisP%PotCompFlag(jl)
+               if (ThisP%PotCompFlag(jl) > 0) then
+                  write(ounit,'(4d20.13)')(ThisP%pot_l(ir,jl,ns,ia),ir=1,ThisP%Grid%jend)
+               endif
+            enddo
+         enddo
+      endif
+      close(unit=ounit)
+   enddo
+!
+   deallocate( nc, lc, kc, lst, ec, rhotot )
+   nullify( ec0, pc0, rho0, r_mesh )
    if (n_spin_pola == 2) then
       nullify( mom0 )
    endif
@@ -2620,7 +2617,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeUnformattedData(wunit, id, ia)
+   subroutine writeUnformattedData(wunit,id)
 !  ===================================================================
    use SystemModule, only : getLatticeConstant, getNumAtoms, getAtomName, &
                             getAlloyElementName
@@ -2640,35 +2637,35 @@ contains
 !
    implicit none
    integer (kind=IntKind), intent(in) :: wunit
-   integer (kind=IntKind), intent(in) :: id, ia
+   integer (kind=IntKind), intent(in) :: id
 !
    character (len=20) :: istop
-   character (len=MaxLenOfAtomName)  :: atname
    character (len=80) :: header
-   character (len=5), allocatable  :: lst(:,:)
+   character (len=MaxLenOfAtomName) :: atname(MaxNumSpecies)
+   character (len=5) :: lst(numcmax,n_spin_pola,MaxNumSpecies)
 !
-   integer (kind=IntKind) :: na, id_g, n
+   integer (kind=IntKind) :: na, id_g, n, ia
    integer (kind=IntKind) :: jmt, jws
-   integer (kind=IntKind) :: nspin, numc, i, is, nr, ic
+   integer (kind=IntKind) :: nspin, i, is, nr, ic
    integer (kind=IntKind), pointer :: pc0(:,:,:)
-   integer (kind=IntKind), allocatable :: nc(:,:), lc(:,:), kc(:,:)
+   integer (kind=IntKind) :: nc(numcmax,n_spin_pola,MaxNumSpecies)
+   integer (kind=IntKind) :: lc(numcmax,n_spin_pola,MaxNumSpecies)
+   integer (kind=IntKind) :: kc(numcmax,n_spin_pola,MaxNumSpecies)
+   integer (kind=IntKind) :: numc(MaxNumSpecies)
 !
-   real (kind=RealKind) :: evec(3)
-   real (kind=RealKind) :: ztotss, zcorss,zsemss,zvalss
-   real (kind=RealKind) :: xstart, xmt
-   real (kind=RealKind) :: xvalws(n_spin_pola)
+   real (kind=RealKind) :: xstart, xmt, evec(3)
+   real (kind=RealKind) :: ztotss(MaxNumSpecies)
+   real (kind=RealKind) :: zcorss(MaxNumSpecies)
+   real (kind=RealKind) :: zsemss(MaxNumSpecies)
+   real (kind=RealKind) :: zvalss(MaxNumSpecies)
+   real (kind=RealKind) :: xvalws(n_spin_pola,MaxNumSpecies)
+   real (kind=RealKind) :: ec(numcmax,n_spin_pola,MaxNumSpecies)
+   real (kind=RealKind), allocatable :: rhotot(:,:,:)
+   real (kind=RealKind), allocatable :: r_pot_l(:)
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), pointer :: rho0(:,:)
    real (kind=RealKind), pointer :: mom0(:,:)
-   real (kind=RealKind), allocatable :: rhotot(:,:)
-   real (kind=RealKind), pointer :: vr(:,:)
-   real (kind=RealKind), pointer :: ec(:,:)
    real (kind=RealKind), pointer :: ec0(:,:,:)
-   real (kind=RealKind) :: fmsgbuf((9+jmtmax+jwsmax)*n_spin_pola)
-!
-   real (kind=RealKind), allocatable :: r_pot_l(:)
-!
-   complex (kind=CmplxKind), pointer :: pot_l(:,:,:)
 !
    type (GridStruct),pointer :: Grid
 !
@@ -2688,14 +2685,15 @@ contains
    evec = getLocalEvecNew(id)
    nr = getNumRmesh(id)
    r_mesh => Grid%r_mesh(1:nr)
-   vr => Potential(id)%potr_sph(1:nr,1:n_spin_pola,ia)
 !
-   atname = getAlloyElementName(id_g,ia)
-   ztotss = getZtot(atname)
-   zcorss = getZcor(atname)
-   zsemss = getZsem(atname)
-   zvalss = getZval(atname)
-   numc = getNumCoreStates(atname)
+   do ia = 1, NumSpecies(id)
+      atname(ia) = getAlloyElementName(id_g,ia)
+      ztotss(ia) = getZtot(atname(ia))
+      zcorss(ia) = getZcor(atname(ia))
+      zsemss(ia) = getZsem(atname(ia))
+      zvalss(ia) = getZval(atname(ia))
+      numc(ia) = getNumCoreStates(atname(ia))
+   enddo
 !
    if (n_spin_pola == 1) then
       nspin = 1
@@ -2704,12 +2702,6 @@ contains
    else
       nspin = 3
    endif
-!
-   allocate( nc(numcmax,n_spin_pola) )
-   allocate( lc(numcmax,n_spin_pola) )
-   allocate( kc(numcmax,n_spin_pola) )
-   allocate( lst(numcmax,n_spin_pola) )
-   allocate( ec(numcmax,n_spin_pola) )
 !
    if (SiteMaxNumc(id) >= 1) then
 !     ----------------------------------------------------------------
@@ -2720,70 +2712,70 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
-   do is = 1,n_spin_pola
-      do ic=1,numc
-         n = pc0(ic,is,ia)
-         nc(ic,is)=getCoreStateN(atname,n)
-         lc(ic,is)=getCoreStateL(atname,n)
-         kc(ic,is)=getCoreStateKappa(atname,n)
-         lst(ic,is)= getCoreStateSymbol(atname,n)
-!        ec(ic,is) = ec0((is-1)*SiteMaxNumc(id)+ic,ia)
-         ec(ic,is) = ec0(ic,is,ia)
+   do ia = 1, NumSpecies(id)
+      do is = 1,n_spin_pola
+         do ic = 1, numc(ia)
+            n = pc0(ic,is,ia)
+            nc(ic,is,ia)=getCoreStateN(atname(ia),n)
+            lc(ic,is,ia)=getCoreStateL(atname(ia),n)
+            kc(ic,is,ia)=getCoreStateKappa(atname(ia),n)
+            lst(ic,is,ia)=getCoreStateSymbol(atname(ia),n)
+            ec(ic,is,ia)=ec0(ic,is,ia)
+         enddo
       enddo
    enddo
 !
-   allocate( rhotot( nr, n_spin_pola ) )
+   allocate(rhotot(nr,n_spin_pola,NumSpecies(id)))
 !  -------------------------------------------------------------------
    rho0 => getDataStorage( id, 'NewSphericalElectronDensity',         &
                            nr+1, NumSpecies(id), RealMark)
 !  -------------------------------------------------------------------
 !
    if ( n_spin_pola == 1 ) then
-      do i = 1,jws
-         rhotot(i,1) = PI4*rho0(i,ia)*r_mesh(i)*r_mesh(i)
+      do ia = 1, NumSpecies(id) 
+         do i = 1,jws
+            rhotot(i,1,ia) = PI4*rho0(i,ia)*r_mesh(i)*r_mesh(i)
+         enddo
+         xvalws(1,ia) = rho0(nr+1,ia)
       enddo
-      xvalws(1) = rho0(nr+1,ia)
    else
 !     ----------------------------------------------------------------
       mom0 => getDataStorage(id,'NewSphericalMomentDensity',          &
                              nr+1, NumSpecies(id), RealMark )
 !     ----------------------------------------------------------------
-      do i = 1,jws
-         rhotot(i,1) = PI2*(rho0(i,ia)+mom0(i,ia))*r_mesh(i)*r_mesh(i)
+      do ia = 1, NumSpecies(id)
+         do i = 1,jws
+            rhotot(i,1,ia) = PI2*(rho0(i,ia)+mom0(i,ia))*r_mesh(i)*r_mesh(i)
+         enddo
+         do i = 1,jws
+            rhotot(i,2,ia) = PI2*(rho0(i,ia)-mom0(i,ia))*r_mesh(i)*r_mesh(i)
+         enddo
+         xvalws(1,ia) = (rho0(nr+1,ia)+mom0(nr+1,ia))/TWO
+         xvalws(2,ia) = (rho0(nr+1,ia)-mom0(nr+1,ia))/TWO
       enddo
-      do i = 1,jws
-         rhotot(i,2) = PI2*(rho0(i,ia)-mom0(i,ia))*r_mesh(i)*r_mesh(i)
-      enddo
-      xvalws(1) = (rho0(nr+1,ia)+mom0(nr+1,ia))/TWO
-      xvalws(2) = (rho0(nr+1,ia)-mom0(nr+1,ia))/TWO
    endif
 !
 !  n = nr*Potential(id)%jmax*n_spin_pola
-   n = jwsmax*Potential(id)%jmax*n_spin_pola
+   n = jwsmax*Potential(id)%jmax*n_spin_pola*NumSpecies(id)
    allocate( r_pot_l(2*n) )
-   pot_l => Potential(id)%pot_l(:,:,:,ia)
-   r_pot_l = transfer(pot_l,r_pot_l)
+   r_pot_l = transfer(Potential(id)%pot_l,r_pot_l)
 !  -------------------------------------------------------------------
-   call putpotg(id, ia, na, NumSpecies(id), nspin, n_spin_pola,       &
-                efermi, evec,                                         &
+   call putpotg(id, na, NumSpecies(id),                               &
+                nspin, n_spin_pola, efermi, evec,                     &
                 jmt, xmt, jws, xstart, Potential(id)%jmax,            &
-                vr, vdif(1), rhotot, xvalws,                          &
-                atname, ztotss, zcorss, zsemss, zvalss, numc,         &
-                nc, lc, kc, ec, lst, jmtmax, jwsmax, nr, numcmax,     &
+                Potential(id)%potr_sph, vdif(1), rhotot, xvalws,      &
+                atname, ztotss, zcorss, zsemss, zvalss,               &
+                numc, nc, lc, kc, ec, lst,                            &
+                jmtmax, jwsmax, nr, numcmax,                          &
                 LdaPlusU_DataAccum, NonSphPot_DataAccum,              &
-                r_pot_l,                                              &
-                header, wunit, fmsgbuf, print_level(id), istop )
+                r_pot_l, header, wunit, print_level(id), istop )
 !  -------------------------------------------------------------------
 !
-   deallocate( nc, lc, kc )
-   deallocate( lst )
-   deallocate( ec )
-   deallocate( rhotot )
-   nullify( ec0, rho0, r_mesh )
+   nullify(ec0, pc0, rho0, r_mesh)
    if (n_spin_pola == 2) then
       nullify( mom0 )
    endif
-   deallocate(r_pot_l)
+   deallocate(rhotot, r_pot_l)
 !
    end subroutine writeUnformattedData
 !  ===================================================================

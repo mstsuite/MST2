@@ -156,13 +156,15 @@ contains
    use IntegrationModule, only : calIntegration
    use MadelungModule, only : getDLMatrix, getDLFactor
    use SystemModule, only : getAtomicNumber, getNumAtoms, getLmaxRho
+   use SystemModule, only : getNumAlloyElements, getAlloyElementContent
    use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
    use Atom2ProcModule, only : getGlobalIndex
 !
    implicit none
    integer (kind=IntKind), intent(in) :: id, iend
-   integer (kind=IntKind) :: ia, ic, ir, ja, kl, jl, l, m, mpot, klsum, msum, lsum
-   integer (kind=IntKind) :: jr0, GlobalNumAtoms, kmax_rho
+   integer (kind=IntKind) :: ia, ic, ir, ig, kl, jl, l, m, mpot, klsum, msum, lsum
+   integer (kind=IntKind) :: jr0, GlobalNumAtoms, kmax_rho, lig, ja
+   integer (kind=IntKind), pointer :: mm_table_line(:)
 !
    real (kind=RealKind), intent(in) :: Zi, r_mesh(iend)
    real (kind=RealKind), intent(out) :: esf(3)
@@ -174,7 +176,7 @@ contains
    complex (kind=CmplxKind), pointer :: rhot(:)
    complex (kind=CmplxKind), pointer :: dlm(:,:)
    complex (kind=CmplxKind), pointer :: qlm(:)
-   complex (kind=CmplxKind) :: sumat, sumkl, cfact
+   complex (kind=CmplxKind) :: sumat, sumkl, cfact, qlm_av
 !
    GlobalNumAtoms = getNumAtoms()
    dlm => getDLMatrix(id,a0)
@@ -244,23 +246,37 @@ contains
             m = mofk(kl)
             l = lofk(kl)
             jl = ((l+1)*(l+2))/2-l+abs(m)
-            qlm => getMultipoleMoment(jl)
+            qlm => getMultipoleMoment(jl,mm_table_line)
             msum = m - mpot
             lsum = l + 1
             klsum = (lsum+1)**2-lsum+msum
             sumat = CZERO
             if (m < 0) then
-               do ja = 1, GlobalNumAtoms
-                  sumat = sumat + m1m(m)*dlm(ja,klsum)*conjg(qlm(ja))/a0**lsum
+               do ig = 1, GlobalNumAtoms
+                  qlm_av = CZERO
+                  do ja = 1, getNumAlloyElements(ig)
+                     lig = mm_table_line(ig) + ja
+                     qlm_av = qlm_av + qlm(lig)*getAlloyElementContent(ig,ja)
+                  enddo
+                  sumat = sumat + m1m(m)*dlm(ig,klsum)*conjg(qlm_av)/a0**lsum
                enddo
             else if (l == 0) then
-               do ja = 1, GlobalNumAtoms
-                  sumat = sumat                                          &
-                         + dlm(ja,klsum)*(qlm(ja)-getAtomicNumber(ja)*Y0inv)/a0
+               do ig = 1, GlobalNumAtoms
+                  qlm_av = CZERO
+                  do ja = 1, getNumAlloyElements(ig)
+                     lig = mm_table_line(ig) + ja
+                     qlm_av = qlm_av + (qlm(lig)-getAtomicNumber(ig,ja)*Y0inv)*getAlloyElementContent(ig,ja)
+                  enddo
+                  sumat = sumat + dlm(ig,klsum)*qlm_av/a0
                enddo
             else
-               do ja = 1, GlobalNumAtoms
-                  sumat = sumat + dlm(ja,klsum)*qlm(ja)/a0**lsum
+               do ig = 1, GlobalNumAtoms
+                  qlm_av = CZERO
+                  do ja = 1, getNumAlloyElements(ig)
+                     lig = mm_table_line(ig) + ja
+                     qlm_av = qlm_av + qlm(lig)*getAlloyElementContent(ig,ja)
+                  enddo
+                  sumat = sumat + dlm(ig,klsum)*qlm_av/a0**lsum
                enddo
             endif
             sumkl = sumkl + dlf(kl)*sumat
@@ -298,6 +314,7 @@ contains
       enddo
    enddo
 !
+   nullify(mm_table_line)
    nullify(rhot, dlm, dlf, qlm, pdf)
 !
    end subroutine calElectroStaticField

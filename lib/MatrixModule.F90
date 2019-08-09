@@ -278,7 +278,8 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: nr, nc, mr, lda, ldb
-   integer (kind=IntKind) :: n, i, j
+   integer (kind=IntKind) :: i, j
+!! integer (kind=IntKind) :: n
 !
    complex (kind=CmplxKind), intent(in) :: Ul(nr,nc), Ur(mr,nc), A(lda,nc)
    complex (kind=CmplxKind), intent(in) :: alpha, beta
@@ -288,12 +289,13 @@ contains
    complex (kind=CmplxKind), pointer :: UA(:,:)
 !
 !! Urc => aliasArray2_c(W,mr,nc)
-   n = mr*nc
-   if (n+nr*nc > size(W)) then
+!! n = mr*nc
+!! if (n+nr*nc > size(W)) then
+   if (nr*nc > size(W)) then
       call ErrorHandler('computeUAUtc','Insufficient work space size',&
-                        n+nr*nc,size(W))
+                        nr*nc,size(W))
    endif
-   UA => aliasArray2_c(W(n+1:n+nr*nc),nr,nc)
+   UA => aliasArray2_c(W(1:nr*nc),nr,nc)
 !  -------------------------------------------------------------------
 !! Urc = conjg(Ur)
 !  do j = 1, nc
@@ -317,7 +319,8 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: nr, nc, mr, lda, ldb
-   integer (kind=IntKind) :: n, i, j
+   integer (kind=IntKind) :: i, j
+!! integer (kind=IntKind) :: n
 !
    complex (kind=CmplxKind), intent(in) :: Ul(nr,nc), Ur(mr,nc), A(lda,nc)
    complex (kind=CmplxKind), intent(in) :: alpha, beta
@@ -325,12 +328,13 @@ contains
    complex (kind=CmplxKind), intent(out), target :: W(:)
    complex (kind=CmplxKind), pointer :: UA(:,:)
 !
-   n = mr*nc
-   if (n+nr*nc > size(W)) then
-      call ErrorHandler('computeUAUtc','Insufficient work space size',&
-                        n+nr*nc,size(W))
+!! n = mr*nc
+!! if (n+nr*nc > size(W)) then
+   if (nr*nc > size(W)) then
+      call ErrorHandler('computeUAU','Insufficient work space size',  &
+                        nr*nc,size(W))
    endif
-   UA => aliasArray2_c(W(n+1:n+nr*nc),nr,nc)
+   UA => aliasArray2_c(W(1:nr*nc),nr,nc)
 !  -------------------------------------------------------------------
    call zgemm('n','n',nr,nc,nc,alpha,Ul,nr,A,lda,CZERO,UA,nr)
 !  -------------------------------------------------------------------
@@ -346,7 +350,8 @@ contains
    implicit none
 !
    integer (kind=IntKind), intent(in) :: nr, nc, mr, lda, ldb
-   integer (kind=IntKind) :: n, i, j
+   integer (kind=IntKind) :: i, j
+!! integer (kind=IntKind) :: n
 !
    complex (kind=CmplxKind), intent(in) :: Ul(nr,nc), Ur(mr,nc), A(lda,nc)
    complex (kind=CmplxKind), intent(in) :: alpha, beta
@@ -354,12 +359,13 @@ contains
    complex (kind=CmplxKind), intent(out), target :: W(:)
    complex (kind=CmplxKind), pointer :: UA(:,:)
 !
-   n = mr*nc
-   if (n+nr*nc > size(W)) then
-      call ErrorHandler('computeUAUtc','Insufficient work space size',&
-                        n+nr*nc,size(W))
+!! n = mr*nc
+!! if (n+nr*nc > size(W)) then
+   if (nr*nc > size(W)) then
+      call ErrorHandler('computeUAUt','Insufficient work space size', &
+                        nr*nc,size(W))
    endif
-   UA => aliasArray2_c(W(n+1:n+nr*nc),nr,nc)
+   UA => aliasArray2_c(W(1:nr*nc),nr,nc)
 !  -------------------------------------------------------------------
    call zgemm('n','n',nr,nc,nc,alpha,Ul,nr,A,lda,CZERO,UA,nr)
 !  -------------------------------------------------------------------

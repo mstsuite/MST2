@@ -4,6 +4,9 @@ Module PublicParamDefinitionsModule
 public :: checkParameter,  &
           getParameterInfo
 !
+   character (len=12) :: StandardInputFile= 'i_mst_stdin'
+   integer (kind=IntKind), parameter :: MaxLenFileName = 100
+!
 !  ===================================================================
 !  E-contour  type parameters:
 !  ===================================================================

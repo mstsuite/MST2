@@ -1,10 +1,3 @@
-#ifdef CRAY
-#define zgetrf cgetrf
-#define zgetri cgetri
-#define zgemm cgemm
-#define zcopy ccopy
-#define zscal cscal
-#endif
 !  *******************************************************************
 !  * Module for calculating Screened KKR structure constant matrix   *
 !  * External Modules used:                                          *

@@ -15,9 +15,11 @@ public :: initSystem,             &
           getAtomType,            &
           getAtomTypeName,        &
           getNumAtomsOfType,      &
+          getAlloyTableSize,      &
           getNumAlloyElements,    &
           getAlloyElementName,    &
           getAlloyElementContent, &
+          getAlloySpeciesIndex,   &
           setBravaisLattice,      &
           getBravaisLattice,      &
           setSystemTable,         &
@@ -128,10 +130,13 @@ private
    character (len=MaxLenOfAtomName), target, allocatable :: AtomName(:)
    character (len=MaxLenOfAtomName), allocatable :: AtomTypeName(:)
 !
-   character (len=MaxLenOfAtomName), allocatable :: AlloyElementName(:,:)
+   integer (kind=IntKind) :: table_size
+   integer (kind=IntKind), allocatable :: table_line(:)
+   character (len=MaxLenOfAtomName), allocatable :: AlloyElementName(:)
+   integer (kind=IntKind), allocatable :: AlloyElementAN(:)
    integer (kind=IntKind), allocatable :: NumAlloyElements(:)
    integer (kind=IntKind) :: MaxAlloyElements
-   real (kind=RealKind), allocatable :: AlloyElementContent(:,:)
+   real (kind=RealKind), allocatable :: AlloyElementContent(:)
 !
    integer (kind=IntKind) :: NumAtoms
    integer (kind=IntKind) :: NumVacancies
@@ -199,6 +204,8 @@ contains
    use InputModule, only : getKeyValue, getTableIndex, getKeyIndexValue
    use InputModule, only : isKeyExisting
 !
+   use PublicParamDefinitionsModule, only : ASA, MuffinTin, MuffinTinASA
+!
    implicit none
 !
    character (len=50) :: info_table
@@ -206,7 +213,8 @@ contains
    character (len=80), allocatable :: value(:)
 !
    integer (kind=IntKind), intent(in) :: tbl_id
-   integer (kind=IntKind) :: i, info_id, ig, j, reset_lmax
+   integer (kind=IntKind) :: i, info_id, ig, j, reset_lmax, pot_type
+   integer (kind=IntKind) :: lig
    integer (kind=IntKind), allocatable :: lmax_kkr(:), ind_lmax_kkr(:)
    integer (kind=IntKind), allocatable :: lmax_phi(:), ind_lmax_phi(:)
    integer (kind=IntKind), allocatable :: lmax_rho(:), ind_lmax_rho(:)
@@ -381,12 +389,30 @@ contains
 !  -------------------------------------------------------------------
    rstatus = getKeyValue(info_id,'Default Lmax-T matrix',lmax_kkr(0))
    rstatus = getKeyIndexValue(info_id,'Lmax-T matrix',ind_lmax_kkr,lmax_kkr(1:NumAtoms),NumAtoms)
-   rstatus = getKeyValue(info_id,'Default Lmax-Wave Func',lmax_phi(0))
+!
+!  rstatus = getKeyValue(info_id,'Default Lmax-Wave Func',lmax_phi(0))
+   if (getKeyValue(info_id,'Default Lmax-Wave Func',lmax_phi(0),default_param=.false.) /= 0) then
+      lmax_phi(0) = lmax_kkr(0)
+   endif
    rstatus = getKeyIndexValue(info_id,'Lmax-Wave Func',ind_lmax_phi,lmax_phi(1:NumAtoms),NumAtoms)
-   rstatus = getKeyValue(info_id,'Default Lmax-Charge Den',lmax_rho(0))
-   rstatus = getKeyIndexValue(info_id,'Lmax-Charge Den',ind_lmax_rho,lmax_rho(1:NumAtoms),NumAtoms)
-   rstatus = getKeyValue(info_id,'Default Lmax-Potential',lmax_pot(0))
+!
+!  rstatus = getKeyValue(info_id,'Default Lmax-Potential',lmax_pot(0))
+   if (getKeyValue(info_id,'Default Lmax-Potential',lmax_pot(0),default_param=.false.) /= 0) then
+      rstatus = getKeyValue(tbl_id,'Potential Type (>= 0)',pot_type)
+      if (pot_type == ASA .or. pot_type == MuffinTin .or.  pot_type == MuffinTinASA) then
+         lmax_pot(0) = 0
+      else
+         lmax_pot(0) = 2*lmax_kkr(0)
+      endif
+   endif
    rstatus = getKeyIndexValue(info_id,'Lmax-Potential',ind_lmax_pot,lmax_pot(1:NumAtoms),NumAtoms)
+!
+!  rstatus = getKeyValue(info_id,'Default Lmax-Charge Den',lmax_rho(0))
+   if (getKeyValue(info_id,'Default Lmax-Charge Den',lmax_rho(0),default_param=.false.) /= 0) then
+      lmax_rho(0) = lmax_pot(0)
+   endif
+   rstatus = getKeyIndexValue(info_id,'Lmax-Charge Den',ind_lmax_rho,lmax_rho(1:NumAtoms),NumAtoms)
+!
    rstatus = getKeyValue(info_id,'Default Radical Plane Ratio',radplane(0))
    rstatus = getKeyIndexValue(info_id,'Radical Plane Ratio',ind_radplane,radplane(1:NumAtoms),NumAtoms)
 !  -------------------------------------------------------------------
@@ -470,15 +496,31 @@ contains
       NumAlloySubLatts = 0
    endif
 !
+   allocate(table_line(NumAtoms))
+   table_line = 0
+   table_size = 0
+   do ig = 1, NumAtoms
+      table_line(ig) = table_size
+      table_size = table_size + NumAlloyElements(ig)
+   enddo
+   allocate(AlloyElementName(table_size))
+   allocate(AlloyElementAN(table_size))
+   allocate(AlloyElementContent(table_size))
    if (MaxAlloyElements > 1) then
-      allocate(AlloyElementName(MaxAlloyElements,NumAtoms))
-      allocate(AlloyElementContent(MaxAlloyElements,NumAtoms))
       do i = 1, NumAlloySubLatts
          ig = p_AlloySublattIndex(i)
          do j = 1, NumAlloyElements(ig)
-            AlloyElementName(j,ig) = getName(p_AlloyElement(j,i))
-            AlloyElementContent(j,ig) = p_AlloyContent(j,i)
+            lig = table_line(ig) + j
+            AlloyElementName(lig) = getName(p_AlloyElement(j,i))
+            AlloyElementAN(lig) = p_AlloyElement(j,i)
+            AlloyElementContent(lig) = p_AlloyContent(j,i)
          enddo
+      enddo
+   else
+      do ig = 1, NumAtoms
+         AlloyElementName(ig) = AtomName(ig)
+         AlloyElementAN(ig) = AtomicNum(ig)
+         AlloyElementContent(ig) = ONE
       enddo
    endif
 !
@@ -705,9 +747,8 @@ contains
    nullify( ConstrainField )
    nullify( Force, EnPres )
 !
-   if (MaxAlloyElements > 1) then
-      deallocate(AlloyElementName, AlloyElementContent)
-   endif
+   deallocate(table_line)
+   deallocate(AlloyElementName, AlloyElementAN, AlloyElementContent)
    MaxAlloyElements = 0
 !
    deallocate(LmaxKKR, LmaxRho, LmaxPot)
@@ -920,10 +961,24 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getAlloyTableSize() result(n)
+!  ===================================================================
+   implicit none
+   integer (kind=IntKind) :: n
+!
+   n = table_size
+!
+   end function getAlloyTableSize
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getAlloyElementName(ig,ia) result(a)
 !  ===================================================================
    implicit none
    integer (kind=IntKind), intent(in) :: ia,ig
+   integer (kind=IntKind) :: lig
 !
    character (len=MaxLenOfAtomName) :: a
 !
@@ -931,11 +986,9 @@ contains
       call ErrorHandler('getAlloyElementName','Invalid global atom index',ig)
    else if (ia < 1 .or. ia > NumAlloyElements(ig)) then
       call ErrorHandler('getAlloyElementName','Invalid alloy element index',ia)
-   else if (MaxAlloyElements > 1) then
-      a = AlloyElementName(ia,ig)
-   else
-      a = AtomName(ig)
    endif
+   lig = table_line(ig) + ia
+   a = AlloyElementName(lig)
 !
    end function getAlloyElementName
 !  ===================================================================
@@ -947,6 +1000,7 @@ contains
 !  ===================================================================
    implicit none
    integer (kind=IntKind), intent(in) :: ia,ig
+   integer (kind=IntKind) :: lig
 !
    real (kind=RealKind) :: c
 !
@@ -954,13 +1008,25 @@ contains
       call ErrorHandler('getAlloyElementContent','Invalid global atom index',ig)
    else if (ia < 1 .or. ia > NumAlloyElements(ig)) then
       call ErrorHandler('getAlloyElementContent','Invalid alloy element index',ia)
-   else if (MaxAlloyElements > 1) then
-      c = AlloyElementContent(ia,ig)
-   else
-      c = 1.0d0
    endif
+   lig = table_line(ig) + ia
+   c = AlloyElementContent(lig)
 !
    end function getAlloyElementContent
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getAlloySpeciesIndex(ig,ia) result(lig)
+!  ===================================================================
+   implicit none
+   integer (kind=IntKind), intent(in) :: ia,ig
+   integer (kind=IntKind) :: lig
+!
+   lig = table_line(ig) + ia
+!
+   end function getAlloySpeciesIndex
 !  ===================================================================
 !
 !  *******************************************************************
@@ -1045,16 +1111,27 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getAtomName_one(i) result (nm)
+   function getAtomName_one(ig,ia) result (nm)
 !  ===================================================================
    implicit none
-   integer (kind=IntKind), intent(in) :: i
+   integer (kind=IntKind), intent(in) :: ig
+   integer (kind=IntKind), intent(in), optional :: ia
+   integer (kind=IntKind) :: lig
    character (len=MaxLenOfAtomName) :: nm
 !
-   if (i<1 .or. i>NumAtoms) then
-      call ErrorHandler('getAtomName','Invalid atom index',i)
+   if (ig<1 .or. ig>NumAtoms) then
+      call ErrorHandler('getAtomName','Invalid atom/site index',ig)
    endif
-   nm = AtomName(i)
+   if (present(ia)) then
+      if (ia < 1 .or. ia > NumAlloyElements(ig)) then
+         call ErrorHandler('getAtomName','Invalid alloy element index at site',ia,ig)
+      else
+         lig = table_line(ig) + ia
+         nm = AlloyElementName(lig)
+      endif
+   else
+      nm = AtomName(ig)
+   endif
 !
    end function getAtomName_one
 !  ===================================================================
@@ -1075,16 +1152,26 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getAtomicNumber_one(i) result (nm)
+   function getAtomicNumber_one(ig,ia) result (nm)
 !  ===================================================================
    implicit none
-   integer (kind=IntKind), intent(in) :: i
-   integer (kind=IntKind) :: nm
+   integer (kind=IntKind), intent(in) :: ig
+   integer (kind=IntKind), intent(in), optional :: ia
+   integer (kind=IntKind) :: nm, lig
 !
-   if (i<1 .or. i>NumAtoms) then
-      call ErrorHandler('getAtomicNumber','Invalid atom index',i)
+   if (ig<1 .or. ig>NumAtoms) then
+      call ErrorHandler('getAtomicNumber','Invalid atom index',ig)
    endif
-   nm = AtomicNum(i)
+   if (present(ia)) then
+      if (ia < 1 .or. ia > NumAlloyElements(ig)) then
+         call ErrorHandler('getAtomicNumber','Invalid alloy element index at site',ia,ig)
+      else
+         lig = table_line(ig) + ia
+         nm = AlloyElementAN(lig)
+      endif
+   else
+      nm = AtomicNum(ig)
+   endif
 !
    end function getAtomicNumber_one
 !  ===================================================================

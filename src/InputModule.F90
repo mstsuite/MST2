@@ -23,6 +23,7 @@ module InputModule
    use MathParamModule, only : ZERO, CZERO
    use MPPModule, only : MyPE, bcastMessage, syncAllPEs
    use PublicTypeDefinitionsModule, only : InputTableStruct
+   use PublicParamDefinitionsModule, only : StandardInputFile
 !
 public :: initInput,       &
           endInput,        &
@@ -73,7 +74,7 @@ private
    integer (kind=IntKind), parameter :: InputPE = 0
    integer (kind=IntKind), parameter :: MessageType = 12100
 !
-   integer (kind=IntKind) :: jdx, pflag, fflag, status
+   integer (kind=IntKind) :: pflag, fflag, status
    integer (kind=IntKind), parameter :: MaxNumData = 200
 !
    character (len=80) :: file_path
@@ -83,11 +84,14 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initInput()
 !  ===================================================================
+   use DefaultParamModule, only : initDefaultParam
    implicit none
 !
    NumInputTables = 0
 !  DataTable%UnitNumber = -1
 !  DataTable%Open = .false.
+!
+   call initDefaultParam()
 !
    Initialized = .true.
 !
@@ -99,6 +103,7 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine endInput()
 !  ===================================================================
+   use DefaultParamModule, only : endDefaultParam
    implicit none
    integer (kind=IntKind) :: i
    type (InputTableStruct), pointer :: next
@@ -112,6 +117,8 @@ contains
    enddo
    nullify(CurrentPtr)
    nullify(next)
+!
+   call endDefaultParam()
 !
    Initialized = .false.
    NumInputTables = 0
@@ -130,6 +137,8 @@ contains
    character (len=80) :: file_name
    character (len=160) :: s
 !
+   integer (kind=IntKind) :: jdx
+!
    if (.not.Initialized) then
       call ErrorHandler('getDefaultInput','need to call initInput first')
    endif
@@ -139,13 +148,14 @@ contains
       do 
          read(5,'(a)',iostat=status)text
          if (status < 0) then
+            write(6,'(a)')'File name is not found in the standard input file'
             call ErrorHandler('getDefaultInput','Invalid input data file')
          else if (text(1:17) == 'Current File Path') then
-            jdx=index(text,':: ')
+            jdx=index(text,'::')
             file_path = adjustl(text(jdx+2:))
             pflag=1
          else if (text(1:17) == 'Current File Name') then
-            jdx=index(text,':: ')
+            jdx=index(text,'::')
             file_name = adjustl(text(jdx+2:))
             fflag=1
          else if (pflag==1 .and. fflag==1) then
@@ -172,16 +182,23 @@ contains
    character (len=*),intent(in) :: fname
    integer (kind=IntKind), intent(in) :: funit
    integer (kind=IntKind) :: ios, i
+   logical :: FileExist
 !
    if (.not.Initialized) then
       call ErrorHandler('openInputFile','need to call initInput first')
    endif
 !
    if (MyPE == InputPE .and. funit /= 5) then
-      open(unit=funit,file=fname,form='formatted',status='old',       &
-           iostat=ios,action='read')
-      if (ios > 0) then
-         call ErrorHandler('openInputFile','iostat > 0',ios)
+      inquire(file=fname,exist=FileExist)
+      if (FileExist) then
+         open(unit=funit,file=fname,form='formatted',status='old',    &
+              iostat=ios,action='read')
+         if (ios > 0) then
+            write(6,'(a,i5)')'File unit = ',funit
+            call ErrorHandler('openInputFile','iostat > 0',fname)
+         endif
+      else
+         call ErrorHandler('openInputFile','File does not exist',fname)
       endif
    endif
 !
@@ -211,16 +228,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine readInputData(funit,tindex,fname)          
+   subroutine readInputData(funit,tindex)
 !  ===================================================================
    implicit none
-   logical :: opd, found, isStdin
-   character (len=*), optional :: fname
+   logical :: opd, unit_found
    character (len=220) :: text
    integer (kind=IntKind), intent(in) :: funit
    integer (kind=IntKind), intent(out) :: tindex
 !
-   integer (kind=IntKind) :: n,i
+   integer (kind=IntKind) :: n,i,jdx
    integer (kind=IntKind) :: InputFormat
    integer (kind=IntKind) :: msgbuf(2)
    integer (kind=IntKind), parameter :: NumDataInOldFormat = 100
@@ -238,8 +254,7 @@ contains
       call ErrorHandler('readInputData','need to call initInput first')
    endif
 !
-   found = .false.
-   isStdin = .false.
+   unit_found = .false.
 !
    if (NumInputTables == 0) then
       allocate(DataTable)
@@ -247,30 +262,25 @@ contains
    CurrentPtr=>DataTable
    do i=1,NumInputTables
       if (CurrentPtr%UnitNumber==funit .and. CurrentPtr%Open) then
-         found = .true.
+         unit_found = .true.
          exit
       else if (i < NumInputTables) then
          CurrentPtr => CurrentPtr%next
       endif
    enddo
 !
-   if ( present(fname) ) then
-      if ( fname == 'i_lsms_stdin' ) then
-         isStdin = .true.
-      endif
-   endif
-   if (.not. found) then
-      if (funit==5 .or. isStdin) then  ! For unit=5, openInputFile may not be called
-         if ( isStdin ) then
-            open( unit=5, file=fname )
-            rewind(5)
-         endif
+   if (.not. unit_found) then
+      if (funit==5) then  ! For unit=5, openInputFile may not be called
          if (NumInputTables > 0) then
             allocate(CurrentPtr%next)
             CurrentPtr => CurrentPtr%next
          endif
          NumInputTables = NumInputTables+1
+if (.false.) then
          CurrentPtr%TableName = getDefaultInput()
+else
+         CurrentPtr%TableName = 'stdin'
+endif
          CurrentPtr%Open = .true.
          CurrentPtr%UnitNumber = funit
          CurrentPtr%TableIndex = NumInputTables
@@ -278,17 +288,16 @@ contains
       else
          call ErrorHandler('readInputData','file unit is invalid',funit)
       endif
+   else if (MyPE == InputPE .and.  funit /= 5) then
+      inquire(unit=funit,opened=opd)
+      if (.not.opd) then
+         call ErrorHandler('readInputData','file unit is not opened',funit)
+      endif
    endif
 !
    tindex = CurrentPtr%TableIndex
 !
    if (MyPE == InputPE) then
-      if (funit /= 5) then
-         inquire(unit=funit,opened=opd)
-         if (.not.opd) then
-            call ErrorHandler('readInputData','file unit is not opened',funit)
-         endif
-      endif
 !     ================================================================
       read(funit,'(a)',iostat=status)text
       text=adjustl(text)
@@ -297,53 +306,37 @@ contains
       else
           InputFormat = 1
       endif
-!     ================================================================
-      if (InputFormat == 1) then
-          rewind(funit)
-          n=0
-          do 
-             read(funit,'(a)',iostat=status)text
-             if (status < 0) then
-                exit
-             endif
-             text=adjustl(text)
-             if (text(1:1) == '#' .or. text(1:1) == '!') then
-                cycle
-             else
-                jdx = index(text,':: ')
-                if (jdx > 1) then
-                   if (text(jdx-1:jdx-1) /= ':') then
-                      n = n+1
-                   endif
-                endif
-             endif
-          enddo
-       else
-          n = NumDataInOldFormat
-       endif
-       msgbuf(1) = n; msgbuf(2) = InputFormat
    endif
+!  -------------------------------------------------------------------
+   call bcastMessage(InputFormat,InputPE)
+!  -------------------------------------------------------------------
 !
-!  -------------------------------------------------------------------
-   call bcastMessage(msgbuf,2,InputPE)
-!  -------------------------------------------------------------------
-   n = msgbuf(1); InputFormat = msgbuf(2)
-   if (n <= 0) then
-      call ErrorHandler('readInputData','no valid data is found')
-   else if (n > MaxNumData) then
-      call ErrorHandler('readInputData','Number of data exceeds the upper limit',n,MaxNumData)
-   else
-!     allocate(CurrentPtr%KeyName(n), CurrentPtr%KeyValue(n))
-      allocate(CurrentPtr%KeyName(MaxNumData), CurrentPtr%KeyValue(MaxNumData))
-   endif
+   allocate(CurrentPtr%KeyName(MaxNumData), CurrentPtr%KeyValue(MaxNumData))
 !
    if (MyPE == InputPE) then
-      rewind(funit)
+      if (funit /= 5) then
+         rewind(funit)
+      endif
       if (InputFormat == 1) then
          n = 0
+!        =============================================================
+!        In case of funit=5, since one line has been read, it needs to be
+!        processed to extract data from the line
+!        =============================================================
+         if (funit == 5 .and. text(1:1) /= '#' .and. text(1:1) /= '!') then
+            jdx = index(text,'::')
+            if (jdx > 1) then
+               if (text(jdx+2:jdx+2) /= ':') then
+                  n = n+1
+                  CurrentPtr%KeyName(n)=adjustl(text(1:jdx-1))
+                  CurrentPtr%KeyValue(n)=adjustl(text(jdx+2:))
+               endif
+            endif
+         endif
 !        -------------------------------------------------------------
          call readInputInStandardFormat(funit,n)
 !        -------------------------------------------------------------
+         CurrentPtr%NumData = n
       else
 !        -------------------------------------------------------------
          call readInputInOtherFormat(funit,CurrentPtr)
@@ -351,7 +344,6 @@ contains
          NumInputTables = NumInputTables+1  ! add one more table since
                                             ! info_table is also stored
       endif
-      CurrentPtr%NumData = n
    endif
 !
    call bcastMessage(CurrentPtr%NumData,InputPE)
@@ -392,6 +384,7 @@ contains
 !
    integer (kind=IntKind), intent(in) :: funit
    integer (kind=IntKind), intent(inout) :: n
+   integer (kind=IntKind) :: jdx
 !
    character (len=220) :: text
    character (len=80) :: stmp1, stmp2
@@ -414,9 +407,9 @@ contains
       if (text(1:1) == '#' .or. text(1:1) == '!') then
          cycle
       else
-         jdx = index(text,':: ')
+         jdx = index(text,'::')
          if (jdx > 1) then
-            if (text(jdx-1:jdx-1) /= ':') then
+            if (text(jdx+2:jdx+2) /= ':') then
                stmp1 = adjustl(text(1:jdx-1))
                stmp2 = adjustl(text(jdx+2:))
                if (nocaseCompare(stmp1,'Include File')) then
@@ -740,14 +733,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_str0(id,key,value) result(status)
+   function getKeyValue_str0(id,key,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    character (len=*), intent(out) :: value
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -773,8 +768,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value(:) = ' '
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,value) == 0) then 
+            status = 0
+         endif
+      else
+         value(:) = ' '
+      endif
    else
       status = 0
    endif
@@ -891,15 +897,17 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_str3(id,key,k,value) result(status)
+   function getKeyValue_str3(id,key,k,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id, k
    character (len=*), intent(out) :: value(k)
    character (len=80) :: s
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -930,8 +938,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value(1:k)(:) = ' '
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,k,value) == 0) then 
+            status = 0
+         endif
+      else
+         value(1:k)(:) = ' '
+      endif
    else
       status = 0
    endif
@@ -942,15 +961,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_int0(id,key,value,isDefined) result(status)
+   function getKeyValue_int0(id,key,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
-   logical, optional :: isDefined
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(out) :: value
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -978,14 +998,21 @@ contains
       endif
    enddo
 !
-   if ( present(isDefined) ) then
-      isDefined = found
-   endif
-!
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value = 0
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,value) == 0) then 
+            status = 0
+         endif
+      else
+         value = 0
+      endif
    else
       status = 0
    endif
@@ -1104,15 +1131,17 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_int3(id,key,k,value) result(status)
+   function getKeyValue_int3(id,key,k,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k
    integer (kind=IntKind), intent(out) :: value(k)
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -1142,8 +1171,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value(1:k) = 0
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,k,value) == 0) then 
+            status = 0
+         endif
+      else
+         value(1:k) = 0
+      endif
    else
       status = 0
    endif
@@ -1154,14 +1194,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_real0(id,key,value) result(status)
+   function getKeyValue_real0(id,key,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    real (kind=RealKind), intent(out) :: value
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -1191,8 +1233,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value = ZERO
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,value) == 0) then 
+            status = 0
+         endif
+      else
+         value = ZERO
+      endif
    else
       status = 0
    endif
@@ -1311,15 +1364,17 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_real3(id,key,k,value) result(status)
+   function getKeyValue_real3(id,key,k,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k
    real (kind=RealKind), intent(out) :: value(k)
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -1349,8 +1404,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value(1:k) = ZERO
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,k,value) == 0) then 
+            status = 0
+         endif
+      else
+         value(1:k) = ZERO
+      endif
    else
       status = 0
    endif
@@ -1361,14 +1427,16 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_cmplx0(id,key,value) result(status)
+   function getKeyValue_cmplx0(id,key,value,default_param) result(status)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    complex (kind=CmplxKind), intent(out) :: value
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -1398,8 +1466,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
-      value = CZERO
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
+      if (dp) then
+         if (getDefaultValue(key,value) == 0) then 
+            status = 0
+         endif
+      else
+         value = CZERO
+      endif
    else
       status = 0
    endif
@@ -1518,7 +1597,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyValue_cmplx3(id,key,k,value) result(status)
+   function getKeyValue_cmplx3(id,key,k,value,default_param) result(status)
 !  ===================================================================
 !
 !  Given the data table ID: id
@@ -1527,13 +1606,15 @@ contains
 !
 !  Returns the data: value(1:k)
 !  ===================================================================
+   use DefaultParamModule, only : getDefaultValue
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k
    complex (kind=CmplxKind), intent(out) :: value(k)
    integer (kind=IntKind) :: i, status
-   logical :: found
+   logical, optional, intent(in) :: default_param
+   logical :: found, dp
 !
    if (id < 1 .or. id > NumInputTables) then
       call ErrorHandler('getKeyValue','invalid table index',id)
@@ -1562,8 +1643,19 @@ contains
 !
    if (.not.found) then
 !     call WarningHandler('getKeyValue','Key not found',key)
+      if (present(default_param)) then
+         dp = default_param
+      else
+         dp = .true.
+      endif
       status = 1
-      value(1:k) = CZERO
+      if (dp) then 
+         if (getDefaultValue(key,k,value) == 0) then 
+            status = 0
+         endif
+      else
+         value(1:k) = CZERO
+      endif
    else
       status = 0
    endif
@@ -1574,14 +1666,14 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndex(id,indKey,key,index,n) result(status)
+   function getKeyIndex(id,indKey,key,k_index,n) result(status)
 !  ===================================================================
 !
 !  Given the data table ID: id
 !        the data list index description: indKey
 !        the data list name description: key
 !        the data list size: n
-!        the data list index array: index(1:n)  
+!        the data list index array: k_index(1:n)  
 !
 !  Returns the data: value(1:k)
 !
@@ -1596,7 +1688,7 @@ contains
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: n
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    integer (kind=IntKind) :: i, m, k, status
 !
    if (id < 1 .or. id > NumInputTables) then
@@ -1612,7 +1704,7 @@ contains
       endif
    enddo
 !
-   index(1:n) = 0
+   k_index(1:n) = 0
 !
    status = 0
    m = 0
@@ -1627,7 +1719,7 @@ contains
          endif
       else if (CurrentPtr%KeyName(i) == key) then
          m = m + 1
-         index(k)=m
+         k_index(k)=m
       endif
    enddo LOOP_i
 !
@@ -1637,12 +1729,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_str0(id,key,index,value) result(status)
+   function getKeyIndexValue_str0(id,key,k_index,value) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    character (len=*), intent(out) :: value
    character (len=80) :: s
    integer (kind=IntKind) :: i, status, p1, p2
@@ -1670,7 +1762,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(:) = ' '
    do i=1,CurrentPtr%NumData
@@ -1678,7 +1770,7 @@ contains
          s=trim(adjustl(CurrentPtr%KeyValue(i)))
          p1 = getTokenPosition(1,s)
          p2 = getTokenPosition(2,s)
-         read(s(p1:p2-1),*,iostat=status)index
+         read(s(p1:p2-1),*,iostat=status)k_index
          if (status < 0) then
             call WarningHandler('getKeyIndexValue','Invalid value',          &
                               CurrentPtr%KeyValue(i))
@@ -1703,13 +1795,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_str1(id,key,index,value,n) result(status)
+   function getKeyIndexValue_str1(id,key,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: n
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    character (len=*), intent(out) :: value(n)
    character (len=80) :: s
    integer (kind=IntKind) :: i, m, status, p1, p2, j
@@ -1737,7 +1829,7 @@ contains
       endif
    enddo
 !  
-   index = 0
+   k_index = 0
    found = .false.
    value(1:n)(:) = ' '
    m=0
@@ -1757,7 +1849,7 @@ contains
             value(m) = s(p2:)
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -1777,13 +1869,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_str2(id,key,k,index,value,n) result(status)
+   function getKeyIndexValue_str2(id,key,k,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: k,n
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    character (len=*), intent(out) :: value(k,n)
    character (len=80) :: s
    integer (kind=IntKind) :: i, m, status, p1, p2, j
@@ -1811,7 +1903,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k,1:n)(:) = ' '
    m=0
@@ -1831,7 +1923,7 @@ contains
          else
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -1851,12 +1943,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_str3(id,key,k,index,value) result(status)
+   function getKeyIndexValue_str3(id,key,k,k_index,value) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id, k
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    character (len=*), intent(out) :: value(k)
    character (len=80) :: s
    integer (kind=IntKind) :: i, status, p1, p2
@@ -1884,7 +1976,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k)(:) = ' '
    do i=1,CurrentPtr%NumData
@@ -1892,7 +1984,7 @@ contains
          s=adjustl(CurrentPtr%KeyValue(i))
          p1 = getTokenPosition(1,s)
          p2 = getTokenPosition(2,s)
-         read(s(p1:p2-1),*)index
+         read(s(p1:p2-1),*)k_index
          read(s(p2:),'(80a)',iostat=status)value(1:k)
          if (status < 0) then
             call ErrorHandler('getKeyIndexValue','Invalid value',          &
@@ -1917,13 +2009,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_int0(id,key,index,value,isDefined) result(status)
+   function getKeyIndexValue_int0(id,key,k_index,value) result(status)
 !  ===================================================================
    implicit none
-   logical, optional :: isDefined
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    integer (kind=IntKind), intent(out) :: value
    integer (kind=IntKind) :: i, status
    logical :: found
@@ -1941,12 +2032,12 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value = 0
    do i=1,CurrentPtr%NumData
       if (CurrentPtr%KeyName(i) == key) then
-         read(CurrentPtr%KeyValue(i),*,iostat=status)index,value
+         read(CurrentPtr%KeyValue(i),*,iostat=status)k_index,value
          if (status < 0) then
             call WarningHandler('getKeyIndexValue','Invalid value',          &
                               CurrentPtr%KeyValue(i))
@@ -1956,10 +2047,6 @@ contains
          exit
       endif
    enddo
-!
-   if ( present(isDefined) ) then
-      isDefined = found
-   endif
 !
    if (.not.found) then
 !     call WarningHandler('getKeyIndexValue','Key not found',key)
@@ -1974,13 +2061,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_int1(id,key,index,value,n) result(status)
+   function getKeyIndexValue_int1(id,key,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: n
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    integer (kind=IntKind), intent(out) :: value(n)
    integer (kind=IntKind) :: i, m, status, j
    logical :: found
@@ -1998,7 +2085,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:n) = 0
    m=0
@@ -2014,7 +2101,7 @@ contains
          else
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -2034,13 +2121,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_int2(id,key,k,index,value,n) result(status)
+   function getKeyIndexValue_int2(id,key,k,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k,n
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    integer (kind=IntKind), intent(out) :: value(k,n)
    integer (kind=IntKind) :: i, m, status, j
    logical :: found
@@ -2058,7 +2145,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k,1:n) = 0
    m=0
@@ -2074,7 +2161,7 @@ contains
          else
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -2094,13 +2181,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_int3(id,key,k,index,value) result(status)
+   function getKeyIndexValue_int3(id,key,k,k_index,value) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    integer (kind=IntKind), intent(out) :: value(k)
    integer (kind=IntKind) :: i, status
    logical :: found
@@ -2118,12 +2205,12 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k) = 0
    do i=1,CurrentPtr%NumData
       if (CurrentPtr%KeyName(i) == key) then
-         read(CurrentPtr%KeyValue(i),*,iostat=status)index,value(1:k)
+         read(CurrentPtr%KeyValue(i),*,iostat=status)k_index,value(1:k)
          if (status < 0) then
             call WarningHandler('getKeyIndexValue','Invalid value',          &
                               CurrentPtr%KeyValue(i))
@@ -2147,12 +2234,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_real0(id,key,index,value) result(status)
+   function getKeyIndexValue_real0(id,key,k_index,value) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    real (kind=RealKind), intent(out) :: value
    integer (kind=IntKind) :: i, status
    logical :: found
@@ -2170,12 +2257,12 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value = ZERO
    do i=1,CurrentPtr%NumData
       if (CurrentPtr%KeyName(i) == key) then
-         read(CurrentPtr%KeyValue(i),*,iostat=status)index,value
+         read(CurrentPtr%KeyValue(i),*,iostat=status)k_index,value
          if (status < 0) then
             call WarningHandler('getKeyIndexValue','Invalid value',          &
                               CurrentPtr%KeyValue(i))
@@ -2199,13 +2286,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_real1(id,key,index,value,n) result(status)
+   function getKeyIndexValue_real1(id,key,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: n
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    real (kind=RealKind), intent(out) :: value(n)
    integer (kind=IntKind) :: i, m, status, j
    logical :: found
@@ -2223,7 +2310,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:n) = ZERO
    m=0
@@ -2239,7 +2326,7 @@ contains
          else
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -2259,13 +2346,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_real2(id,key,k,index,value,n) result(status)
+   function getKeyIndexValue_real2(id,key,k,k_index,value,n) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k,n
-   integer (kind=IntKind), intent(out) :: index(n)
+   integer (kind=IntKind), intent(out) :: k_index(n)
    real (kind=RealKind), intent(out) :: value(k,n)
    integer (kind=IntKind) :: i, m, status, j
    logical :: found
@@ -2283,7 +2370,7 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k,1:n) = ZERO
    m=0
@@ -2299,7 +2386,7 @@ contains
          else
             found = .true.
          endif
-         index(j) = m
+         k_index(j) = m
       endif
       if (m == n) then
          exit
@@ -2319,13 +2406,13 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getKeyIndexValue_real3(id,key,k,index,value) result(status)
+   function getKeyIndexValue_real3(id,key,k,k_index,value) result(status)
 !  ===================================================================
    implicit none
    character (len=*), intent(in) :: key
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(in) :: k
-   integer (kind=IntKind), intent(out) :: index
+   integer (kind=IntKind), intent(out) :: k_index
    real (kind=RealKind), intent(out) :: value(k)
    integer (kind=IntKind) :: i, status
    logical :: found
@@ -2343,12 +2430,12 @@ contains
       endif
    enddo
 !
-   index = 0
+   k_index = 0
    found = .false.
    value(1:k) = ZERO
    do i=1,CurrentPtr%NumData
       if (CurrentPtr%KeyName(i) == key) then
-         read(CurrentPtr%KeyValue(i),*,iostat=status)index,value(1:k)
+         read(CurrentPtr%KeyValue(i),*,iostat=status)k_index,value(1:k)
          if (status < 0) then
             call WarningHandler('getKeyIndexValue','Invalid value',          &
                               CurrentPtr%KeyValue(i))

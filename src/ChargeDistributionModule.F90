@@ -16,6 +16,7 @@ module ChargeDistributionModule
 public :: initChargeDistribution,           &
           endChargeDistribution,            &
           updateChargeDistribution,         &
+          getGlobalTableLine,               &
           getGlobalOnSiteElectronTable,     &   ! Qmt_i + rho_0*Omega0_i
           getGlobalMTSphereElectronTable,   &   ! Qmt_i
           getGlobalVPCellElectronTable,     &   ! Qvp_i
@@ -42,6 +43,9 @@ private
    integer (kind=IntKind) :: n_spin_pola
 !
    integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, GroupID
+   integer (kind=IntKind), allocatable, target :: global_table_line(:) ! Atom address in the global table
+   integer (kind=IntKind), allocatable, target :: local_array_line(:)  ! Atom address in the local array
+   integer (kind=IntKind) :: global_table_size, local_array_size
 !
    real (kind=RealKind) :: mom_aver = ZERO
    real (kind=RealKind) :: mdenint
@@ -61,25 +65,33 @@ private
    real (kind=RealKind), pointer :: MTSphereElectronTableOld(:)
    real (kind=RealKind), pointer :: VPCellElectronTableOld(:)
 !
+!  ExEn here is the exchange splitting energy between spin-ip and spin down states
    real (kind=RealKind), allocatable :: Vint(:), Qmt(:), Qvp(:), Mmt(:), Mvp(:), ExEn(:)
    real (kind=RealKind), allocatable :: Qmt_old(:), Qvp_old(:)
    real (kind=RealKind), allocatable :: memtemp(:,:), q_mix(:)
 !
+   type EMDStruct
+      real (kind=RealKind) :: VPCharge
+      real (kind=RealKind) :: VPMoment
+      real (kind=RealKind), pointer :: rho0(:)
+      real (kind=RealKind), pointer :: mom0(:)
+   end type EMDStruct
+!
    type ChargeListStruct
       integer (kind=IntKind) :: jmt
       integer (kind=IntKind) :: NumRs
+      integer (kind=IntKind) :: NumSpecies
       real (kind=RealKind) :: rmt
-      real (kind=RealKind) :: VPCharge
-      real (kind=RealKind) :: VPMoment
       real (kind=RealKind), pointer :: r_mesh(:)
-      real (kind=RealKind), pointer :: rho0(:)
-      real (kind=RealKind), pointer :: mom0(:)
+      type (EMDStruct), pointer :: EMD(:)
       type (ChargeListStruct), pointer :: next
    end type ChargeListStruct
 !
    type (ChargeListStruct), target :: ChargeList
 !
 contains
+!
+   include '../lib/arrayTools.F90'
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine initChargeDistribution(na,nt,ns)
@@ -88,10 +100,11 @@ contains
    use GroupCommModule, only : GlobalSumInGroup
    use Atom2ProcModule, only : getMaxLocalNumAtoms, getGlobalIndex
    use Atom2ProcModule, only : getLocalIndex, getAtom2ProcInGroup
-   use AtomModule, only : getMixingParam4Charge
+   use AtomModule, only : getMixingParam4Charge, getLocalNumSpecies
+   use AtomModule, only : getLocalSpeciesContent
    use StepFunctionModule, only : getVolumeIntegration
    use PolyhedraModule, only : getVolume
-   use SystemModule, only : getAtomicNumber
+   use SystemModule, only : getAtomicNumber, getNumAlloyElements
    use PotentialTypeModule, only : isASAPotential
    implicit none
 !
@@ -102,6 +115,7 @@ contains
    type (ChargeListStruct), pointer :: p_DL
 !
    integer (kind=IntKind) :: ig, ip, iq, id, jmt, NumRs
+   integer (kind=IntKind) :: lig, lid, ia
 !
    real (kind=RealKind) :: rmt, corr, qint_old, GVint
    real (kind=RealKind), pointer :: r_mesh(:)
@@ -117,52 +131,68 @@ contains
    NumPEsInGroup = getNumPEsInGroup(GroupID)
    MyPEinGroup = getMyPEinGroup(GroupID)
 !
+   allocate(global_table_line(GlobalNumAtoms))
+   global_table_line = 0
+   global_table_size = 0
+   do ig = 1, GlobalNumAtoms
+      global_table_line(ig) = global_table_size
+      global_table_size = global_table_size + getNumAlloyElements(ig)
+   enddo
+!
    if ( n_spin_pola==2 ) then
-      allocate( Table_Wkspace(1:GlobalNumAtoms,10) )
-      OnSiteElectronTableOld   => Table_Wkspace(1:GlobalNumAtoms,1)
-      MTSphereElectronTableOld => Table_Wkspace(1:GlobalNumAtoms,2)
-      VPCellElectronTableOld   => Table_Wkspace(1:GlobalNumAtoms,3)
-      OnSiteElectronTable      => Table_Wkspace(1:GlobalNumAtoms,4)
-      MTSphereElectronTable    => Table_Wkspace(1:GlobalNumAtoms,5)
-      VPCellElectronTable      => Table_Wkspace(1:GlobalNumAtoms,6)
-      NetMomentTable      => Table_Wkspace(1:GlobalNumAtoms,7)
-      MTSphereMomentTable => Table_Wkspace(1:GlobalNumAtoms,8)
-      VPCellMomentTable   => Table_Wkspace(1:GlobalNumAtoms,9)
-      ExchangeEnergyTable => Table_Wkspace(1:GlobalNumAtoms,10)
+      allocate( Table_Wkspace(1:global_table_size,10) )
+      OnSiteElectronTableOld   => Table_Wkspace(1:global_table_size,1)
+      MTSphereElectronTableOld => Table_Wkspace(1:global_table_size,2)
+      VPCellElectronTableOld   => Table_Wkspace(1:global_table_size,3)
+      OnSiteElectronTable      => Table_Wkspace(1:global_table_size,4)
+      MTSphereElectronTable    => Table_Wkspace(1:global_table_size,5)
+      VPCellElectronTable      => Table_Wkspace(1:global_table_size,6)
+      NetMomentTable      => Table_Wkspace(1:global_table_size,7)
+      MTSphereMomentTable => Table_Wkspace(1:global_table_size,8)
+      VPCellMomentTable   => Table_Wkspace(1:global_table_size,9)
+      ExchangeEnergyTable => Table_Wkspace(1:global_table_size,10)
    else
-      allocate( Table_Wkspace(1:GlobalNumAtoms,1:6) )
-      OnSiteElectronTableOld   => Table_Wkspace(1:GlobalNumAtoms,1)
-      MTSphereElectronTableOld => Table_Wkspace(1:GlobalNumAtoms,2)
-      VPCellElectronTableOld   => Table_Wkspace(1:GlobalNumAtoms,3)
-      OnSiteElectronTable      => Table_Wkspace(1:GlobalNumAtoms,4)
-      MTSphereElectronTable    => Table_Wkspace(1:GlobalNumAtoms,5)
-      VPCellElectronTable      => Table_Wkspace(1:GlobalNumAtoms,6)
+      allocate( Table_Wkspace(1:global_table_size,1:6) )
+      OnSiteElectronTableOld   => Table_Wkspace(1:global_table_size,1)
+      MTSphereElectronTableOld => Table_Wkspace(1:global_table_size,2)
+      VPCellElectronTableOld   => Table_Wkspace(1:global_table_size,3)
+      OnSiteElectronTable      => Table_Wkspace(1:global_table_size,4)
+      MTSphereElectronTable    => Table_Wkspace(1:global_table_size,5)
+      VPCellElectronTable      => Table_Wkspace(1:global_table_size,6)
       nullify( NetMomentTable )
       nullify( MTSphereMomentTable, VPCellMomentTable, ExchangeEnergyTable )
    endif
 !
-   allocate( Vint(LocalNumAtoms), q_mix(LocalNumAtoms) )
-   allocate( Qmt(LocalNumAtoms), Qmt_old(LocalNumAtoms) )
-   allocate( Qvp(LocalNumAtoms), Qvp_old(LocalNumAtoms) )
-   allocate( Mmt(LocalNumAtoms) )
-   allocate( Mvp(LocalNumAtoms) )
-   allocate( ExEn(LocalNumAtoms) )
+   allocate(local_array_line(LocalNumAtoms))
+   local_array_line = 0
+   local_array_size = 0
+   do id = 1, LocalNumAtoms
+      local_array_line(id) = local_array_size
+      local_array_size = local_array_size + getLocalNumSpecies(id)
+   enddo
 !
-   OnSiteElectronTable(1:GlobalNumAtoms) = ZERO
-   MTSphereElectronTable(1:GlobalNumAtoms) = ZERO
-   VPCellElectronTable(1:GlobalNumAtoms) = ZERO
+   allocate( Vint(LocalNumAtoms), q_mix(local_array_size) )
+   allocate( Qmt(local_array_size), Qmt_old(local_array_size) )
+   allocate( Qvp(local_array_size), Qvp_old(local_array_size) )
+   allocate( Mmt(local_array_size) )
+   allocate( Mvp(local_array_size) )
+   allocate( ExEn(local_array_size) )
+!
+   OnSiteElectronTable = ZERO
+   MTSphereElectronTable = ZERO
+   VPCellElectronTable = ZERO
    rhoint = ZERO
 !
-   OnSiteElectronTableOld(1:GlobalNumAtoms) = ZERO
-   MTSphereElectronTableOld(1:GlobalNumAtoms) = ZERO
-   VPCellElectronTableOld(1:GlobalNumAtoms) = ZERO
+   OnSiteElectronTableOld = ZERO
+   MTSphereElectronTableOld = ZERO
+   VPCellElectronTableOld = ZERO
    rhoint_old = ZERO
 !
    if ( n_spin_pola==2 ) then
-     NetMomentTable(1:GlobalNumAtoms) = ZERO
-     MTSphereMomentTable(1:GlobalNumAtoms) = ZERO
-     VPCellMomentTable(1:GlobalNumAtoms) = ZERO
-     ExchangeEnergyTable(1:GlobalNumAtoms) = ZERO
+     NetMomentTable = ZERO
+     MTSphereMomentTable = ZERO
+     VPCellMomentTable = ZERO
+     ExchangeEnergyTable = ZERO
    endif
    mdenint = ZERO
 !
@@ -173,12 +203,12 @@ contains
    enddo
    nullify( p_DL%next )
 !
-   Vint(1:LocalNumAtoms) = ZERO
-   Qmt(1:LocalNumAtoms) = ZERO
-   Qvp(1:LocalNumAtoms) = ZERO
-   Mmt(1:LocalNumAtoms) = ZERO
-   Mvp(1:LocalNumAtoms) = ZERO
-   ExEn(1:LocalNumAtoms) = ZERO
+   Vint = ZERO
+   Qmt = ZERO
+   Qvp = ZERO
+   Mmt = ZERO
+   Mvp = ZERO
+   ExEn = ZERO
 !
 !  ===================================================================
 !  setup the initial Qmt_old, Qvp_old
@@ -206,14 +236,17 @@ contains
       Vint(id) = getVolume(id) - PI4*rmt*rmt*rmt*THIRD
       GVint = GVint + Vint(id)
       r_mesh => p_DL%r_mesh(1:NumRs)
-!     ----------------------------------------------------------------
-      call dcopy(jmt,p_DL%rho0(1:jmt),1,rho0(1:jmt),1)
-!     ----------------------------------------------------------------
-      corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
-      Qmt_old(id) = getVolumeIntegration(id,jmt,r_mesh(1:jmt),0,rho0(1:jmt),truncated=.false.) + corr
-      Qvp_old(id) = p_DL%VPCharge
       ig = getGlobalIndex(id)
-      qint_old = qint_old + (getAtomicNumber(ig) - Qmt_old(id))
+      do ia = 1, p_DL%NumSpecies
+         lid = local_array_line(id) + ia
+!        -------------------------------------------------------------
+         call dcopy(jmt,p_DL%EMD(ia)%rho0,1,rho0,1)
+!        -------------------------------------------------------------
+         corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
+         Qmt_old(lid) = getVolumeIntegration(id,jmt,r_mesh,0,rho0,truncated=.false.) + corr
+         Qvp_old(lid) = p_DL%EMD(ia)%VPCharge
+         qint_old = qint_old + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Qmt_old(lid))
+      enddo
       p_DL => p_DL%next
    enddo
    deallocate( rho0 )
@@ -234,12 +267,16 @@ contains
 !
    do id = 1, LocalNumAtoms
       ig = getGlobalIndex(id)
-      OnSiteElectronTableOld(ig) = Qmt_old(id)+rhoint_old*Vint(id)
-      MTSphereElectronTableOld(ig) = Qmt_old(id)
-      VPCellElectronTableOld(ig) = Qvp_old(id)
+      do ia = 1, getLocalNumSpecies(id)
+         lig = global_table_line(ig) + ia
+         lid = local_array_line(id) + ia
+         OnSiteElectronTableOld(lig) = Qmt_old(lid)+rhoint_old*Vint(id)
+         MTSphereElectronTableOld(lig) = Qmt_old(lid)
+         VPCellElectronTableOld(lig) = Qvp_old(lid)
+      enddo
    enddo
 !  -------------------------------------------------------------------
-   call GlobalSumInGroup(GroupID,Table_Wkspace,GlobalNumAtoms,3)
+   call GlobalSumInGroup(GroupID,Table_Wkspace,global_table_size,3)
 !  -------------------------------------------------------------------
 !  ===================================================================
 !
@@ -266,7 +303,7 @@ contains
       nullify( VPCellMomentTable )
       nullify( ExchangeEnergyTable )
    endif
-   deallocate( Table_Wkspace )
+   deallocate( Table_Wkspace, global_table_line, local_array_line)
    deallocate( Vint, Qmt, Qvp, Mmt, Mvp, ExEn, Qmt_old, Qvp_old, q_mix )
 !
    Initialized = .false.
@@ -278,19 +315,22 @@ contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine updateChargeDistribution(getExchangeEnergy)
 !  ===================================================================
+   use MPPModule, only : MyPE
    use GroupCommModule, only : GlobalSumInGroup
    use InterpolationModule, only : FitInterp
    use IntegrationModule, only : calIntegration
    use Atom2ProcModule, only : getLocalIndex, getAtom2ProcInGroup, getGlobalIndex
    use PolyhedraModule, only : getVolume
    use StepFunctionModule, only : getVolumeIntegration
-   use SystemModule, only : getAtomicNumber
+   use AtomModule, only : getLocalAtomicNumber, getLocalNumSpecies
+   use AtomModule, only : getLocalSpeciesContent
+   use SystemModule, only : getNumAlloyElements, getAlloyElementContent
    use PotentialTypeModule, only : isASAPotential
    implicit none
 !
    type (ChargeListStruct), pointer :: p_DL
 !
-   integer (kind=IntKind) :: id, ig, ip
+   integer (kind=IntKind) :: id, ig, ip, ia, lid, lig
    integer (kind=IntKind) :: jmt, NumRs
 #ifdef No_BLAS
    integer (kind=IntKind) :: j
@@ -305,10 +345,10 @@ contains
    real (kind=RealKind), allocatable :: rho0(:)
 !
    interface
-      function getExchangeEnergy(id) result(exc_en)
+      function getExchangeEnergy(id,ia) result(exc_en)
          use KindParamModule, only : IntKind, RealKind
          implicit none
-         integer (kind=IntKind), intent(in) :: id
+         integer (kind=IntKind), intent(in) :: id, ia
          real (kind=RealKind) :: exc_en
       end function getExchangeEnergy
    end interface
@@ -339,36 +379,39 @@ contains
       NumRs = p_DL%NumRs
       rmt = p_DL%rmt
       r_mesh => p_DL%r_mesh(1:NumRs)
-!     ----------------------------------------------------------------
-      call dcopy(jmt,p_DL%rho0(1:jmt),1,rho0(1:jmt),1)
-!     ----------------------------------------------------------------
-      corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
-      Qmt(id) = getVolumeIntegration(id,jmt,r_mesh(1:jmt),0,rho0(1:jmt),truncated=.false.) + corr
-      Qvp(id) = p_DL%VPCharge
-      ig = getGlobalIndex(id)
-      qint = qint + (getAtomicNumber(ig) - Qmt(id))
-!     ================================================================
-!     Mixing the new Qmt, Qvp with the old ones.
-!     ================================================================
-      Qmt_old(id) = q_mix(id)*Qmt(id) + (ONE-q_mix(id))*Qmt_old(id)
-      Qvp_old(id) = q_mix(id)*Qvp(id) + (ONE-q_mix(id))*Qmt_old(id)
-      qint_old = qint_old + getAtomicNumber(ig) - Qmt_old(id)
-!     ================================================================
-      if (n_spin_pola == 2) then
+      do ia = 1, p_DL%NumSpecies
+         lid = local_array_line(id)+ia
 !        -------------------------------------------------------------
-         call dcopy(jmt,p_DL%mom0(1:jmt),1,rho0(1:jmt),1)
+         call dcopy(jmt,p_DL%EMD(ia)%rho0,1,rho0,1)
 !        -------------------------------------------------------------
          corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
-         Mmt(id) = getVolumeIntegration(id,jmt,r_mesh(1:jmt),0,rho0(1:jmt)) + corr
-         Mvp(id) = p_DL%VPMoment
-         mint = mint + (Mvp(id) - Mmt(id))
-         ExEn(id) = getExchangeEnergy(id)
-      else
-         Mmt(id) = ZERO
-         Mvp(id) = ZERO
-         ExEn(id) = ZERO
-         mint = ZERO
-      endif
+         Qmt(lid) = getVolumeIntegration(id,jmt,r_mesh,0,rho0,truncated=.false.) + corr
+         Qvp(lid) = p_DL%EMD(ia)%VPCharge
+         qint = qint + getLocalSpeciesContent(id,ia)*(getLocalAtomicNumber(id,ia)-Qmt(lid))
+!        =============================================================
+!        Mixing the new Qmt, Qvp with the old ones.
+!        =============================================================
+         Qmt_old(lid) = q_mix(lid)*Qmt(lid) + (ONE-q_mix(lid))*Qmt_old(lid)
+         Qvp_old(lid) = q_mix(lid)*Qvp(lid) + (ONE-q_mix(lid))*Qmt_old(lid)
+         qint_old = qint_old +                                        &
+                  getLocalSpeciesContent(id,ia)*(getLocalAtomicNumber(id,ia)-Qmt_old(lid))
+!        =============================================================
+         if (n_spin_pola == 2) then
+!           ----------------------------------------------------------
+            call dcopy(jmt,p_DL%EMD(ia)%mom0,1,rho0,1)
+!           ----------------------------------------------------------
+            corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
+            Mmt(lid) = getVolumeIntegration(id,jmt,r_mesh,0,rho0) + corr
+            Mvp(lid) = p_DL%EMD(ia)%VPMoment
+            mint = mint + getLocalSpeciesContent(id,ia)*(Mvp(lid) - Mmt(lid))
+            ExEn(lid) = getExchangeEnergy(id,ia) ! This is the exchange field that
+                                                 ! causes spin-up and spin-down DOS peak to split
+         else
+            Mmt(lid) = ZERO
+            Mvp(lid) = ZERO
+            ExEn(lid) = ZERO
+         endif
+      enddo
       p_DL => p_DL%next
    enddo
 !
@@ -400,30 +443,42 @@ contains
       mdenint = mint/GVint
    endif
 !
-   Table_Wkspace(1:GlobalNumAtoms,1:6+4*(n_spin_pola-1)) = ZERO
+   if (MyPE == 0) then
+      write(6,'(/,a,f20.14,/)')'updateChargeDistribution :: Interstitial rho0  = ', &
+            rhoint
+   endif
+!
+   Table_Wkspace = ZERO
    do id = 1, LocalNumAtoms
       ig = getGlobalIndex(id)
-      Table_Wkspace(ig,1) = Qmt(id)+rhoint*Vint(id)
-      Table_Wkspace(ig,2) = Qmt(id)
-      Table_Wkspace(ig,3) = Qvp(id)
-      Table_Wkspace(ig,4) = Qmt_old(id)+rhoint_old*Vint(id)
-      Table_Wkspace(ig,5) = Qmt_old(id)
-      Table_Wkspace(ig,6) = Qvp_old(id)
-      if ( n_spin_pola==2 ) then
-         Table_Wkspace(ig,7) = Mmt(id) + mdenint*Vint(id)
-         Table_Wkspace(ig,8) = Mmt(id)
-         Table_Wkspace(ig,9) = Mvp(id)
-         Table_Wkspace(ig,10) = ExEn(id)
-      endif
+      do ia = 1, getLocalNumSpecies(id)
+         lig = global_table_line(ig) + ia
+         lid = local_array_line(id) + ia
+         Table_Wkspace(lig,1) = Qmt(lid)+rhoint*Vint(id)
+         Table_Wkspace(lig,2) = Qmt(lid)
+         Table_Wkspace(lig,3) = Qvp(lid)
+         Table_Wkspace(lig,4) = Qmt_old(lid)+rhoint_old*Vint(id)
+         Table_Wkspace(lig,5) = Qmt_old(lid)
+         Table_Wkspace(lig,6) = Qvp_old(lid)
+         if ( n_spin_pola==2 ) then
+            Table_Wkspace(lig,7) = Mmt(lid) + mdenint*Vint(id)
+            Table_Wkspace(lig,8) = Mmt(lid)
+            Table_Wkspace(lig,9) = Mvp(lid)
+            Table_Wkspace(lig,10) = ExEn(lid)
+         endif
+      enddo
    enddo
 !  -------------------------------------------------------------------
-   call GlobalSumInGroup(GroupID,Table_Wkspace,GlobalNumAtoms,6+4*(n_spin_pola-1))
+   call GlobalSumInGroup(GroupID,Table_Wkspace,global_table_size,6+4*(n_spin_pola-1))
 !  -------------------------------------------------------------------
 !
    mom_aver = ZERO
    if ( n_spin_pola==2 ) then
       do ig = 1, GlobalNumAtoms
-         mom_aver = mom_aver + VPCellMomentTable(ig)
+         do ia = 1, getNumAlloyElements(ig)
+            lig = global_table_line(ig) + ia
+            mom_aver = mom_aver + getAlloyElementContent(ig,ia)*VPCellMomentTable(lig)
+         enddo
       enddo
    endif
    mom_aver = mom_aver/GlobalNumAtoms
@@ -434,13 +489,25 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   function getGlobalTableLine() result(p)
+!  ===================================================================
+   implicit none
+!
+   integer (kind=IntKind), pointer :: p(:)
+!
+   p => global_table_line(1:GlobalNumAtoms)
+!
+   end function getGlobalTableLine
+!  ===================================================================
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    function getGlobalOnSiteElectronTable() result(r)
 !  ===================================================================
    implicit none
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => OnSiteElectronTable(1:GlobalNumAtoms)
+   r => OnSiteElectronTable(1:global_table_size)
 !
    end function getGlobalOnSiteElectronTable
 !  ===================================================================
@@ -452,7 +519,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => MTSphereElectronTable(1:GlobalNumAtoms)
+   r => MTSphereElectronTable(1:global_table_size)
 !
    end function getGlobalMTSphereElectronTable
 !  ===================================================================
@@ -464,7 +531,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => VPCellElectronTable(1:GlobalNumAtoms)
+   r => VPCellElectronTable(1:global_table_size)
 !
    end function getGlobalVPCellElectronTable
 !  ===================================================================
@@ -476,7 +543,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => OnSiteElectronTableOld(1:GlobalNumAtoms)
+   r => OnSiteElectronTableOld(1:global_table_size)
 !
    end function getGlobalOnSiteElectronTableOld
 !  ===================================================================
@@ -488,7 +555,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => MTSphereElectronTableOld(1:GlobalNumAtoms)
+   r => MTSphereElectronTableOld(1:global_table_size)
 !
    end function getGlobalMTSphereElectronTableOld
 !  ===================================================================
@@ -500,7 +567,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => VPCellElectronTableOld(1:GlobalNumAtoms)
+   r => VPCellElectronTableOld(1:global_table_size)
 !
    end function getGlobalVPCellElectronTableOld
 !  ===================================================================
@@ -513,7 +580,7 @@ contains
    real (kind=RealKind), pointer :: r(:)
 !
    if (n_spin_pola == 2) then
-      r => NetMomentTable(1:GlobalNumAtoms)
+      r => NetMomentTable(1:global_table_size)
    else
       nullify(r)
    endif
@@ -529,7 +596,7 @@ contains
    real (kind=RealKind), pointer :: r(:)
 !
    if (n_spin_pola == 2) then
-      r => MTSphereMomentTable(1:GlobalNumAtoms)
+      r => MTSphereMomentTable(1:global_table_size)
    else
       nullify(r)
    endif
@@ -545,7 +612,7 @@ contains
    real (kind=RealKind), pointer :: r(:)
 !
    if (n_spin_pola == 2) then
-      r => VPCellMomentTable(1:GlobalNumAtoms)
+      r => VPCellMomentTable(1:global_table_size)
    else
       nullify(r)
    endif
@@ -560,7 +627,7 @@ contains
 !
    real (kind=RealKind), pointer :: r(:)
 !
-   r => ExchangeEnergyTable(1:GlobalNumAtoms)
+   r => ExchangeEnergyTable(1:global_table_size)
 !
    end function  getGlobalExchangeEnergyTable
 !  ===================================================================
@@ -617,14 +684,14 @@ contains
    subroutine printChargeDistribution(iter,fu)
 !  ===================================================================
    use Atom2ProcModule, only : getAtom2ProcInGroup
-   use SystemModule, only : getAtomicNumber, getAtomName
+   use SystemModule, only : getAtomicNumber, getAtomName, getNumAlloyElements
    implicit none
 !
    logical :: FileExist
 !
    integer (kind=IntKind), intent(in) :: iter
    integer (kind=IntKind), intent(in) :: fu
-   integer (kind=IntKind) :: ig
+   integer (kind=IntKind) :: ig, ia, lig
 !
    if (.not.Initialized) then
       call ErrorHandler('printChargeDistributionTable',               &
@@ -660,22 +727,28 @@ contains
       write(fu,'(a)')' Atom   Index       Q         Qmt        Qvp          dQ'
       write(fu,'(80(''=''))')
       do ig = 1, GlobalNumAtoms
-         write(fu,'(2x,a3,2x,i7,4(2x,f9.5))')getAtomName(ig),ig,      &
-               OnSiteElectronTable(ig),MTSphereElectronTable(ig),     &
-               VPCellElectronTable(ig),                               &
-               OnSiteElectronTable(ig)-getAtomicNumber(ig)
+         do ia = 1, getNumAlloyElements(ig)
+            lig = global_table_line(ig) + ia
+            write(fu,'(2x,a3,2x,i7,4(2x,f9.5))')getAtomName(ig,ia),ig, &
+                  OnSiteElectronTable(lig),MTSphereElectronTable(lig), &
+                  VPCellElectronTable(lig),                            &
+                  OnSiteElectronTable(lig)-getAtomicNumber(ig,ia)
+         enddo
       enddo
    else
       write(fu,'(a)')      &
 ' Atom   Index       Q         Qmt        Qvp          dQ        Mmt        Mvp'
       write(fu,'(80(''=''))')
       do ig = 1, GlobalNumAtoms
-         write(fu,'(2x,a3,2x,i7,6(2x,f9.5))')getAtomName(ig),ig,      &
-               OnSiteElectronTable(ig),MTSphereElectronTable(ig),     &
-               VPCellElectronTable(ig),                               &
-               OnSiteElectronTable(ig)-getAtomicNumber(ig),           &
-               MTSphereMomentTable(ig),VPCellMomentTable(ig)
-!              NetMomentTable(ig)
+         do ia = 1, getNumAlloyElements(ig)
+            lig = global_table_line(ig) + ia
+            write(fu,'(2x,a3,2x,i7,6(2x,f9.5))')getAtomName(ig,ia),ig, &
+                  OnSiteElectronTable(lig),MTSphereElectronTable(lig), &
+                  VPCellElectronTable(lig),                            &
+                  OnSiteElectronTable(lig)-getAtomicNumber(ig,ia),     &
+                  MTSphereMomentTable(lig),VPCellMomentTable(lig)
+!                 NetMomentTable(lig)
+         enddo
       enddo
    endif
    write(fu,'(80(''=''))')
@@ -704,13 +777,17 @@ contains
 !
    use CoreStatesModule, only : getCoreVPCharge, getCoreVPMoment
 !
+   use AtomModule, only : getLocalNumSpecies
+!
    implicit none
 !
    character (len=3), intent(in) :: stage
    character (len=27) :: rho_storage
    character (len=25) :: mom_storage
 !
-   integer (kind=IntKind) :: id, nr
+   integer (kind=IntKind) :: id, nr, ia
+!
+   real (kind=RealKind), pointer :: pr(:), rho0(:,:), mom0(:,:)
 !
    type (GridStruct), pointer :: Grid
    type (ChargeListStruct), pointer :: p_DL
@@ -721,20 +798,30 @@ contains
    p_DL => ChargeList
    do id = 1, LocalNumAtoms
       nr = getNumRmesh(id)
+      p_DL%NumSpecies = getLocalNumSpecies(id)
       p_DL%r_mesh => getRmesh(id)
       Grid=>getGrid(id)
       p_DL%jmt = Grid%jmt
       p_DL%NumRs = nr
       p_DL%rmt = Grid%rmt
-      p_DL%rho0 => getDataStorage(id,rho_storage,nr+1,RealMark)
-      p_DL%VPCharge = p_DL%rho0(nr+1) !+ getCoreVPCharge(id)
+      allocate(p_DL%EMD(p_DL%NumSpecies))
+      pr => getDataStorage(id,rho_storage,(nr+1)*getLocalNumSpecies(id),RealMark)
+      rho0 => aliasArray2_r(pr,nr+1,getLocalNumSpecies(id))
       if (n_spin_pola == 2) then
-         p_DL%mom0 => getDataStorage(id,mom_storage,nr+1,RealMark)
-         p_DL%VPMoment = p_DL%mom0(nr+1) !+ getCoreVPMoment(id)
-      else
-         p_DL%VPMoment = ZERO
-         nullify( p_DL%mom0 )
+         pr => getDataStorage(id,mom_storage,(nr+1)*getLocalNumSpecies(id),RealMark)
+         mom0 => aliasArray2_r(pr,nr+1,getLocalNumSpecies(id))
       endif
+      do ia = 1, p_DL%NumSpecies
+         p_DL%EMD(ia)%rho0 => rho0(:,ia)
+         p_DL%EMD(ia)%VPCharge = p_DL%EMD(ia)%rho0(nr+1) !+ getCoreVPCharge(id)
+         if (n_spin_pola == 2) then
+            p_DL%EMD(ia)%mom0 => mom0(:,ia)
+            p_DL%EMD(ia)%VPMoment = p_DL%EMD(ia)%mom0(nr+1) !+ getCoreVPMoment(id)
+         else
+            p_DL%EMD(ia)%VPMoment = ZERO
+            nullify( p_DL%EMD(ia)%mom0 )
+         endif
+      enddo
       p_DL => p_DL%next
    enddo
 !

@@ -65,6 +65,7 @@ private
       complex (kind=CmplxKind), pointer :: OmegaHatInv_mat(:,:)
       complex (kind=CmplxKind), pointer :: S_mat(:,:)
       complex (kind=CmplxKind), pointer :: t_mat(:,:)
+      complex (kind=CmplxKind), pointer :: t_mat_inv(:,:)
       complex (kind=CmplxKind), pointer :: jost_mat(:,:)
       complex (kind=CmplxKind), pointer :: jinv_mat(:,:)
       complex (kind=CmplxKind), pointer :: reg_sol(:,:,:)  ! Phi_{Lp,L}(r)*r
@@ -245,6 +246,7 @@ private
    complex (kind=CmplxKind), allocatable, target :: wks_cosmat(:)
 !
    complex (kind=CmplxKind), allocatable, target :: wks_tmat(:)
+   complex (kind=CmplxKind), allocatable, target :: wks_tmat_inv(:)
 !tmat_global   complex (kind=CmplxKind), allocatable, target :: wks_tmatg(:)
    complex (kind=CmplxKind), allocatable, target :: wks_jostmat(:)
    complex (kind=CmplxKind), allocatable, target :: wks_jinvmat(:)
@@ -652,6 +654,7 @@ contains
    allocate( wks_cosmat(sz_ind_intkkr) )
 !
    allocate( wks_tmat(sz_ind_intint) )
+   allocate( wks_tmat_inv(sz_ind_intint) )
    allocate( wks_jostmat(sz_ind_intkkr) )
    allocate( wks_jinvmat(sz_ind_intkkr) )
    allocate( wks_Omega(sz_ind_kkrkkr) )
@@ -724,6 +727,7 @@ contains
             Scatter(ia)%Solutions(ic,is)%sin_mat => aliasArray2_c( wks_sinmat(spk_1:spk_2), kmax_int, kmax_kkr )
             Scatter(ia)%Solutions(ic,is)%cos_mat => aliasArray2_c( wks_cosmat(spk_1:spk_2), kmax_int, kmax_kkr )
             Scatter(ia)%Solutions(ic,is)%t_mat => aliasArray2_c( wks_tmat(spp_1:spp_2), kmax_int, kmax_int)
+            Scatter(ia)%Solutions(ic,is)%t_mat_inv => aliasArray2_c( wks_tmat_inv(spp_1:spp_2), kmax_int, kmax_int)
             Scatter(ia)%Solutions(ic,is)%jost_mat => aliasArray2_c( wks_jostmat(spk_1:spk_2), kmax_int, kmax_kkr)
             Scatter(ia)%Solutions(ic,is)%jinv_mat => aliasArray2_c( wks_jinvmat(spk_1:spk_2), kmax_int, kmax_kkr)
             Scatter(ia)%Solutions(ic,is)%Omega_mat => aliasArray2_c(wks_Omega(skk_1:skk_2), kmax_kkr, kmax_kkr)
@@ -856,7 +860,7 @@ contains
    if ( maxval(print_instruction) >= 0 ) then
       write(6,'(/,80(''-''))')
       write(6,'(a)')'      ************************************'
-      write(6,'(a)')'      * Output from initSSSolver *'
+      write(6,'(a)')'      *     Output from initSSSolver     *'
       write(6,'(a)')'      ************************************'
 !
       write(6,'(a,i5)') "   Number of local Atoms:   ", LocalNumSites
@@ -969,6 +973,7 @@ use MPPModule, only : MyPE, syncAllPEs
             nullify( Scatter(ia)%Solutions(ic,is)%sin_mat )
             nullify( Scatter(ia)%Solutions(ic,is)%cos_mat )
             nullify( Scatter(ia)%Solutions(ic,is)%t_mat )
+            nullify( Scatter(ia)%Solutions(ic,is)%t_mat_inv )
             nullify( Scatter(ia)%Solutions(ic,is)%jost_mat )
             nullify( Scatter(ia)%Solutions(ic,is)%jinv_mat )
             nullify( Scatter(ia)%Solutions(ic,is)%Omega_mat )
@@ -1006,7 +1011,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    deallocate( wks_sinmat, wks_cosmat )
 !
-   deallocate( wks_tmat, wks_jostmat, wks_jinvmat )
+   deallocate( wks_tmat, wks_tmat_inv, wks_jostmat, wks_jinvmat )
    deallocate( wks_Omega, wks_OmegaHat, wks_OmegaHatInv, wks_S, wks_PS, wks_step )
 !
 !tmat_global   if (NumSpins == 2) then
@@ -1091,18 +1096,18 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initGlobalVariables(is, site, e, vshift)
+   subroutine initGlobalVariables(spin, site, e, vshift)
 !  ===================================================================
    use RadialGridModule, only : getGrid
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: is
+   integer (kind=IntKind), intent(in) :: spin
    integer (kind=IntKind), intent(in) :: site
 !
    complex (kind=CmplxKind), intent(in) :: e
    complex (kind=CmplxKind), intent(in) :: vshift
 !
-   spin_index = is
+   spin_index = spin
    LocalIndex = site
 !
    energy = e
@@ -1113,7 +1118,7 @@ use MPPModule, only : MyPE, syncAllPEs
    Grid => getGrid(LocalIndex)
 !  -------------------------------------------------------------------
 !
-   LocalSpin = min(is, NumSpins)    ! if non-spin-canted, LocalSpin is always 1.
+   LocalSpin = min(spin, NumSpins)    ! if non-spin-canted, LocalSpin is always 1.
 !
    lmax_kkr = Scatter(site)%lmax_kkr
    kmax_kkr = Scatter(site)%kmax_kkr
@@ -1258,7 +1263,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine solveSingleScattering(is, site, e, vshift,              &
+   subroutine solveSingleScattering(spin, site, e, vshift,            &
+                                    atom,                             &
                                     isSphSolver, useIrrSol, isCheckWronsk)
 !  ===================================================================
    use MPPModule, only : MyPE, syncAllPEs
@@ -1297,9 +1303,10 @@ use MPPModule, only : MyPE, syncAllPEs
    logical, optional, intent(in) :: isSphSolver, isCheckWronsk
    logical :: isPotSpherical
 !
-   integer (kind=IntKind), intent(in) :: is
+   integer (kind=IntKind), intent(in) :: spin
    integer (kind=IntKind), intent(in) :: site
-   integer (kind=IntKind) :: atom, l, lp, mp, mpp, m, np
+   integer (kind=IntKind), intent(in), optional :: atom
+   integer (kind=IntKind) :: ia, l, lp, mp, mpp, m, np
    integer (kind=IntKind) :: kl, klp, jl, kl1, kl2
    integer (kind=IntKind) :: lpt, idx, idx_sav
    integer (kind=IntKind) :: ir, j, klr, next_pe, prev_pe, comm
@@ -1318,6 +1325,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), intent(in) :: vshift
 !
    complex (kind=CmplxKind), pointer :: sin_mat(:,:)
+   complex (kind=CmplxKind), pointer :: sin_mat_inv(:,:)
    complex (kind=CmplxKind), pointer :: cos_mat(:,:)
    complex (kind=CmplxKind), pointer :: Omega_mat(:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
@@ -1331,6 +1339,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: wfdr_irr(:,:,:)
 !
    complex (kind=CmplxKind), pointer :: t_mat(:,:)
+   complex (kind=CmplxKind), pointer :: t_mat_inv(:,:)
    complex (kind=CmplxKind), pointer :: jost_mat(:,:)
    complex (kind=CmplxKind), pointer :: jinv_mat(:,:)
    complex (kind=CmplxKind), pointer :: pm(:,:)
@@ -1391,7 +1400,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !* ===================================================================
 !
 !  -------------------------------------------------------------------
-   call initGlobalVariables(is, site, e, vshift)
+   call initGlobalVariables(spin, site, e, vshift)
 !  -------------------------------------------------------------------
 !
    if(abs(kappa) < TEN2m6) then
@@ -1429,7 +1438,7 @@ use MPPModule, only : MyPE, syncAllPEs
       enddo 
    enddo
 !
-   if ( isPotComponentZero(LocalIndex,is,1) ) then
+   if ( isPotComponentZero(LocalIndex,1) ) then
       call ErrorHandler('solveSingleScattering','spherical potential is 0')
    endif
 !
@@ -1450,13 +1459,13 @@ use MPPModule, only : MyPE, syncAllPEs
          call ErrorHandler('solveSingleScattering','Invalid irregular solution boundary condition type', &
                            useIrrSol)
       else if (.not.isIrrSolOn .and. maxval(print_instruction) >= 0 ) then
-         write(6,'(a)')' In solveSingleScattering, solving irregular solution is enabled.'
+         write(6,'(a,/)')'In solveSingleScattering, solving irregular solution is enabled.'
       endif
       IrrSolType = useIrrSol
       isIrrSolOn = .true.
    else
       if (isIrrSolOn .and. maxval(print_instruction) >= 0 ) then
-         write(6,'(a)')' In solveSingleScattering, solving irregular solution is disabled.'
+         write(6,'(a,/)')'In solveSingleScattering, solving irregular solution is disabled.'
       endif
       isIrrSolOn = .false.
    endif
@@ -1480,23 +1489,29 @@ use MPPModule, only : MyPE, syncAllPEs
 !     ----------------------------------------------------------------
    endif
 !
-   do atom = 1, Scatter(site)%NumSpecies
+   LOOP_ia: do ia = 1, Scatter(site)%NumSpecies
+      if (present(atom)) then
+         if (ia /= atom .and. atom > 0) then
+            cycle LOOP_ia
+         endif
+      endif
 !     ================================================================
-      sin_mat => Scatter(site)%Solutions(atom,LocalSpin)%sin_mat ! (1:kmax_int,1:kmax_kkr)
-      cos_mat => Scatter(site)%Solutions(atom,LocalSpin)%cos_mat ! (1:kmax_int,1:kmax_kkr)
-      jost_mat => Scatter(site)%Solutions(atom,LocalSpin)%jost_mat ! (1:kmax_int,1:kmax_kkr)
-      jinv_mat => Scatter(site)%Solutions(atom,LocalSpin)%jinv_mat ! (1:kmax_int,1:kmax_kkr)
-      Omega_mat => Scatter(site)%Solutions(atom,LocalSpin)%Omega_mat ! (1:kmax_kkr,1:kmax_kkr)
-      OmegaHat_mat => Scatter(site)%Solutions(atom,LocalSpin)%OmegaHat_mat ! (1:kmax_kkr,1:kmax_kkr)
-      OmegaHatInv_mat => Scatter(site)%Solutions(atom,LocalSpin)%OmegaHatInv_mat ! (1:kmax_kkr,1:kmax_kkr)
-      S_mat => Scatter(site)%Solutions(atom,LocalSpin)%S_mat ! (1:kmax_kkr,1:kmax_kkr)
-      wfr_reg => Scatter(site)%Solutions(atom,LocalSpin)%reg_sol ! (1:iend,1:kmax_phi,1:kmax_kkr)
-      wfdr_reg => Scatter(site)%Solutions(atom,LocalSpin)%reg_dsol ! (1:iend,1:kmax_phi,1:kmax_kkr)
-      t_mat => Scatter(site)%Solutions(atom,LocalSpin)%t_mat ! (1:kmax_kkr,1:kmax_kkr)
+      sin_mat => Scatter(site)%Solutions(ia,LocalSpin)%sin_mat ! (1:kmax_int,1:kmax_kkr)
+      cos_mat => Scatter(site)%Solutions(ia,LocalSpin)%cos_mat ! (1:kmax_int,1:kmax_kkr)
+      jost_mat => Scatter(site)%Solutions(ia,LocalSpin)%jost_mat ! (1:kmax_int,1:kmax_kkr)
+      jinv_mat => Scatter(site)%Solutions(ia,LocalSpin)%jinv_mat ! (1:kmax_int,1:kmax_kkr)
+      Omega_mat => Scatter(site)%Solutions(ia,LocalSpin)%Omega_mat ! (1:kmax_kkr,1:kmax_kkr)
+      OmegaHat_mat => Scatter(site)%Solutions(ia,LocalSpin)%OmegaHat_mat ! (1:kmax_kkr,1:kmax_kkr)
+      OmegaHatInv_mat => Scatter(site)%Solutions(ia,LocalSpin)%OmegaHatInv_mat ! (1:kmax_kkr,1:kmax_kkr)
+      S_mat => Scatter(site)%Solutions(ia,LocalSpin)%S_mat ! (1:kmax_kkr,1:kmax_kkr)
+      wfr_reg => Scatter(site)%Solutions(ia,LocalSpin)%reg_sol ! (1:iend,1:kmax_phi,1:kmax_kkr)
+      wfdr_reg => Scatter(site)%Solutions(ia,LocalSpin)%reg_dsol ! (1:iend,1:kmax_phi,1:kmax_kkr)
+      t_mat => Scatter(site)%Solutions(ia,LocalSpin)%t_mat ! (1:kmax_kkr,1:kmax_kkr)
+      t_mat_inv => Scatter(site)%Solutions(ia,LocalSpin)%t_mat_inv ! (1:kmax_kkr,1:kmax_kkr)
 !     ================================================================
 !     if ( FullSolver ) then
       if (.not.isSphericalSolverOn) then
-         pot_jl => getPotential(LocalIndex,atom,spin_index)
+         pot_jl => getPotential(LocalIndex,ia,spin_index)
          pflag => getPotComponentFlag(LocalIndex)
          flags_jl(1:jmax_pot) = pflag(1:jmax_pot)
 !        =============================================================
@@ -1512,7 +1527,7 @@ use MPPModule, only : MyPE, syncAllPEs
             cm0(ir)=CONE
          enddo
          if ( SSSMethod==1 .or. SSSMethod==2 ) then
-            pot_trunc_jl => getTruncatedPotential(LocalIndex,atom,spin_index)
+            pot_trunc_jl => getTruncatedPotential(LocalIndex,ia,spin_index)
             pflag => getTruncatedPotComponentFlag(LocalIndex)
             flags_trunc_jl(1:jmax_trunc) = pflag(1:jmax_trunc)
             pot_0 => pot_trunc_jl(1:numrs_trunc,1)
@@ -1524,7 +1539,7 @@ use MPPModule, only : MyPE, syncAllPEs
          endif
       else
          flags_jl(1) = 1
-         pot_0 => getPotential(LocalIndex,atom,spin_index,1)
+         pot_0 => getPotential(LocalIndex,ia,spin_index,1)
 !
 !        =============================================================
 !        calculate v0r, the spherical component of potential pot_l.......
@@ -1552,7 +1567,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !     ================================================================
 !     v0r = CZERO
 !     cm0 = CONE+c2inv*(energy-PotShift)
-!     Scatter(site)%AtomicNumber(atom) = 0
+!     Scatter(site)%AtomicNumber(ia) = 0
 !     ================================================================
 !
 !     ================================================================
@@ -1610,7 +1625,7 @@ use MPPModule, only : MyPE, syncAllPEs
          endif
 #ifdef TMP_ACCEL
 !        -------------------------------------------------------------
-         call push_calphilr_data(is,atom,energy,kappa,iend_max,lmax_phi,bjl,dbjl,bnl,dbnl,cm0)
+         call push_calphilr_data(spin,ia,energy,kappa,iend_max,lmax_phi,bjl,dbjl,bnl,dbnl,cm0)
 !        -------------------------------------------------------------
 #endif
       else
@@ -1620,7 +1635,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !     ================================================================
 !     Check if the Orbital dependent LDA correction is needed
 !     ================================================================
-      if (checkLdaCorrection(LocalIndex,atom)) then
+      if (checkLdaCorrection(LocalIndex,ia)) then
          v0r_save(1:Grid%jmt) = v0r(1:Grid%jmt)
       endif
 !
@@ -1633,11 +1648,11 @@ use MPPModule, only : MyPE, syncAllPEs
       idx_sav = 0
       fmem => aliasArray2_c(TmpSpace,iend,4)
       do kl = 1,kmax_kkr
-         idx = Scatter(site)%lm_index_sph(kl,atom)
+         idx = Scatter(site)%lm_index_sph(kl,ia)
          l=lofk(kl)
 !
-         if (checkLdaCorrection(site,atom,l)) then
-            vcorr = getPotentialCorrection(LocalIndex,atom,is,l,mofk(kl))
+         if (checkLdaCorrection(site,ia,l)) then
+            vcorr = getPotentialCorrection(LocalIndex,ia,spin,l,mofk(kl))
             v0r(1:Grid%jmt) = v0r(1:Grid%jmt) + vcorr*Grid%r_mesh(1:Grid%jmt)
          endif
 !
@@ -1650,14 +1665,14 @@ use MPPModule, only : MyPE, syncAllPEs
 !           solving scalar-relativistic or non-relativistic equation for
 !           spherical part of the potential.
 !           ----------------------------------------------------------
-            call solveRadEqn4Reg(Scatter(site)%AtomicNumber(atom),l,fmem)
+            call solveRadEqn4Reg(Scatter(site)%AtomicNumber(ia),l,fmem)
 !           ----------------------------------------------------------
 !           write(6,'(a,i3,2x,2d15.7,2x,2d15.7)') 'sl, cl = ',l,s_sph_mt(l),c_sph_mt(l)
 !           write(6,'(a,i3,2x,2d15.7,2x,2d15.7)') 'pl, ql = ',l,pl_reg(numrs_mt), ql_reg(numrs_mt)
             idx_sav = idx
          endif
 !
-         if (checkLdaCorrection(LocalIndex,atom,l)) then
+         if (checkLdaCorrection(LocalIndex,ia,l)) then
             v0r(1:Grid%jmt) = v0r_save(1:Grid%jmt)
          endif
       enddo
@@ -1680,6 +1695,7 @@ use MPPModule, only : MyPE, syncAllPEs
             sin_mat(1:kmax_int,kl)=CZERO
             cos_mat(1:kmax_int,kl)=CZERO
             t_mat(1:kmax_int,kl)=CZERO
+            t_mat_inv(1:kmax_int,kl)=CZERO
             jost_mat(1:kmax_int,kl)=CZERO
             jinv_mat(1:kmax_int,kl)=CZERO
             Omega_mat(1:kmax_kkr,kl)=CZERO
@@ -1697,6 +1713,7 @@ use MPPModule, only : MyPE, syncAllPEs
             jost_mat(kl,kl)=sqrtm1*sin_mat(kl,kl)-cos_mat(kl,kl)
             jinv_mat(kl,kl)=CONE/jost_mat(kl,kl)
             t_mat(kl,kl)=sin_mat(kl,kl)*jinv_mat(kl,kl)/kappa
+            t_mat_inv(kl,kl)=kappa*(sqrtm1-cos_mat(kl,kl)/sin_mat(kl,kl))
             Omega_mat(kl,kl) = CONE/(sin_mat(kl,kl)**2+cos_mat(kl,kl)**2)
             OmegaHatInv_mat(kl,kl) = sin_mat(kl,kl)*jost_mat(kl,kl)
             OmegaHat_mat(kl,kl) = CONE/OmegaHatInv_mat(kl,kl)
@@ -1720,7 +1737,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !        =============================================================
          if ( SSSMethod == 0 ) then
 !           ----------------------------------------------------------
-            call setupSSSM0(is,LocalIndex,atom)
+            call setupSSSM0(spin,LocalIndex,ia)
 !           ----------------------------------------------------------
          endif
 !
@@ -1764,7 +1781,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !                 ====================================================
                   t1 = getTime()
 !                 ----------------------------------------------------
-!                 call solveIntEqn(atom,kl,fmem,.true.,.false.)
+!                 call solveIntEqn(ia,kl,fmem,.true.,.false.)
                   call calPhiLr(kl,fmem,4,pl_reg,ql_reg)
 !                 ----------------------------------------------------
 #ifdef TIMING
@@ -1802,7 +1819,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !           solving coupled integral equation for plhat_reg
 !           and then calculate qlhat_reg
 !           ----------------------------------------------------------
-!           call solveIntEqn(atom,kl,fmem,.true.,.false.)
+!           call solveIntEqn(ia,kl,fmem,.true.,.false.)
             call calPhiLr(kl,fmem,4,pl_reg,ql_reg)
 !           ----------------------------------------------------------
          enddo
@@ -1824,7 +1841,7 @@ use MPPModule, only : MyPE, syncAllPEs
             else if (SSSMethod == 0 .or. SSSMethod == 1) then
                TmpSpace = CZERO
 !              -------------------------------------------------------
-               call calSCMatrixVolInt( atom, kl, p_sml, p_cml, fmem )
+               call calSCMatrixVolInt( ia, kl, p_sml, p_cml, fmem )
 !              -------------------------------------------------------
             else if (SSSMethod == 2) then
                do klp = 1, kmax_int
@@ -1967,6 +1984,20 @@ use MPPModule, only : MyPE, syncAllPEs
          endif
 !
 !        =============================================================
+!        Use t^{-1} = kappa*[i*S - C]*S^{-1} = kappa*Jost*S^{-1}
+!        =============================================================
+         t_mat_inv = jost_mat
+         sin_mat_inv => S_mat  ! Use S_mat as a swapping space
+         sin_mat_inv = sin_mat
+         call MtxInv_LU(sin_mat_inv,kmax_kkr)
+!        -------------------------------------------------------------
+         call zgemm( 'n', 'n', kmax_kkr, kmax_kkr, kmax_kkr, kappa,   &
+                    jost_mat, kmax_kkr, sin_mat_inv, kmax_kkr, CZERO, &
+                    t_mat_inv, kmax_kkr)
+!        -------------------------------------------------------------
+         nullify(sin_mat_inv)
+!
+!        =============================================================
 !        calculate the S-matrix = 1 - 2*i*kappa*t-matrix
 !        =============================================================
          S_mat = CZERO
@@ -1985,13 +2016,14 @@ use MPPModule, only : MyPE, syncAllPEs
 !     call writeMatrix('T Matrix',t_mat,kmax_int,kmax_int,TEN2m6)
 !     call writeMatrix('S Matrix',S_mat,kmax_int,kmax_int,TEN2m6)
 !
-      nullify(sin_t, cos_t, dcs_mat)
+      nullify(sin_t, cos_t, dcs_mat, t_mat_inv)
 !
-      if (checkLdaCorrection(site,atom)) then
-         call transformScatteringMatrix(site,atom,is,Scatter(LocalIndex)%Solutions(atom,LocalSpin)%sin_mat)
-         call transformScatteringMatrix(site,atom,is,Scatter(LocalIndex)%Solutions(atom,LocalSpin)%cos_mat)
-         call transformScatteringMatrix(site,atom,is,Scatter(LocalIndex)%Solutions(atom,LocalSpin)%t_mat)
-         call transformWaveFunction(site,atom,is,iend,kmax_phi,wfr_reg)
+      if (checkLdaCorrection(site,ia)) then
+         call transformScatteringMatrix(site,ia,spin,Scatter(LocalIndex)%Solutions(ia,LocalSpin)%sin_mat)
+         call transformScatteringMatrix(site,ia,spin,Scatter(LocalIndex)%Solutions(ia,LocalSpin)%cos_mat)
+         call transformScatteringMatrix(site,ia,spin,Scatter(LocalIndex)%Solutions(ia,LocalSpin)%t_mat)
+         call transformScatteringMatrix(site,ia,spin,Scatter(LocalIndex)%Solutions(ia,LocalSpin)%t_mat_inv)
+         call transformWaveFunction(site,ia,spin,iend,kmax_phi,wfr_reg)
       endif
 !
 !     ================================================================
@@ -2003,12 +2035,12 @@ use MPPModule, only : MyPE, syncAllPEs
          pm => sin_mat
          fmem => aliasArray2_c(TmpSpace,iend,4)
 !        -------------------------------------------------------------
-!        call computeIrrSol('H',atom,fmem,pm)
-         call computeIrrSol(useIrrSol,atom,fmem)
+!        call computeIrrSol('H',ia,fmem,pm)
+         call computeIrrSol(useIrrSol,ia,fmem)
 !        -------------------------------------------------------------
          if (CheckWronskian) then
-            wfr_irr => Scatter(site)%Solutions(atom,LocalSpin)%irr_sol
-            wfdr_irr => Scatter(site)%Solutions(atom,LocalSpin)%irr_dsol
+            wfr_irr => Scatter(site)%Solutions(ia,LocalSpin)%irr_sol
+            wfdr_irr => Scatter(site)%Solutions(ia,LocalSpin)%irr_dsol
             if (isSphericalSolverOn) then
                do l = 0, lmax_kkr
                   kl1 = (l+1)**2-l
@@ -2036,7 +2068,7 @@ use MPPModule, only : MyPE, syncAllPEs
             nullify(wfdr_irr,wfr_irr)
          endif
       endif
-   enddo
+   enddo LOOP_ia
 !
 #ifdef TMP_ACCEL
 !  if ( FullSolver .and. .not.isSphPotZeroOutsideRmt ) then
@@ -2060,14 +2092,14 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupSSSM0(is,site,atom)
+   subroutine setupSSSM0(spin,site,atom)
 !  ===================================================================
    use PotentialModule, only : getPotential, getPotComponentFlag
    use LdaCorrectionModule, only : checkLdaCorrection
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: is, site, atom
-   integer (kind=IntKind) :: kmax_step, kmax_pot, npout, loc_is
+   integer (kind=IntKind), intent(in) :: spin, site, atom
+   integer (kind=IntKind) :: kmax_step, kmax_pot, npout, loc_spin
    integer (kind=IntKind) :: klv, mlv, jlv, kls, mls, jls, ir, nj3_i3, i3, kl3
    integer (kind=IntKind), pointer :: kj3_i3(:)
    integer (kind=IntKind), pointer :: pflag(:)
@@ -2077,7 +2109,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind) :: vcorr
    complex (kind=CmplxKind), pointer :: tmp_pot(:,:), tmp_step(:,:), pot_l(:,:)
 !
-   loc_is = min(is, NumSpins)
+   loc_spin = min(spin, NumSpins)
 !
    kmax_step = (Scatter(site)%lmax_step+1)**2
    kmax_pot = (Scatter(site)%lmax_pot+1)**2
@@ -2091,7 +2123,7 @@ use MPPModule, only : MyPE, syncAllPEs
       vcorr = CZERO
    endif
 !
-   pot_l => getPotential(site,atom,is)
+   pot_l => getPotential(site,atom,spin)
    pflag => getPotComponentFlag(site)
    tmp_pot = CZERO
    do klv = 1, kmax_pot
@@ -5836,6 +5868,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    if (nocaseCompare(sm_type,'T-Matrix')) then
       sm => Scatter(id)%Solutions(ic,is)%t_mat
+   else if (nocaseCompare(sm_type,'TInv-Matrix')) then
+      sm => Scatter(id)%Solutions(ic,is)%t_mat_inv
    else if (nocaseCompare(sm_type,'S-Matrix')) then
       sm => Scatter(id)%Solutions(ic,is)%S_mat
    else if (nocaseCompare(sm_type,'Sine-Matrix')) then
@@ -6462,11 +6496,11 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computePhaseShift(spin,site)
+   subroutine computePhaseShift(spin,site,atom)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in), optional :: spin, site
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
    integer (kind=IntKind) :: id, is, ic, kmax, INFO, kl
 !
    real (kind=RealKind) :: si, sr
@@ -6487,7 +6521,12 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    kmax = Scatter(id)%kmax_phi
 !
-   do ic = 1, Scatter(id)%NumSpecies
+   LOOP_ic: do ic = 1, Scatter(id)%NumSpecies
+      if (present(atom)) then
+         if (ic /= atom .and. atom > 0) then
+            cycle LOOP_ic
+         endif
+      endif
 !     ================================================================
 !     Triangularize the S_matrix
 !     ----------------------------------------------------------------
@@ -6534,7 +6573,7 @@ use MPPModule, only : MyPE, syncAllPEs
                         + npi(kl,ic,spin_index,id)*PI - phase_ref(kl,ic,spin_index,id)
 !        =============================================================
       enddo
-   enddo
+   enddo LOOP_ic
 !
    end subroutine computePhaseShift
 !  ===================================================================
@@ -6542,13 +6581,13 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeGF0(spin,site)
+   subroutine computeGF0(spin,site,atom)
 !  ===================================================================
    use SystemSymmetryModule, only : getSymmetryFlags
 !
    implicit none
 !
-   integer (kind=IntKind), intent(in), optional :: spin, site
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
    integer (kind=IntKind) :: id, is, ic
    integer (kind=IntKind) :: kl1, kl2, kl1p, kl2p, klg, ir, i
    integer (kind=IntKind) :: kl2pc, kl2c, ma, m2, m2p, kl, klp, m, mp
@@ -6628,7 +6667,12 @@ use MPPModule, only : MyPE, syncAllPEs
    mat => aliasArray2_c(wks_mtx2,kmax_kkr,kmax_phi)
    nr = Scatter(id)%numrs_cs
 !
-   do ic = 1, Scatter(id)%NumSpecies
+   LOOP_ic: do ic = 1, Scatter(id)%NumSpecies
+      if (present(atom)) then
+         if (atom > 0 .and. ic /= atom) then
+            cycle LOOP_ic
+         endif
+      endif
       wfr_reg => Scatter(id)%Solutions(ic,is)%reg_sol
       wfr_irr => Scatter(id)%Solutions(ic,is)%irr_sol
       green => Scatter(id)%Solutions(ic,is)%green
@@ -6750,7 +6794,7 @@ use MPPModule, only : MyPE, syncAllPEs
          enddo
       endif
 !     ================================================================
-   enddo
+   enddo LOOP_ic
 !
    nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat,                      &
             green, der_green, der_wfr_reg, der_wfr_irr )
@@ -6782,8 +6826,8 @@ use MPPModule, only : MyPE, syncAllPEs
    real (kind=RealKind) :: z_err_est
    real (kind=RealKind), pointer :: xp(:)
 !
-   complex (kind=CmplxKind), intent(out) :: gf
-   complex (kind=CmplxKind), intent(out), optional :: dgf
+   complex (kind=CmplxKind), intent(out) :: gf(:)
+   complex (kind=CmplxKind), intent(out), optional :: dgf(:)
    complex (kind=CmplxKind) :: cmat, yic
    complex (kind=CmplxKind), pointer :: yp(:)
    complex (kind=CmplxKind), pointer :: wfr_reg(:,:,:)
@@ -6809,11 +6853,11 @@ use MPPModule, only : MyPE, syncAllPEs
       id = LocalIndex
    endif
 !
-   if (present(atom)) then
-      ic = atom
-   else
-      ic = 1
-   endif
+!  if (present(atom)) then
+!     ic = atom
+!  else
+!     ic = 1
+!  endif
 !
    lmax_phi_loc = Scatter(id)%lmax_phi
    kmax_kkr_loc = Scatter(id)%kmax_kkr
@@ -6840,24 +6884,6 @@ use MPPModule, only : MyPE, syncAllPEs
    irrf => wks_mtx2(kmax_phi_loc+1:kmax_phi_loc+kmax_kkr_loc)
    sin_t => aliasArray2_c(wks_mtx1(kmax_phi_loc+kmax_kkr_loc+1:),kmax_phi,kmax_kkr)
    mat => aliasArray2_c(wks_mtx2(kmax_phi_loc+kmax_kkr_loc+1:),kmax_kkr,kmax_phi)
-!
-   wfr_reg => Scatter(id)%Solutions(ic,is)%reg_sol
-   wfr_irr => Scatter(id)%Solutions(ic,is)%irr_sol
-!  ===================================================================
-!  compute [i*S - C]^{-1} 
-!  ===================================================================
-   sin_mat => Scatter(id)%Solutions(ic,is)%sin_mat
-   do kl = 1,kmax_kkr
-      m = mofk(kl)
-      do klp = 1,kmax_phi
-         mp = mofk(klp)
-         sin_t(klp,kl) = m1m(m+mp)*sin_mat(klp-2*mp,kl-2*m)
-      enddo
-   enddo
-   OmegaHat_mat => Scatter(id)%Solutions(ic,is)%OmegaHat_mat
-!  -------------------------------------------------------------------
-   call zgemm( 'n', 't', kmax_kkr, kmax_phi, kmax_kkr, CONE,          &
-               OmegaHat_mat, kmax_kkr, sin_t, kmax_phi, CZERO, mat, kmax_kkr)
 !  -------------------------------------------------------------------
    call calYlm(rvec,lmax_phi_loc,ylmv)
 !  -------------------------------------------------------------------
@@ -6865,35 +6891,61 @@ use MPPModule, only : MyPE, syncAllPEs
       ylmvc(klp1) = conjg(ylmv(klp1))
    enddo
 !
-   do kl1 = 1,kmax_kkr_loc
-      regf(kl1) = CZERO
-      irrf(kl1) = CZERO
-      m = mofk(kl1); kl1s = kl1-2*m
-      do klp1 = 1,kmax_phi_loc
-!        -------------------------------------------------------------
-         yp=>wfr_reg(j_inter:j_inter+n_inter-1,klp1,kl1)
-         call PolyInterp(n_inter,xp,yp,r,yic,z_err_est)
-         regf(kl1) = regf(kl1)+yic*ylmv(klp1)
-!        -------------------------------------------------------------
-         mp = mofk(klp1); klp1s = klp1-2*mp
-         yp=>wfr_irr(j_inter:j_inter+n_inter-1,klp1s,kl1s)
-         call PolyInterp(n_inter,xp,yp,r,yic,z_err_est)
-         irrf(kl1) = irrf(kl1)+yic*ylmvc(klp1)
-!        -------------------------------------------------------------
+   LOOP_ic: do ic = 1, Scatter(id)%NumSpecies
+      if (present(atom)) then
+         if (atom > 0 .and. ic /= atom) then
+            cycle LOOP_ic
+         endif
+      endif
+      wfr_reg => Scatter(id)%Solutions(ic,is)%reg_sol
+      wfr_irr => Scatter(id)%Solutions(ic,is)%irr_sol
+!     ================================================================
+!     compute [i*S - C]^{-1} 
+!     ================================================================
+      sin_mat => Scatter(id)%Solutions(ic,is)%sin_mat
+      do kl = 1,kmax_kkr
+         m = mofk(kl)
+         do klp = 1,kmax_phi
+            mp = mofk(klp)
+            sin_t(klp,kl) = m1m(m+mp)*sin_mat(klp-2*mp,kl-2*m)
+         enddo
       enddo
-   enddo
+      OmegaHat_mat => Scatter(id)%Solutions(ic,is)%OmegaHat_mat
+!     ----------------------------------------------------------------
+      call zgemm( 'n', 't', kmax_kkr, kmax_phi, kmax_kkr, CONE,          &
+                  OmegaHat_mat, kmax_kkr, sin_t, kmax_phi, CZERO, mat, kmax_kkr)
+!     ----------------------------------------------------------------
 !
-   gf = CZERO
-   do kl2 = 1,kmax_kkr_loc
       do kl1 = 1,kmax_kkr_loc
-         gf = gf + mat(kl1,kl2)*regf(kl1)*irrf(kl2)
+         regf(kl1) = CZERO
+         irrf(kl1) = CZERO
+         m = mofk(kl1); kl1s = kl1-2*m
+         do klp1 = 1,kmax_phi_loc
+!           ----------------------------------------------------------
+            yp=>wfr_reg(j_inter:j_inter+n_inter-1,klp1,kl1)
+            call PolyInterp(n_inter,xp,yp,r,yic,z_err_est)
+            regf(kl1) = regf(kl1)+yic*ylmv(klp1)
+!           ----------------------------------------------------------
+            mp = mofk(klp1); klp1s = klp1-2*mp
+            yp=>wfr_irr(j_inter:j_inter+n_inter-1,klp1s,kl1s)
+            call PolyInterp(n_inter,xp,yp,r,yic,z_err_est)
+            irrf(kl1) = irrf(kl1)+yic*ylmvc(klp1)
+!           ----------------------------------------------------------
+         enddo
       enddo
-   enddo
-   gf = -SQRTm1*kappa*gf
 !
-   if (present(dgf)) then
-      call ErrorHandler('computeGF1','For calculating the Green function derivative, it is not implemented yet')
-   endif
+      gf(ic) = CZERO
+      do kl2 = 1,kmax_kkr_loc
+         do kl1 = 1,kmax_kkr_loc
+            gf(ic) = gf(ic) + mat(kl1,kl2)*regf(kl1)*irrf(kl2)
+         enddo
+      enddo
+      gf(ic) = -SQRTm1*kappa*gf(ic)
+!
+      if (present(dgf)) then
+         call ErrorHandler('computeGF1','For calculating the Green function derivative, it is not implemented yet')
+      endif
+   enddo LOOP_ic
 !
    nullify( wfr_reg, wfr_irr, mat, OmegaHat_mat, ylmv, ylmvc, yp, xp, regf, irrf )
 !
@@ -6903,7 +6955,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computeDOS(add_highl_fec,spin,site)
+   subroutine computeDOS(add_highl_fec,spin,site,atom)
 !  ===================================================================
    use GroupCommModule, only : GlobalSumInGroup
 !
@@ -6915,7 +6967,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    logical, intent(in), optional :: add_highl_fec   ! Add high L contribution by free electron
 !
-   integer (kind=IntKind), intent(in), optional :: spin, site
+   integer (kind=IntKind), intent(in), optional :: spin, site, atom
    integer (kind=IntKind) :: id, is, ic
    integer (kind=IntKind) :: jl, kl, klc, l, m, kl1, kl1p, kl2, kl2c, kl2p, kl2pc
    integer (kind=IntKind) :: ir, m1, m2, m2p, ma, i, l2
@@ -6992,7 +7044,12 @@ use MPPModule, only : MyPE, syncAllPEs
    nr = Scatter(id)%numrs_cs
    Grid => getGrid(id)
 !
-   do ic = 1, Scatter(id)%NumSpecies
+   LOOP_ic: do ic = 1, Scatter(id)%NumSpecies
+      if (present(atom)) then
+         if (atom > 0 .and. ic /= atom) then
+            cycle LOOP_ic
+         endif
+      endif
       dos => Scatter(id)%Solutions(ic,is)%dos
       if (rad_deriv) then
          der_dos => Scatter(id)%Solutions(ic,is)%der_dos
@@ -7255,7 +7312,7 @@ use MPPModule, only : MyPE, syncAllPEs
          enddo
       endif
 !     ================================================================
-   enddo
+   enddo LOOP_ic
 !
    nullify( wfr_reg, der_wfr_reg, dos, der_dos, OmegaHat_mat, Omega_mat )
    nullify( green, der_green, p_tmp, q_tmp )
@@ -7266,7 +7323,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine computePDOS(spin,site)
+   subroutine computePDOS(spin,site,atom)
 !  ===================================================================
    use SystemSymmetryModule, only : getSymmetryFlags
 !
@@ -7276,7 +7333,7 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    implicit none
 !
-   integer (kind=Intkind), intent(in), optional :: spin, site
+   integer (kind=Intkind), intent(in), optional :: spin, site, atom
    integer (kind=IntKind) :: id, is, ic
    integer (kind=IntKind) :: ir, jl, kl, klc, l, m, kl1, kl1p, kl2, kl2c, kl2p, kl2pc, m2, m2p, ma, i
    integer (kind=IntKind) :: js, ia, nr, lm, jm, sz, loc1, loc2, m1
@@ -7345,7 +7402,12 @@ use MPPModule, only : MyPE, syncAllPEs
                 space_integrated_pdos_mt(kmax_max_phi,MaxSpecies,NumSpins,LocalNumSites) )
    endif
 !
-   do ic = 1, Scatter(id)%NumSpecies
+   LOOP_ic: do ic = 1, Scatter(id)%NumSpecies
+      if (present(atom)) then
+         if (atom > 0 .and. ic /= atom) then
+            cycle LOOP_ic
+         endif
+      endif
       pdos => Scatter(id)%Solutions(ic,is)%pdos
       Omega_mat => Scatter(id)%Solutions(ic,is)%Omega_mat
       OmegaHat_mat => Scatter(id)%Solutions(ic,is)%OmegaHat_mat
@@ -7473,7 +7535,7 @@ use MPPModule, only : MyPE, syncAllPEs
          space_integrated_dos_cell(ic,is,id) = space_integrated_dos_cell(ic,is,id) + dos_cell
          space_integrated_dos_mt(ic,is,id) = space_integrated_dos_mt(ic,is,id) + dos_mt
       enddo
-   enddo
+   enddo LOOP_ic
 !
    nullify( wfr_reg, pdos, Omega_mat, OmegaHat_mat, pdos_kl, p_tmp )
 !

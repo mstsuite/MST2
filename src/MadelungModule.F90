@@ -14,10 +14,6 @@
 ! *                            this factor and DL matrix.            *
 ! *                                                                  *
 ! ********************************************************************
-#ifdef CRAY
-#define dscal sscal
-#define dcopy scopy
-#endif
 
 module MadelungModule
    use KindParamModule, only : IntKind, RealKind, CmplxKind

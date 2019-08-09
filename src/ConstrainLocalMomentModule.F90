@@ -20,7 +20,7 @@ private
    integer (kind=IntKind) :: n_spin_cant
    integer (kind=IntKind) :: tstep
    integer (kind=IntKind) :: itstep_save
-   integer (kind=IntKind) :: max_Nrpts, MaxSpecies
+   integer (kind=IntKind) :: max_Nrpts
    integer (kind=IntKind), allocatable :: print_level(:)
    integer (kind=IntKind), allocatable :: Nrpts(:)
    integer (kind=IntKind), allocatable :: NumSpecies(:)
@@ -58,7 +58,7 @@ contains
 !
    real (kind=RealKind), intent(in) :: t_stp
 !
-   integer (kind=IntKind) :: n, i, ia
+   integer (kind=IntKind) :: n, i, ia, MaxSpecies
 !
    real (kind=RealKind) :: evec(3)
 !
@@ -394,7 +394,7 @@ contains
    pot_u => getSphPotr(id,ia,1)
    pot_d => getSphPotr(id,ia,2)
    pmom  => getDataStorage(id,'OldSphericalMomentDensity', &
-                           Nrpts(id),MaxSpecies,RealMark)
+                           Nrpts(id),getLocalNumSpecies(id),RealMark)
 !
 !  ===================================================================
 !  In full potential case, the interation should be carried over the

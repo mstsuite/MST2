@@ -4,6 +4,7 @@ module AccelerateCPAModule
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
 !
 public :: initAccelerateCPA,      &
+          setAccelerationParam,   &
           initializeAcceleration, &
           accelerateCPA,          &
           endAccelerateCPA
@@ -24,7 +25,6 @@ private
    real (kind=RealKind), parameter :: cw0=5.0d-03
 !
    integer (kind=IntKind) :: cpaiter_m, cpaiter_k
-   integer (kind=IntKind) :: NumCPAMediums
    integer (kind=IntKind) :: AccelerationType
 !
    real (kind=RealKind) :: cpaiter_pq, cpaiter_p, cpaiter_ppq
@@ -53,18 +53,16 @@ contains
    include '../lib/arrayTools.F90'
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initAccelerateCPA(acc_type,max_iter,acc_mix,ctol,       &
-                                kmax_kkr,num_cpa)
+   subroutine initAccelerateCPA(acc_type,max_iter,acc_mix,ctol,kmax_kkr)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: acc_type, kmax_kkr, num_cpa
+   integer (kind=IntKind), intent(in) :: acc_type, kmax_kkr
    integer (kind=IntKind), optional, intent(in) :: max_iter
    integer (kind=IntKind) :: i, n
 !
    real (kind=RealKind), optional, intent(in) :: acc_mix, ctol
 !
-   NumCPAMediums = num_cpa
    AccelerationType = acc_type
 !
    if (present(ctol)) then
@@ -80,7 +78,7 @@ contains
    endif
 !
    if (AccelerationType == Broyden) then
-      n = 2*kmax_kkr**2*NumCPAMediums
+      n = 2*kmax_kkr**2
       if (iscf_cpa.eq.1) then
          allocate (cpaiter_nm(n),cpaiter_fm(n),cpaiter_nml(n),cpaiter_fml(n))
          if(cdim.gt.1) allocate (cpaiter_delta(n,cdim,2),cpaiter_bkni(cdim,cdim))
@@ -91,13 +89,13 @@ contains
       allocate (RWORK(n))
       cpaiter_x => RWORK
    else if (AccelerationType == Anderson) then
-      n = kmax_kkr**2*ipits*NumCPAMediums
+      n = kmax_kkr**2*ipits
       allocate (CWORK1(n))
       allocate (CWORK2(n))
-      tcin => aliasArray2_c(CWORK1,kmax_kkr**2*NumCPAMediums,ipits)
-      tcout => aliasArray2_c(CWORK2,kmax_kkr**2*NumCPAMediums,ipits)
+      tcin => aliasArray2_c(CWORK1,kmax_kkr**2,ipits)
+      tcout => aliasArray2_c(CWORK2,kmax_kkr**2,ipits)
    else
-      n = kmax_kkr**2*NumCPAMediums
+      n = kmax_kkr**2
       allocate (CWORK1(n))
       tc_save => CWORK1
    endif
@@ -137,6 +135,47 @@ contains
    endif
 !
    end subroutine endAccelerateCPA
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine setAccelerationParam(cpa_mix,acc_type,max_iter)
+!  ===================================================================
+   implicit none
+!
+   real (kind=RealKind), intent(in) :: cpa_mix
+   integer (kind=IntKind), intent(in), optional :: acc_type
+   integer (kind=IntKind), intent(in), optional :: max_iter
+   integer (kind=IntKind) :: n
+!
+   if (present(acc_type)) then
+      AccelerationType = acc_type
+   endif
+!
+   if (present(max_iter)) then
+      MaxIteration = max_iter
+   endif
+!
+   alpha = cpa_mix
+!
+!  n = size(RWORK)/2
+!  if (AccelerationType == Anderson) then
+!     if (.not.allocated(CWORK1) .or. .not.allocated(CWORK2)) then
+!        allocate (CWORK1(n*ipits))
+!        allocate (CWORK2(n*ipits))
+!     endif
+!     tcin => aliasArray2_c(CWORK1,n,ipits)
+!     tcout => aliasArray2_c(CWORK2,n,ipits)
+!  else
+!!    n = kmax_kkr**2
+!     if (.not.allocated(CWORK1)) then
+!        allocate (CWORK1(n))
+!     endif
+!     tc_save => CWORK1
+!  endif
+!
+   end subroutine setAccelerationParam
 !  ===================================================================
 !
 !  *******************************************************************
@@ -278,6 +317,29 @@ contains
    complex (kind=CmplxKind), intent(out) :: tc(ndim)
    complex (kind=CmplxKind) :: sum, sum_old
 !
+!  interface
+!     function dptc(tcini,tcouti,tcinj,tcoutj,ndim) result(d)
+!        use KindParamModule, only : IntKind, RealKind
+!        integer (kind=IntKind), intent(in) :: ndim
+!        real (kind=RealKind), intent(in) :: tcini(ndim)
+!        real (kind=RealKind), intent(in) :: tcouti(ndim)
+!        real (kind=RealKind), intent(in) :: tcinj(ndim)
+!        real (kind=RealKind), intent(in) :: tcoutj(ndim)
+!        real (kind=RealKind) :: d
+!     end function dptc
+!  end interface
+!
+   interface
+      subroutine dgaleq(a,y,n,ipits,info)
+         use KindParamModule, only : IntKind, RealKind
+         integer (kind=IntKind), intent(in) :: n
+         integer (kind=IntKind), intent(in) :: ipits
+         integer (kind=IntKind), intent(out) :: info
+         real (kind=RealKind), intent(inout) :: a(ipits+1,ipits+1)
+         real (kind=RealKind), intent(inout) :: y(ipits+1)
+      end subroutine dgaleq
+   end interface
+!
    nit=min(ipits,nt)
    n=nit+1
    do j=1,nit
@@ -296,7 +358,7 @@ contains
    call dgaleq(acctc_a,acctc_b,n,ipits,info)
 !  -------------------------------------------------------------------
    if (info == 0) then
-      if (alpha > 0.999) then
+      if (alpha > 0.999 .or. iscf_cpa == 1) then
          do k=1,ndim
             sum=CZERO
             do i=1,nit
@@ -315,9 +377,9 @@ contains
             tc(k)=sum_old+alpha*(sum-sum_old)
          enddo
       endif
-   else
+   else ! Use simple mixing to get new tc
 !     ----------------------------------------------------------------
-      call WarningHandler('acctc','Ill condition appeared in DGA mixing')
+!     call WarningHandler('acctc','Ill condition appeared in DGA mixing')
 !     ----------------------------------------------------------------
       n = mod(nt-1,ipits)+1
       do k=1,ndim

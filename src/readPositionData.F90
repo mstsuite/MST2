@@ -10,7 +10,7 @@
 !  D(irect) or d(irect) or C(artition) or c(artition) or not specified (C is default)
 !      atom_name      x  y  z
 !  ! or
-!      CP             x  y  z  atom_name_1      content_1  atom_name_2      content_2
+!      CPA            x  y  z  atom_name_1      content_1  atom_name_2      content_2
 !  ! or
 !      atomic_number  x  y  z
 !  ! or
@@ -178,7 +178,7 @@
                   call readToken(1,column1,alen)
                   if (.not.isNumber(column1)) then
                      atom = column1(1:alen)
-                     if (nocaseCompare(atom(1:2),'CP')) then
+                     if (nocaseCompare(atom(1:3),'CPA')) then
                         isAlloy = .true.
                      endif
                   else
@@ -189,7 +189,7 @@
                         call readToken(2,column2,alen)
                         if (.not.isNumber(column2)) then
                            atom = column2(1:alen)
-                           if (nocaseCompare(atom(1:2),'CP')) then
+                           if (nocaseCompare(atom(1:3),'CPA')) then
                               isAlloy = .true.
                            endif
                         else
@@ -438,7 +438,7 @@
                else
                   read(text,*) AtomicNumber(n), AtomPosition(1:3,n)
                   if (AtomicNumber(n) == -1) then
-                     atom = 'CP'
+                     atom = 'CPA'
                   else
                      atom = getName(AtomicNumber(n))
 !                    AtomNameCharacter((n-1)*MaxLenOfAtomName+1:n*MaxLenOfAtomName) = atom(1:MaxLenOfAtomName)
@@ -446,7 +446,7 @@
 !                                              MaxLenOfAtomName)
                   endif
                endif
-               if (atom(1:2) == 'CP') then
+               if (atom(1:3) == 'CPA') then
                   tend = getTokenPosition(5,text)  ! The component information starts from the 5th column
                endif
             else if (DataForm == 1) then
@@ -464,7 +464,7 @@
                else
                   read(text,*) k, AtomicNumber(n), AtomPosition(1:3,n)
                   if (AtomicNumber(n) == -1) then
-                     atom = 'CP'
+                     atom = 'CPA'
                   else
                      atom = getName(AtomicNumber(n))
 !                    AtomNameCharacter((n-1)*MaxLenOfAtomName+1:n*MaxLenOfAtomName) = atom(1:MaxLenOfAtomName)
@@ -472,7 +472,7 @@
 !                                              MaxLenOfAtomName)
                   endif
                endif
-               if (atom(1:2) == 'CP') then
+               if (atom(1:3) == 'CPA') then
                   tend = getTokenPosition(6,text)  ! The component information starts from the 6th column
                endif
             else if (DataForm == 2) then
@@ -490,7 +490,7 @@
                else
                   read(text,*) AtomicNumber(n),k, AtomPosition(1:3,n) 
                   if (AtomicNumber(n) == -1) then
-                     atom = 'CP'
+                     atom = 'CPA'
                   else
                      atom = getName(AtomicNumber(n))
 !                    AtomNameCharacter((n-1)*MaxLenOfAtomName+1:n*MaxLenOfAtomName) = atom(1:MaxLenOfAtomName)
@@ -498,7 +498,7 @@
 !                                              MaxLenOfAtomName)
                   endif
                endif
-               if (atom(1:2) == 'CP') then
+               if (atom(1:3) == 'CPA') then
                   tend = getTokenPosition(13,text) ! The component information starts from the 13th column
                endif
             endif
@@ -514,7 +514,7 @@
                   allocate( p_curr%next )
                   p_curr => p_curr%next
                endif
-               if (atom(1:2) == 'CP') then
+               if (atom(1:3) == 'CPA') then
 !                 ----------------------------------------------------
                   call setString(text(tend:))
 !                 ----------------------------------------------------

@@ -228,8 +228,9 @@ contains
       call ErrorHandler('initContour1','OffsetE > NumEs',OffsetE, NumEs)
    endif
 !
-   Offset = OffsetE
-   NumOffsetE = NumExtraEs
+   NoLastE = .true.
+!  Offset = OffsetE
+!  NumOffsetE = NumExtraEs
 !  allocate( EnergyOffset(NumOffsetE) )
 !
    Initialized = .true.

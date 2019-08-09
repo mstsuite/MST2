@@ -236,7 +236,7 @@ contains
 !
 !  ===================================================================
 !
-   Element( MinZtot)%AtomName='Cp'
+   Element( MinZtot)%AtomName='CPA'
    Element( MinZtot)%AtomicNumber=MinZtot
    Element( MinZtot)%NumDeepCoreElectrons=0
    Element( MinZtot)%NumSemiCoreElectrons=0

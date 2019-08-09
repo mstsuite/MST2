@@ -1,10 +1,3 @@
-#ifdef CRAY
-#define zgemv cgemv
-#define zgemm cgemm
-#define zcopy ccopy
-#define zgetrf cgetrf
-#define zgetrs cgetrs
-#endif
 module MatrixBlockInversionModule
 !
 use KindParamModule, only : IntKind, RealKind, CmplxKind

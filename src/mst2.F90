@@ -27,6 +27,7 @@ program mst2
                                            UniformGridStruct
 !
    use PublicParamDefinitionsModule, only : PrintDOSswitchOff, ButterFly
+   use PublicParamDefinitionsModule, only : StandardInputFile
 !
    use InputModule, only : initInput, endInput, readInputData
    use InputModule, only : openInputFile, closeInputFile
@@ -141,7 +142,8 @@ program mst2
    use AtomModule, only : getPotLmax, getKKRLmax, getPhiLmax, getRhoLmax
    use AtomModule, only : getTruncPotLmax
    use AtomModule, only : getGridData, getAtomMuffinTinRad
-   use AtomModule, only : getLocalAtomName, getLocalAtomicNumber, getLocalNumSpecies
+   use AtomModule, only : getLocalAtomName, getLocalAtomicNumber
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
    use AtomModule, only : getLocalAtomNickName, printAtomMomentInfo
 !   use AtomModule, only : setAtomVolMT, setAtomVolVP
 !   use AtomModule, only : setAtomVolWS, setAtomVolINSC
@@ -266,7 +268,6 @@ program mst2
    logical :: StandardInputExist = .false.
    logical :: isDOSCalculationOnly = .false.
 !
-   character (len=12) :: str_stdin= 'i_lsms_stdin'
    character (len=80) :: info_table, info_path
    character (len=160) :: itname, cmd
    character (len=12) :: anm
@@ -278,8 +279,8 @@ program mst2
 !
    integer (kind=IntKind) :: MyPE, NumPEs
    integer (kind=IntKind) :: funit, funit_sysmov, en_movie
-   integer (kind=IntKind) :: def_id, info_id, rstatus
-   integer (kind=IntKind) :: i, id, ig, is, jl, nk, ne, n, na
+   integer (kind=IntKind) :: def_id, info_id
+   integer (kind=IntKind) :: i, id, ig, is, jl, nk, ne, n, na, ia
    integer (kind=IntKind) :: iscf, itstep, niter, sdstep_new
    integer (kind=IntKind) :: n_chgtab, n_madtab, n_potwrite, n_visual, n_sysmov
    integer (kind=IntKind) :: lmax_max, lmax_kkr_max, GlobalNumAtoms, jmax_pot
@@ -292,7 +293,6 @@ program mst2
    integer (kind=IntKind) :: InitMode
    integer (kind=IntKind), pointer :: AtomicNumber(:)
    integer (kind=IntKind), allocatable :: atom_print_level(:)
-   integer (kind=IntKind), allocatable :: LocalAtomicNumber(:)
    integer (kind=IntKind), allocatable :: GlobalIndex(:)
    integer (kind=IntKind), allocatable :: lmax_tmp(:)
    integer (kind=IntKind), allocatable :: lmax_pot(:)
@@ -303,7 +303,7 @@ program mst2
    integer (kind=IntKind), allocatable :: lmax_green(:)
    integer (kind=IntKind), allocatable :: lmax_mad(:)
    integer (kind=IntKind), allocatable :: ngr(:), ngt(:)
-   integer (kind=IntKind) :: NumMix(2)
+   integer (kind=IntKind) :: NumMix(1)
    integer (kind=IntKind) :: MaxVal_Integer(2)
 !  Needed for L-SIC:
    integer (kind=IntKind) :: lsic_mode
@@ -457,26 +457,30 @@ program mst2
 !  -------------------------------------------------------------------
    call initInput()
 !  -------------------------------------------------------------------
-   FileName = 'None'
+!  FileName = 'None'
 !  inquire(unit=5,name=FileName,named=FileNamed)
    inquire(unit=5,name=FileName,exist=StandardInputExist)
-!   write(6,*) "main:: Input file open: ",trim(FileName)
+!  write(6,*) "main:: Input file open: ",trim(FileName)
 !  if (FileNamed) then
    if (StandardInputExist) then
 !     ----------------------------------------------------------------
       call readInputData(5,def_id)
 !     ----------------------------------------------------------------
-   else
+   else ! The standard input can be taken from a file named as StandardInputFile
 !     ----------------------------------------------------------------
-      call readInputData(5,def_id,str_stdin)
+      call openInputFile(7,StandardInputFile)
+      call readInputData(7,def_id)
 !     ----------------------------------------------------------------
    endif
 !
 !  ===================================================================
 !  Check if we are performing a self interaction corrected calculation
 !  -------------------------------------------------------------------
-   rstatus = getKeyValue(def_id,'Local SIC',lsic_mode)
-!  -------------------------------------------------------------------
+   if (getKeyValue(def_id,'Local SIC',lsic_mode) /= 0) then
+!     ----------------------------------------------------------------
+      call ErrorHandler('main','Input parameter is not found!')
+!     ----------------------------------------------------------------
+   endif
    if(lsic_mode.ne.0) then
      write(6,*) 'Local SIC mode ',lsic_mode
      call ErrorHandler('main','L-SIC not implemented yet! Be patient ...')
@@ -485,16 +489,23 @@ program mst2
 !  ===================================================================
 !  get the name and path of the system information data table file
 !  -------------------------------------------------------------------
-   rstatus = getKeyValue(def_id,'Info Table File Name',info_table)
-   rstatus = getKeyValue(def_id,'Current File Path',info_path)
-!  -------------------------------------------------------------------
-   itname = trim(info_path)//info_table
-   info_id = getTableIndex(itname)
-   if (info_id < 1) then
+   if (getKeyValue(def_id,'Current File Path',info_path) /= 0) then
 !     ----------------------------------------------------------------
-      call openInputFile(10,itname)
-      call readInputData(10,info_id)
+      call ErrorHandler('main','Input parameter for Current File Path is not found!')
 !     ----------------------------------------------------------------
+   endif
+!
+   if (getKeyValue(def_id,'Info Table File Name',info_table) == 0) then
+      itname = trim(info_path)//info_table
+      info_id = getTableIndex(itname)
+      if (info_id < 1) then
+!        -------------------------------------------------------------
+         call openInputFile(10,itname)
+         call readInputData(10,info_id)
+!        -------------------------------------------------------------
+      endif
+   else
+      info_id = def_id
    endif
 !
 !  ===================================================================
@@ -831,14 +842,13 @@ program mst2
    endif
 !  ===================================================================
 !
-   allocate(LocalAtomPosi(3,LocalNumAtoms), LocalAtomicNumber(LocalNumAtoms))
+   allocate(LocalAtomPosi(3,LocalNumAtoms))
    allocate(GlobalIndex(LocalNumAtoms), LocalEvec(3,LocalNumAtoms))
 !
    do id=1,LocalNumAtoms
       LocalAtomPosi(1:3,id)=getLocalAtomPosition(id)
       LocalEvec(1:3,id)=getLocalEvecOld(id)
       GlobalIndex(id)=getGlobalIndex(id)
-      LocalAtomicNumber(id)=getLocalAtomicNumber(id)
    enddo
 !
 !
@@ -1176,7 +1186,11 @@ program mst2
       call readCoreStates()
 !     ----------------------------------------------------------------
       do i = 1,LocalNumAtoms
-         LocalNumValenceElectrons(i)=getZval( getLocalAtomicNumber(i) )
+         LocalNumValenceElectrons(i) = ZERO
+         do ia = 1, getLocalNumSpecies(i)
+            LocalNumValenceElectrons(i) = LocalNumValenceElectrons(i)  &
+                 + getLocalSpeciesContent(i,ia)*getZval( getLocalAtomicNumber(i,ia) )
+         enddo
       enddo
 !
       if (isFrozenCore(fcf_name=FrozenCoreFileName,fcf_exist=FrozenCoreFileExist)) then
@@ -1300,7 +1314,10 @@ program mst2
 !  ===================================================================
 !  Setup the mixing
 !  ===================================================================
-   NumMix(1:n_spin_pola) = LocalNumAtoms
+   NumMix(1) = 0
+   do i = 1,LocalNumAtoms
+      NumMix(1) = NumMix(1) + getLocalNumSpecies(i)
+   enddo
    if ( .not.isFullPotential() ) then
 !     ----------------------------------------------------------------
       call initMixing( 1, NumMix, RealArrayList )
@@ -1987,7 +2004,7 @@ program mst2
    endif
 !
    deallocate(LocalEvec)
-   deallocate(LocalAtomicNumber, LocalNumValenceElectrons)
+   deallocate(LocalNumValenceElectrons)
 !
    if (n_spin_cant == 2) then
 !     ----------------------------------------------------------------
@@ -2056,6 +2073,9 @@ stop 'Under construction...'
    deallocate( lmax_kkr, lmax_phi, lmax_pot, lmax_rho, lmax_green, lmax_mad)
    deallocate( lmax_step, rho_rms, pot_rms, lmax_tmp )
 !
+!  -------------------------------------------------------------------
+   call endInput()
+!  -------------------------------------------------------------------
    if ( MyPE== 0) then
 !     ----------------------------------------------------------------
       call endBookKeeping()

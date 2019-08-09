@@ -11,6 +11,7 @@
    use AtomModule, only : getMixingParam4Rho
    use AtomModule, only : getMixingParam4Pot
    use AtomModule, only : getMixingParam4Mom
+   use AtomModule, only : getLocalNumSpecies
 !
    use MixingModule, only : setSimpleMixing, setDGAMixing, setBroydenMixing
 !
@@ -18,12 +19,13 @@
 !
    integer (kind=IntKind), intent(in) :: LocalNumAtoms, n_spin_pola
 !
-   integer (kind=IntKind) :: id, is
+   integer (kind=IntKind) :: id, is, ia, num_mix
 !
    real (kind=RealKind) :: alpha_mix
 !
    is = 1
 !  do is = 1,n_spin_pola
+      num_mix = 0
       do id=1,LocalNumAtoms
          if (isPotentialMixing()) then
 !           ----------------------------------------------------------
@@ -45,23 +47,26 @@
 !           ----------------------------------------------------------
          endif
 !
-         if (isSimpleMixing()) then
-!           ----------------------------------------------------------
-            call setSimpleMixing(is,id,alpha_mix)
-!           ----------------------------------------------------------
-         else if (isDGAMixing()) then
-!           ----------------------------------------------------------
-            call setDGAMixing(is,id,alpha_mix)
-!           ----------------------------------------------------------
-         else if (isBroydenMixing()) then
-!           ----------------------------------------------------------
-            call setBroydenMixing(is,id,alpha_mix)
-!           ----------------------------------------------------------
-         else
-!           ----------------------------------------------------------
-            call ErrorHandler('main','Unkown mixing scheme')
-!           ----------------------------------------------------------
-         endif
+         do ia = 1, getLocalNumSpecies(id)
+            num_mix = num_mix + 1
+            if (isSimpleMixing()) then
+!              -------------------------------------------------------
+               call setSimpleMixing(is,num_mix,alpha_mix)
+!              -------------------------------------------------------
+            else if (isDGAMixing()) then
+!              -------------------------------------------------------
+               call setDGAMixing(is,num_mix,alpha_mix)
+!              -------------------------------------------------------
+            else if (isBroydenMixing()) then
+!              -------------------------------------------------------
+               call setBroydenMixing(is,num_mix,alpha_mix)
+!              -------------------------------------------------------
+            else
+!              -------------------------------------------------------
+               call ErrorHandler('main','Unkown mixing scheme')
+!              -------------------------------------------------------
+            endif
+         enddo
       enddo
 !  enddo
 !

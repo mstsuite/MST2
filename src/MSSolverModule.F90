@@ -107,7 +107,6 @@ public :: initMSSolver,            &
 private
 !
    logical :: Initialized = .false.
-   logical :: isRealSpace = .false.
    logical :: InitializedFactors = .false.
 !
    integer (kind=IntKind) :: Relativity
@@ -142,11 +141,11 @@ private
    type MSTStruct
       integer :: lmax
       integer :: iend
-      complex (kind=CmplxKind), pointer :: dos(:)
-      complex (kind=CmplxKind), pointer :: green(:,:,:)      ! Stores the multiple scattering component of the Green fucntion, and
-                                                             ! the single site scattering term may be included.
-      complex (kind=CmplxKind), pointer :: der_green(:,:,:)  ! Stores the multiple scattering component of the Green fucntion derivative,
-   end type MSTStruct                                        ! and the single site scattering term may be included.
+      complex (kind=CmplxKind), pointer :: dos(:,:)
+      complex (kind=CmplxKind), pointer :: green(:,:,:,:)      ! Stores the multiple scattering component of the Green fucntion, and
+                                                               ! the single site scattering term may be included.
+      complex (kind=CmplxKind), pointer :: der_green(:,:,:,:)  ! Stores the multiple scattering component of the Green fucntion derivative,
+   end type MSTStruct                                          ! and the single site scattering term may be included.
 !
    type (MSTStruct), allocatable :: mst(:)
    complex (kind=CmplxKind), allocatable, target :: wspace(:), wspacep(:), gspace(:)
@@ -165,10 +164,15 @@ private
    integer (kind=IntKind) :: MSDOS_Form  ! = 0, Green Function = Z*(Tau-t)*Z
                                          ! = 1, Green Function = Z*Tau*Z - Z*J
 !
-   real (kind=RealKind), allocatable :: space_integrated_msdos_cell(:,:)
-   real (kind=RealKind), allocatable :: space_integrated_msdos_mt(:,:)
-   real (kind=RealKind), allocatable, target :: space_integrated_mspdos_cell(:,:,:)
-   real (kind=RealKind), allocatable, target :: space_integrated_mspdos_mt(:,:,:)
+   type IDOSStruct
+      real (kind=RealKind), pointer :: msdos_cell(:,:)
+      real (kind=RealKind), pointer :: msdos_mt(:,:)
+      real (kind=RealKind), pointer :: mspdos_cell(:,:,:)
+      real (kind=RealKind), pointer :: mspdos_mt(:,:,:)
+   end type IDOSStruct
+!
+   type (IDOSStruct), allocatable :: SpaceIntegratedDOS(:)
+!
    complex (kind=CmplxKind), allocatable, target :: gfws_comp(:)
    complex (kind=CmplxKind), allocatable, target :: dosws_comp(:)
 !
@@ -191,6 +195,7 @@ contains
 !
    use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA, isEmbeddedCluster
    use ScfDataModule, only : isChargeSymm
+   use ScfDataModule, only : retrieveEffectiveMediumParams
 !
    use ClusterMatrixModule, only : initClusterMatrix
 !
@@ -217,9 +222,11 @@ contains
    integer (kind=IntKind), intent(in) :: iprint(num_latoms)
 !
    real (kind=RealKind), intent(in) :: local_posi(3,num_latoms)
+   real (kind=RealKind) :: em_mix_0, em_mix_1, em_eswitch, em_tol
 !
    integer (kind=IntKind) :: lmax, i
    integer (kind=IntKind) :: klp1, klp2, i3, klg
+   integer (kind=IntKind) :: em_mix_type, em_max_iter
    integer (kind=IntKind), pointer :: nj3(:,:), kj3(:,:,:)
 !
    real (kind=RealKind), pointer :: cgnt(:,:,:)
@@ -247,38 +254,48 @@ contains
       call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi, &
                              cant,rel,istop,iprint)
 !     ----------------------------------------------------------------
-      isRealSpace = .true.
    else if ( isScreenKKR() ) then
       call ErrorHandler('initMSSolver','Screen KKR is not implemented yet.')
 !     ----------------------------------------------------------------
 !     call initTauScreenKKR( bravais, LocalNumAtoms, cant, pola, local_posi, &
 !                            lmaxkkr, rel, iprint, istop )
 !     ----------------------------------------------------------------
-      isRealSpace = .true.
    else if ( isKKR() ) then
 !     ----------------------------------------------------------------
       call initCrystalMatrix( LocalNumAtoms, cant, lmaxkkr, rel, istop, iprint)
 !     ----------------------------------------------------------------
-      isRealSpace = .false.
    else if ( isKKRCPA() ) then
+      call retrieveEffectiveMediumParams(mix_type = em_mix_type,      &
+                                         max_iter = em_max_iter,      &
+                                         alpha_0  = em_mix_0,         &
+                                         alpha_1  = em_mix_1,         &
+                                         eSwitch  = em_eswitch, tol = em_tol)
 !     ----------------------------------------------------------------
       call initCPAMedium(cant=cant, lmax_kkr=lmaxkkr, rel=rel,        &
-                         mix_type=2, max_iter = 30,                   &
-                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,           &
+                         cpa_mix_type=em_mix_type,                    &
+                         cpa_max_iter=em_max_iter,                    &
+                         cpa_mix_0=em_mix_0, cpa_mix_1=em_mix_1,      &
+                         cpa_eswitch=em_eswitch, cpa_tol=em_tol,      &
                          istop=istop, iprint=iprint)
 !     ----------------------------------------------------------------
-      isRealSpace = .false.
    else if (isEmbeddedCluster()) then
+!     ----------------------------------------------------------------
+      call retrieveEffectiveMediumParams(mix_type = em_mix_type,      &
+                                         max_iter = em_max_iter,      &
+                                         alpha_0  = em_mix_0,         &
+                                         alpha_1  = em_mix_1,         &
+                                         eSwitch  = em_eswitch, tol = em_tol)
 !     ----------------------------------------------------------------
       call initClusterMatrix(num_latoms,index,lmaxkkr,lmaxphi,local_posi, &
                              cant,rel,istop,iprint)
 !     ----------------------------------------------------------------
       call initCPAMedium(cant=cant, lmax_kkr=lmaxkkr, rel=rel,        &
-                         mix_type=2, max_iter = 30,                   &
-                         cpa_mix = 0.1d0, cpa_tol = TEN2m7,           &
+                         cpa_mix_type=em_mix_type,                    &
+                         cpa_max_iter=em_max_iter,                    &
+                         cpa_mix_0=em_mix_0, cpa_mix_1=em_mix_1,      &
+                         cpa_eswitch=em_eswitch, cpa_tol=em_tol,      &
                          istop=istop, iprint=iprint)
 !     ----------------------------------------------------------------
-      isRealSpace = .false.
    else
 !     ----------------------------------------------------------------
       call ErrorHandler('initMSSolver','Unknown MST calculation category')
@@ -348,6 +365,8 @@ contains
                              pola, cant, rel, istop, iprint)
 !  ===================================================================
    use RadialGridModule, only : getNumRmesh, getMaxNumRmesh
+!
+   use AtomModule, only : getLocalNumSpecies
    implicit none
 !
    integer (kind=IntKind), intent(in) :: num_atoms
@@ -362,7 +381,7 @@ contains
 !
    character (len=*), intent(in) :: istop
 !
-   integer (kind=IntKind) :: i, lmax_max, jmax, iend, kmax
+   integer (kind=IntKind) :: i, lmax_max, jmax, iend, kmax, NumSpecies
 !
    if (Initialized) then
 !     ----------------------------------------------------------------
@@ -437,10 +456,11 @@ contains
       iend = getNumRmesh(i)
       mst(i)%lmax = lmaxgreen(i)
       mst(i)%iend = iend
-      allocate( mst(i)%dos(n_spin_cant*n_spin_cant) )
-      allocate( mst(i)%green(iend,kmax,n_spin_cant*n_spin_cant) )
+      NumSpecies = getLocalNumSpecies(i)
+      allocate( mst(i)%dos(n_spin_cant*n_spin_cant,NumSpecies) )
+      allocate( mst(i)%green(iend,kmax,n_spin_cant*n_spin_cant,NumSpecies) )
       if (rad_deriv) then
-         allocate( mst(i)%der_green(iend,kmax,n_spin_cant*n_spin_cant) )
+         allocate( mst(i)%der_green(iend,kmax,n_spin_cant*n_spin_cant,NumSpecies) )
       endif
    enddo
    iend_max = getMaxNumRmesh()
@@ -498,7 +518,7 @@ contains
    endif
    nullify( Neighbor )
 !
-   if ( isRealSpace ) then
+   if ( isLSMS() ) then
 !     ----------------------------------------------------------------
       call endClusterMatrix()
 !     ----------------------------------------------------------------
@@ -506,19 +526,20 @@ contains
 !     ----------------------------------------------------------------
 !     call endTauScreenKKR()
 !     ----------------------------------------------------------------
-   else
+   else if ( isKKR() ) then
 !     ----------------------------------------------------------------
       call endCrystalMatrix()
 !     ----------------------------------------------------------------
-      if (isKKRCPA()) then
-!        -------------------------------------------------------------
-         call endCPAMedium()
-!        -------------------------------------------------------------
-      else if (isEmbeddedCluster()) then
-!        -------------------------------------------------------------
-         call endClusterMatrix()
-!        -------------------------------------------------------------
-      endif
+   else if (isKKRCPA()) then
+!     ----------------------------------------------------------------
+      call endCPAMedium()
+!     ----------------------------------------------------------------
+   else if (isEmbeddedCluster()) then
+!     ----------------------------------------------------------------
+      call endCPAMedium()
+!     ----------------------------------------------------------------
+      call endClusterMatrix()
+!     ----------------------------------------------------------------
    endif
 !
    if (allocated(store_space)) then
@@ -527,14 +548,17 @@ contains
 !
    deallocate( lofk, mofk, jofk, m1m, lofj, mofj )
 !
-   if (allocated(space_integrated_msdos_cell) ) then
-      deallocate( space_integrated_msdos_cell, space_integrated_msdos_mt, &
-                  space_integrated_mspdos_cell, space_integrated_mspdos_mt )
-      deallocate( gfws_comp, dosws_comp )
+   if (allocated(SpaceIntegratedDOS) ) then
+      do i=1, LocalNumAtoms
+         deallocate( SpaceIntegratedDOS(i)%msdos_cell )
+         deallocate( SpaceIntegratedDOS(i)%msdos_mt )
+         deallocate( SpaceIntegratedDOS(i)%mspdos_cell )
+         deallocate( SpaceIntegratedDOS(i)%mspdos_mt )
+      enddo
+      deallocate( gfws_comp, dosws_comp, SpaceIntegratedDOS )
    endif
 !
    Initialized = .false.
-   isRealSpace = .false.
    Energy = CZERO
    isDosSymmOn = .false.
 !
@@ -542,17 +566,27 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getDOS_is(is,id,mst_term_only) result(dos)
+   function getDOS_is(is,id,ia,mst_term_only) result(dos)
 !  ===================================================================
+   use AtomModule, only : getLocalNumSpecies
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: is, id
+   integer (kind=IntKind), intent(in) :: is, id, ia
 !
    logical, intent(out), optional :: mst_term_only
 !
    complex (kind=CmplxKind) :: dos
 !
-   dos = mst(id)%dos(is)
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getDOS_is','Invalid site index',id)
+   else if (is < 1 .or. is > 2) then
+      call ErrorHandler('getDOS_is','Invalid spin index',is)
+   endif
+   if (ia < 1 .or. ia > getLocalNumSpecies(id)) then
+      call ErrorHandler('getDOS_is','Invalid species index',ia)
+   endif
+!
+   dos = mst(id)%dos(is,ia)
    if (present(mst_term_only)) then
       if (MSDOS_Form == 0) then
          mst_term_only = .true.
@@ -565,17 +599,25 @@ contains
 !  ===================================================================
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getDOS_sc(id,mst_term_only) result(dos)
+   function getDOS_sc(id,ia,mst_term_only) result(dos)
 !  ===================================================================
+   use AtomModule, only : getLocalNumSpecies
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id
+   integer (kind=IntKind), intent(in) :: id, ia
 !
    logical, intent(out), optional :: mst_term_only
 !
    complex (kind=CmplxKind) :: dos(n_spin_cant*n_spin_cant)
 !
-   dos = mst(id)%dos
+   if (id < 1 .or. id > LocalNumAtoms) then
+      call ErrorHandler('getDOS_is','Invalid site index',id)
+   endif
+   if (ia < 1 .or. ia > getLocalNumSpecies(id)) then
+      call ErrorHandler('getDOS_is','Invalid species index',ia)
+   endif
+!
+   dos = mst(id)%dos(:,ia)
    if (present(mst_term_only)) then
       if (MSDOS_Form == 0) then
          mst_term_only = .true.
@@ -595,7 +637,7 @@ contains
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(out), optional :: gform
 !
-   complex (kind=CmplxKind), pointer :: green(:,:,:)
+   complex (kind=CmplxKind), pointer :: green(:,:,:,:)
 !
    green => mst(id)%green
    if (present(gform)) then
@@ -613,7 +655,7 @@ contains
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind), intent(out), optional :: gform
 !
-   complex (kind=CmplxKind), pointer :: der_green(:,:,:)
+   complex (kind=CmplxKind), pointer :: der_green(:,:,:,:)
 !
    der_green => mst(id)%der_green
    if (present(gform)) then
@@ -630,7 +672,7 @@ contains
 !
    integer (kind=IntKind), intent(in) :: id
 !
-   complex (kind=CmplxKind), pointer :: mat(:,:,:)
+   complex (kind=CmplxKind), pointer :: mat(:,:,:,:)
 !
    nullify(mat)
 !
@@ -674,6 +716,8 @@ contains
    else if (isKKR()) then
 !     ----------------------------------------------------------------
       call calCrystalMatrix(e,getScatteringMatrix)
+!     call calCrystalMatrix(e,getScatteringMatrix,tau_needed=.true.)
+!     call calCrystalMatrix(e,getScatteringMatrix,use_tmat=.true.,tau_needed=.true.)
 !     ----------------------------------------------------------------
    else if (isKKRCPA()) then
 !     ----------------------------------------------------------------
@@ -698,9 +742,14 @@ contains
    subroutine computeMSGreenFunction(is, e, add_Ts, add_Gs, isSphSolver)
 !  ===================================================================
    use MPPModule, only : MyPE, syncAllPEs
+!
    use GroupCommModule, only : GlobalSumInGroup
 !
+   use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA, isEmbeddedCluster
+!
    use SystemSymmetryModule, only : getSymmetryFlags
+!
+   use AtomModule, only : getLocalNumSpecies
 !
    use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
    use SSSolverModule, only : getRegSolutionDerivative
@@ -712,6 +761,11 @@ contains
    use ClusterMatrixModule, only : getClusterKau => getKau
 !
    use CrystalMatrixModule, only : getCrystalKau => getKau
+   use CrystalMatrixModule, only : getCrystalTau => getTau
+!
+   use CPAMediumModule, only : getImpurityMatrix, getCPAMatrix
+!
+   use WriteMatrixModule,  only : writeMatrix
 !
    implicit none
 !
@@ -723,7 +777,7 @@ contains
    complex (kind=CmplxKind), intent(in) :: e
 !
    integer (kind=IntKind) :: n, info, id, js1, js2, ns, kmaxk, kmaxp, kmaxg, irmax
-   integer (kind=IntKind) :: klg, kl1, kl2, klp1, klp2, ir, kl2c, m2, np
+   integer (kind=IntKind) :: klg, kl1, kl2, klp1, klp2, ir, kl2c, m2, np, ia
    integer (kind=IntKind), pointer :: green_flags(:)
 !
    complex (kind=CmplxKind), pointer :: tfac(:,:), gfs(:,:)
@@ -783,11 +837,13 @@ contains
             ns = max(js1,is)
             if (present(isSphSolver)) then
 !              -------------------------------------------------------
-               call solveSingleScattering(ns,id,e,CZERO,isSphSolver,useIrrSol='H')
+               call solveSingleScattering(spin=ns,site=id,e=e,        &
+                                          vshift=CZERO,isSphSolver=isSphSolver,useIrrSol='H')
 !              -------------------------------------------------------
             else
 !              -------------------------------------------------------
-               call solveSingleScattering(ns,id,e,CZERO,useIrrSol='H')
+               call solveSingleScattering(spin=ns,site=id,e=e,        &
+                                          vshift=CZERO,useIrrSol='H')
 !              -------------------------------------------------------
             endif
 !           ----------------------------------------------------------
@@ -800,7 +856,7 @@ contains
          do js1 = 1, n_spin_cant
             ns = max(js1,is)
 !           ----------------------------------------------------------
-            call solveSingleScattering(ns,id,e,CZERO)
+            call solveSingleScattering(spin=ns,site=id,e=e,vshift=CZERO)
 !           ----------------------------------------------------------
          enddo
       enddo
@@ -823,11 +879,6 @@ contains
       kmaxk = kmax_kkr(id)
       kmaxp = kmax_phi(id)
       kmaxg = (mst(id)%lmax+1)**2
-      if (isRealSpace) then
-         kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
-      else
-         kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
-      endif
 !     ================================================================
       irmax = getSolutionRmeshSize(id)
       if (irmax < mst(id)%iend) then
@@ -845,271 +896,294 @@ contains
          dppr => aliasArray2_c(dwspace,irmax*kmaxp,kmaxk)
          dppg => aliasArray3_c(dgspace,irmax,kmaxg,kmaxp)
       endif
-      ns = 0
       if (add_SingleSiteT) then
          pau00 => aliasArray2_c(store_space,kmaxk,kmaxk)
       endif
-      do js2 = 1, n_spin_cant
-!        =============================================================
-!        If needed, add kappa*Omega to Kau00, which is equivalent to add
-!        t_mat to [tau00 - t_mat]
-!        =============================================================
-         if (add_SingleSiteT) then
-!           ----------------------------------------------------------
-            OmegaHat => getOmegaHatMatrix(js2,id)
-!           ----------------------------------------------------------
+      do ia = 1, getLocalNumSpecies(id)
+         if (isLSMS()) then
+            kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-T*}
+         else if (isKKR()) then
+!kau00=>getCrystalTau(local_id=id)
+!call writeMatrix('Tau',kau00(:,:,1),kmaxk,kmaxk,TEN2m6)
+            kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-T*}
+         else if (isKKRCPA() .or. isEmbeddedCluster()) then
+!p_kau00 => getCPAMatrix('Tcpa',site=id)
+!call writeMatrix('Tcpa',p_kau00,kmaxk,kmaxk,TEN2m6)
+!kau00=>getImpurityMatrix('Tau_a',site=id,atom=0)
+!call writeMatrix('Tau_a',kau00(:,:,1),kmaxk,kmaxk,TEN2m6)
+            kau00 => getImpurityMatrix('Kau_a',site=id,atom=ia) ! Kau00 = energy * S^{-1} * [Tau_a - t_matrix] * S^{-T*}
          endif
-         PhiLr_right => getRegSolution(js2,id)
-         if (rad_deriv) then
-            der_PhiLr_right => getRegSolutionDerivative(js2,id)
-         endif
-         do js1 = 1, n_spin_cant
-            PhiLr_left => getRegSolution(js1,id)
-            if (rad_deriv) then
-               der_PhiLr_left => getRegSolutionDerivative(js1,id)
-            endif
-            ns = ns + 1
-            gf => mst(id)%green(:,:,ns)
-            gf = CZERO
-            if (rad_deriv) then
-               dgf => mst(id)%der_green(:,:,ns)
-               dgf = CZERO
-            endif
-            p_kau00 => kau00(:,:,ns)
+!        -------------------------------------------------------------
+!        call writeMatrix('Kau_a',kau00(:,:,1),kmaxk,kmaxk,TEN2m6)
+!        -------------------------------------------------------------
+         ns = 0
+         do js2 = 1, n_spin_cant
 !           ==========================================================
-!           gf is the multiple scattering part of the Green function
-!           multiplied by r^2:
-!               gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
-!                  = Phi_L*Kau00*Phi_L^{*}*r^2
-!           Here implements three different methods for checking against each other
-!
 !           If needed, add kappa*Omega to Kau00, which is equivalent to add
 !           t_mat to [tau00 - t_mat]
 !           ==========================================================
-            if (add_SingleSiteT .and. js1 == js2) then
+            if (add_SingleSiteT) then
 !              -------------------------------------------------------
-               call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
-               call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
+               OmegaHat => getOmegaHatMatrix(js2,site=id,atom=ia)
 !              -------------------------------------------------------
-               p_kau00 => pau00
             endif
-!           ==========================================================
-            if (method == 0) then
-!              =======================================================
-!              ppr(ir,klp1,kl2) = sum_kl1 PhiLr_left(ir,klp1,kl1) * p_kau00(kl1,kl2)
-!              -------------------------------------------------------
-               call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
-!              -------------------------------------------------------
+            PhiLr_right => getRegSolution(js2,site=id,atom=ia)
+            if (rad_deriv) then
+               der_PhiLr_right => getRegSolutionDerivative(js2,site=id,atom=ia)
+            endif
+            do js1 = 1, n_spin_cant
+               PhiLr_left => getRegSolution(js1,site=id,atom=ia)
                if (rad_deriv) then
-!                 ----------------------------------------------------
-                  call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,der_PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO, &
-                             dppr,irmax*kmaxp)
-!                 ----------------------------------------------------
+                  der_PhiLr_left => getRegSolutionDerivative(js1,site=id,atom=ia)
                endif
-               np = mod(kmaxk,NumPEsInGroup)
-               do kl2 = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
-                  m2 = mofk(kl2)
-                  kl2c = kl2 -2*m2
-                  cfac = m1m(m2)
-!                 ====================================================
-!                 ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) * gaunt(klp1,klg,klp2)
-!                 ----------------------------------------------------
-                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
-!                 ----------------------------------------------------
-                  if (rad_deriv) then
-!                    -------------------------------------------------
-                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO, &
-                                dppg,irmax)
-!                    -------------------------------------------------
-                  endif
-!
-!                 ====================================================
-!                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
-!                 ====================================================
-                  do klp2 = 1, kmaxp
-                     do klg = 1, kmaxg
-                        do ir = 1, mst(id)%iend
-                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
-                        enddo
-                        if (rad_deriv) then
-                           do ir = 1, mst(id)%iend
-                              dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
-                                                         + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
-                           enddo
-                        endif
-                     enddo
-                  enddo
-               enddo ! kl2
-               if (NumPEsInGroup > 1) then
-!                 ----------------------------------------------------
-                  call GlobalSumInGroup(kGID,gf,mst(id)%iend,kmaxg)
-!                 ----------------------------------------------------
-                  if (rad_deriv) then
-!                    -------------------------------------------------
-                     call GlobalSumInGroup(kGID,dgf,mst(id)%iend,kmaxg)
-!                    -------------------------------------------------
-                  endif
+               ns = ns + 1
+               gf => mst(id)%green(:,:,ns,ia)
+               gf = CZERO
+               if (rad_deriv) then
+                  dgf => mst(id)%der_green(:,:,ns,ia)
+                  dgf = CZERO
                endif
-               do kl2 = kmaxk-np+1,kmaxk
-                  m2 = mofk(kl2)
-                  kl2c = kl2 -2*m2
-                  cfac = m1m(m2)
-!                 ====================================================
-!                 ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) * gaunt(klp1,klg,klp2)
+               p_kau00 => kau00(:,:,ns)
+!              =======================================================
+!              gf is the multiple scattering part of the Green function
+!              multiplied by r^2:
+!                  gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
+!                     = Phi_L*Kau00*Phi_L^{*}*r^2
+!              Here implements three different methods for checking against each other
+!
+!              If needed, add kappa*Omega to Kau00, which is equivalent to add
+!              t_mat to [tau00 - t_mat]
+!              =======================================================
+               if (add_SingleSiteT .and. js1 == js2) then
 !                 ----------------------------------------------------
-                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+                  call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
+                  call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
+!                 ----------------------------------------------------
+                  p_kau00 => pau00
+               endif
+!              =======================================================
+               if (method == 0) then
+!                 ====================================================
+!                 ppr(ir,klp1,kl2) = sum_kl1 PhiLr_left(ir,klp1,kl1) * 
+!                                            p_kau00(kl1,kl2)
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left, &
+                             irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
 !                 ----------------------------------------------------
                   if (rad_deriv) then
 !                    -------------------------------------------------
-                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO, &
-                                dppg,irmax)
+                     call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,der_PhiLr_left, &
+                                 irmax*kmaxp,p_kau00,kmaxk,CZERO,dppr,irmax*kmaxp)
 !                    -------------------------------------------------
                   endif
+                  np = mod(kmaxk,NumPEsInGroup)
+                  do kl2 = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
+                     m2 = mofk(kl2)
+                     kl2c = kl2 -2*m2
+                     cfac = m1m(m2)
+!                    =================================================
+!                    ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) *
+!                                                    gaunt(klp1,klg,klp2)
+!                    -------------------------------------------------
+                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c), &
+                                 irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                    -------------------------------------------------
+                     if (rad_deriv) then
+!                       ----------------------------------------------
+                        call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac, &
+                                   dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,dppg,irmax)
+!                       ----------------------------------------------
+                     endif
 !
-!                 ====================================================
-!                 gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
-!                 ====================================================
-                  do klp2 = 1, kmaxp
-                     do klg = 1, kmaxg
-                        do ir = 1, mst(id)%iend
-                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
-                        enddo
-                        if (rad_deriv) then
-                           do ir = 1, mst(id)%iend
-                              dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
-                                                         + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
-                           enddo
-                        endif
-                     enddo
-                  enddo
-               enddo
-            else if (method == 1) then
-               do kl1 = kmaxk,1,-1
-                  do klp1 = kmaxp,1,-1
-                     do kl2 = kmaxk,1,-1
-                        m2 = mofk(kl2)
-                        kl2c = kl2 -2*m2
-!                       ==============================================
-!                       pp(ir,klp2;kl2,klp1,kl1) =
-!                           PhiLr_left(ir,klp1,kl1) * PhiLr_right(ir,klp2,kl2)
-!                       ==============================================
-                        pp = CZERO
-                        do klp2 = 1, kmaxp
-                           do ir = 1, irmax
-                              pp(ir,klp2) = PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2)
-                           enddo
-                        enddo
-                        if (rad_deriv) then
-                           dpp = CZERO
-                           do klp2 = 1, kmaxp
-                              do ir = 1, irmax
-                                 dpp(ir,klp2) = der_PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2) &
-                                              + PhiLr_left(ir,klp1,kl1)*der_PhiLr_right(ir,klp2,kl2)
-                              enddo
-                           enddo
-                        endif
-!                       ==============================================
-!                       tfac(klp2,klg;kl2,klp1,kl1) = gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2)
-!                       ==============================================
+!                    =================================================
+!                    gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * 
+!                                                PhiLr_right(ir,klp2,kl2)
+!                    =================================================
+                     do klp2 = 1, kmaxp
                         do klg = 1, kmaxg
-                           do klp2 = 1, kmaxp
-                              tfac(klp2,klg) = m1m(m2)*gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2c)
-                           enddo
-                        enddo
-!                       ==============================================
-!                       gf(ir,klg) = sum_{kl1,klp1,kl2,klp2} pp(ir,klp2;kl2,klp1,kl1) * tfac(klp2,klg;kl2,klp1,kl1)
-!                       ----------------------------------------------
-                        call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,pp,irmax,tfac,kmaxp,CONE,gf,mst(id)%iend)
-!                       ----------------------------------------------
-                        if (rad_deriv) then
-!                          -------------------------------------------
-                           call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,dpp,irmax,tfac,kmaxp,CONE,dgf,mst(id)%iend)
-!                          -------------------------------------------
-                        endif
-                     enddo ! kl2
-                  enddo ! do klp1
-               enddo ! do kl1
-            else
-               do kl2 = 1, kmaxk
-                  m2 = mofk(kl2)
-                  kl2c = kl2 -2*m2
-                  cfac = m1m(m2)
-!                 ----------------------------------------------------
-                  call zgemv('n',irmax*kmaxp,kmaxk,cfac,PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO,pp,1)
-!                 ----------------------------------------------------
-                  if (rad_deriv) then
-!                    -------------------------------------------------
-                     call zgemv('n',irmax*kmaxp,kmaxk,cfac,der_PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO, &
-                                dpp,1)
-!                    -------------------------------------------------
-                  endif
-                  do klp2 = 1, kmaxp
-                     do klg = 1, kmaxg
-                        do klp1 = 1, kmaxp
                            do ir = 1, mst(id)%iend
-                              gf(ir,klg) = gf(ir,klg) + gaunt(klp1,klg,klp2)*pp(ir,klp1)*PhiLr_right(ir,klp2,kl2)
+                              gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
                            enddo
                            if (rad_deriv) then
                               do ir = 1, mst(id)%iend
-                                 dgf(ir,klg) = dgf(ir,klg) +                                                   &
-                                               gaunt(klp1,klg,klp2)*( dpp(ir,klp1)*PhiLr_right(ir,klp2,kl2) +  &
-                                                                      pp(ir,klp1)*der_PhiLr_right(ir,klp2,kl2) )
-                                                             
+                                 dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
+                                                            + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
+                              enddo
+                           endif
+                        enddo
+                     enddo
+                  enddo ! kl2
+                  if (NumPEsInGroup > 1) then
+!                    -------------------------------------------------
+                     call GlobalSumInGroup(kGID,gf,mst(id)%iend,kmaxg)
+!                    -------------------------------------------------
+                     if (rad_deriv) then
+!                       ----------------------------------------------
+                        call GlobalSumInGroup(kGID,dgf,mst(id)%iend,kmaxg)
+!                       ----------------------------------------------
+                     endif
+                  endif
+                  do kl2 = kmaxk-np+1,kmaxk
+                     m2 = mofk(kl2)
+                     kl2c = kl2 -2*m2
+                     cfac = m1m(m2)
+!                    =================================================
+!                    ppg(ir,klg,klp2;kl2) = sum_klp1 (-1)^m2 * ppr(ir,klp1,kl2c) * gaunt(klp1,klg,klp2)
+!                    -------------------------------------------------
+                     call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,kl2c),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                    -------------------------------------------------
+                     if (rad_deriv) then
+!                       ----------------------------------------------
+                        call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,dppr(1,kl2c),irmax,gaunt,kmaxp,CZERO, &
+                                   dppg,irmax)
+!                       ----------------------------------------------
+                     endif
+!
+!                    =================================================
+!                    gf(ir,klg) = sum_{kl2,klp2} ppg(ir,klg,klp2;kl2) * PhiLr_right(ir,klp2,kl2)
+!                    =================================================
+                     do klp2 = 1, kmaxp
+                        do klg = 1, kmaxg
+                           do ir = 1, mst(id)%iend
+                              gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)
+                           enddo
+                           if (rad_deriv) then
+                              do ir = 1, mst(id)%iend
+                                 dgf(ir,klg) =  dgf(ir,klg) + dppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl2)  &
+                                                            + ppg(ir,klg,klp2)*der_PhiLr_right(ir,klp2,kl2)
                               enddo
                            endif
                         enddo
                      enddo
                   enddo
-               enddo
-            endif
-            if (add_SingleSiteG .and. js1 == js2) then  ! This "js1==js2" logic
-                                                        ! needs to be checked for spin-canted case
-!              =======================================================
-!              Add the singe site Green function to gf = Z*(tau-t)*Z, 
-!              so that gf = Z*tau*Z - Z*J
-!              =======================================================
-               gfs => getGreenFunction(max(js1,is),id)
-               if (size(gfs,1) < size(gf,1)) then
-                  call ErrorHandler('computeMSGreenFunction',                                  &
-                                    '1st dim. of ss < 1st dim of ms green function arrays',    &
-                                    size(gfs,1), size(gf,1))
-               else if (size(gfs,2) < size(gf,2)) then
-                  call ErrorHandler('computeMSGreenFunction',                                  &
-                                    '2nd dim. of ss < 2nd dim of ms green function arrays',    &
-                                    size(gfs,2), size(gf,2))
-               endif
-               do klg = 1, kmaxg
-                  do ir = 1, mst(id)%iend
-                     gf(ir,klg) = gf(ir,klg) + gfs(ir,klg)
-                  enddo
-               enddo
-               if (rad_deriv) then
-                  gfs => getGreenFunctionDerivative(max(js1,is),id)
-                  do klg = 1, kmaxg
-                     do ir = 1, mst(id)%iend
-                        dgf(ir,klg) = dgf(ir,klg) + gfs(ir,klg)
+               else if (method == 1) then
+                  do kl1 = kmaxk,1,-1
+                     do klp1 = kmaxp,1,-1
+                        do kl2 = kmaxk,1,-1
+                           m2 = mofk(kl2)
+                           kl2c = kl2 -2*m2
+!                          ===========================================
+!                          pp(ir,klp2;kl2,klp1,kl1) =
+!                              PhiLr_left(ir,klp1,kl1) * PhiLr_right(ir,klp2,kl2)
+!                          ===========================================
+                           pp = CZERO
+                           do klp2 = 1, kmaxp
+                              do ir = 1, irmax
+                                 pp(ir,klp2) = PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2)
+                              enddo
+                           enddo
+                           if (rad_deriv) then
+                              dpp = CZERO
+                              do klp2 = 1, kmaxp
+                                 do ir = 1, irmax
+                                    dpp(ir,klp2) = der_PhiLr_left(ir,klp1,kl1)*PhiLr_right(ir,klp2,kl2) &
+                                                 + PhiLr_left(ir,klp1,kl1)*der_PhiLr_right(ir,klp2,kl2)
+                                 enddo
+                              enddo
+                           endif
+!                          ===========================================
+!                          tfac(klp2,klg;kl2,klp1,kl1) = gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2)
+!                          ===========================================
+                           do klg = 1, kmaxg
+                              do klp2 = 1, kmaxp
+                                 tfac(klp2,klg) = m1m(m2)*gaunt(klp2,klg,klp1)*p_kau00(kl1,kl2c)
+                              enddo
+                           enddo
+!                          ===========================================
+!                          gf(ir,klg) = sum_{kl1,klp1,kl2,klp2} pp(ir,klp2;kl2,klp1,kl1) * tfac(klp2,klg;kl2,klp1,kl1)
+!                          -------------------------------------------
+                           call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,pp,irmax,tfac,kmaxp,CONE,gf,mst(id)%iend)
+!                          -------------------------------------------
+                           if (rad_deriv) then
+!                             ----------------------------------------
+                              call zgemm('n','n',mst(id)%iend,kmaxg,kmaxp,CONE,dpp,irmax,tfac,kmaxp,CONE,dgf,mst(id)%iend)
+!                             ----------------------------------------
+                           endif
+                        enddo ! kl2
+                     enddo ! do klp1
+                  enddo ! do kl1
+               else
+                  do kl2 = 1, kmaxk
+                     m2 = mofk(kl2)
+                     kl2c = kl2 -2*m2
+                     cfac = m1m(m2)
+!                    -------------------------------------------------
+                     call zgemv('n',irmax*kmaxp,kmaxk,cfac,PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO,pp,1)
+!                    -------------------------------------------------
+                     if (rad_deriv) then
+!                       ----------------------------------------------
+                        call zgemv('n',irmax*kmaxp,kmaxk,cfac,der_PhiLr_left,irmax*kmaxp,p_kau00(1,kl2c),1,CZERO, &
+                                   dpp,1)
+!                       ----------------------------------------------
+                     endif
+                     do klp2 = 1, kmaxp
+                        do klg = 1, kmaxg
+                           do klp1 = 1, kmaxp
+                              do ir = 1, mst(id)%iend
+                                 gf(ir,klg) = gf(ir,klg) + gaunt(klp1,klg,klp2)*pp(ir,klp1)*PhiLr_right(ir,klp2,kl2)
+                              enddo
+                              if (rad_deriv) then
+                                 do ir = 1, mst(id)%iend
+                                    dgf(ir,klg) = dgf(ir,klg) +                                                   &
+                                                  gaunt(klp1,klg,klp2)*( dpp(ir,klp1)*PhiLr_right(ir,klp2,kl2) +  &
+                                                                         pp(ir,klp1)*der_PhiLr_right(ir,klp2,kl2) )
+                                                             
+                                 enddo
+                              endif
+                           enddo
+                        enddo
                      enddo
                   enddo
                endif
-            endif
-!
-!           ==========================================================
-!           Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
-!           ==========================================================
-            if (isDosSymmOn) then
-               green_flags => getSymmetryFlags(id)
-               do klg = 1, kmaxg
-                  if (green_flags(jofk(klg)) == 0) then
-                     gf(:,klg) = CZERO
-                     if (rad_deriv) then
-                        dgf(:,klg) = CZERO
-                     endif
+               if (add_SingleSiteG .and. js1 == js2) then  ! This "js1==js2" logic
+                                                           ! needs to be checked for spin-canted case
+!                 ====================================================
+!                 Add the singe site Green function to gf = Z*(tau-t)*Z, 
+!                 so that gf = Z*tau*Z - Z*J
+!                 ====================================================
+                  gfs => getGreenFunction(spin=max(js1,is),site=id,atom=ia)
+                  if (size(gfs,1) < size(gf,1)) then
+                     call ErrorHandler('computeMSGreenFunction',                                  &
+                                       '1st dim. of ss < 1st dim of ms green function arrays',    &
+                                       size(gfs,1), size(gf,1))
+                  else if (size(gfs,2) < size(gf,2)) then
+                     call ErrorHandler('computeMSGreenFunction',                                  &
+                                       '2nd dim. of ss < 2nd dim of ms green function arrays',    &
+                                       size(gfs,2), size(gf,2))
                   endif
-               enddo
-            endif
-!           ==========================================================
-         enddo ! do js1
-      enddo ! do js2
+                  do klg = 1, kmaxg
+                     do ir = 1, mst(id)%iend
+                        gf(ir,klg) = gf(ir,klg) + gfs(ir,klg)
+                     enddo
+                  enddo
+                  if (rad_deriv) then
+                     gfs => getGreenFunctionDerivative(spin=max(js1,is),site=id,atom=ia)
+                     do klg = 1, kmaxg
+                        do ir = 1, mst(id)%iend
+                           dgf(ir,klg) = dgf(ir,klg) + gfs(ir,klg)
+                        enddo
+                     enddo
+                  endif
+               endif
+!
+!              =======================================================
+!              Symmetrizing the green function, if needed.  Added by Yang on 09-21-2018
+!              =======================================================
+               if (isDosSymmOn) then
+                  green_flags => getSymmetryFlags(id)
+                  do klg = 1, kmaxg
+                     if (green_flags(jofk(klg)) == 0) then
+                        gf(:,klg) = CZERO
+                        if (rad_deriv) then
+                           dgf(:,klg) = CZERO
+                        endif
+                     endif
+                  enddo
+               endif
+!              =======================================================
+            enddo ! do js1
+         enddo ! do js2
+      enddo ! do ia
    enddo ! do id
 !
    nullify(kau00, p_kau00, pau00, OmegaHat, gf, dgf, pp, ppr, ppg, tfac)
@@ -1130,7 +1204,11 @@ contains
    use MPPModule, only : MyPE, syncAllPEs
    use GroupCommModule, only : GlobalSumInGroup
 !
+   use ScfDataModule, only : isKKR, isScreenKKR, isLSMS, isKKRCPA, isEmbeddedCluster
+!
    use SystemSymmetryModule, only : getSymmetryFlags
+!
+   use AtomModule, only : getLocalNumSpecies
 !
    use StepFunctionModule, only : getVolumeIntegration
 !
@@ -1139,6 +1217,8 @@ contains
    use ClusterMatrixModule, only : getClusterKau => getKau
 !
    use CrystalMatrixModule, only : getCrystalKau => getKau
+!
+   use CPAMediumModule, only : getImpurityMatrix
 !
    use SSSolverModule, only : getRegSolution, getSolutionRmeshSize
    use SSSolverModule, only : getSolutionFlags, getOmegaHatMatrix
@@ -1154,8 +1234,9 @@ contains
    logical :: add_SingleSite
 !
    integer (kind=IntKind) :: id, ns, kmaxk, kmaxp, kmaxg, jmaxg, irmax, jmax_green_max
-   integer (kind=IntKind) :: n, info, js1, js2, jlg, lg, mg, js
+   integer (kind=IntKind) :: n, info, js1, js2, jlg, lg, mg, js, ia
    integer (kind=IntKind) :: klg, klgc, kl, klp1, klp2, ir, klc, m, np
+   integer (kind=IntKind) :: num_species
    integer (kind=IntKind), pointer :: dos_flags(:)
 !
    real (kind=RealKind) :: dos_buf(kmax_phi_max,2)
@@ -1195,11 +1276,12 @@ contains
             ns = max(js1,is)
             if (present(isSphSolver)) then
 !              -------------------------------------------------------
-               call solveSingleScattering(ns,id,e,CZERO,isSphSolver,useIrrSol='H')
+               call solveSingleScattering(spin=ns,site=id,e=e,vshift=CZERO, &
+                                          isSphSolver=isSphSolver,useIrrSol='H')
 !              -------------------------------------------------------
             else
 !              -------------------------------------------------------
-               call solveSingleScattering(ns,id,e,CZERO,useIrrSol='H')
+               call solveSingleScattering(spin=ns,site=id,e=e,vshift=CZERO,useIrrSol='H')
 !              -------------------------------------------------------
             endif
          enddo
@@ -1210,7 +1292,7 @@ contains
          do js1 = 1, n_spin_cant
             ns = max(js1,is)
 !           ----------------------------------------------------------
-            call solveSingleScattering(ns,id,e,CZERO)
+            call solveSingleScattering(spin=ns,site=id,e=e,vshift=CZERO)
 !           ----------------------------------------------------------
          enddo
       enddo
@@ -1223,11 +1305,15 @@ contains
    Energy = e
    kappa = sqrt(Energy)
 !
-   if (.not.allocated(space_integrated_msdos_cell)) then
-      allocate( space_integrated_msdos_cell(n_spin_cant*n_spin_pola,LocalNumAtoms),       &
-                space_integrated_msdos_mt(n_spin_cant*n_spin_pola,LocalNumAtoms),         &
-                space_integrated_mspdos_cell(kmax_phi_max,n_spin_cant*n_spin_pola,LocalNumAtoms), &
-                space_integrated_mspdos_mt(kmax_phi_max,n_spin_cant*n_spin_pola,LocalNumAtoms) )
+   if (.not.allocated(SpaceIntegratedDOS)) then
+      allocate( SpaceIntegratedDOS(LocalNumAtoms) )
+      do id = 1, LocalNumAtoms
+         num_species = getLocalNumSpecies(id)
+         allocate( SpaceIntegratedDOS(id)%msdos_cell(n_spin_cant*n_spin_pola,num_species) )
+         allocate( SpaceIntegratedDOS(id)%msdos_mt(n_spin_cant*n_spin_pola,num_species) )
+         allocate( SpaceIntegratedDOS(id)%mspdos_cell(kmax_phi_max,n_spin_cant*n_spin_pola,num_species) )
+         allocate( SpaceIntegratedDOS(id)%mspdos_mt(kmax_phi_max,n_spin_cant*n_spin_pola,num_species) )
+      enddo
       jmax_green_max = (lmax_green_max+1)*(lmax_green_max+2)/2
       allocate( gfws_comp(iend_max*kmax_green_max), dosws_comp(iend_max*jmax_green_max) )
    endif
@@ -1237,11 +1323,6 @@ contains
       kmaxp = kmax_phi(id)
       kmaxg = (mst(id)%lmax+1)**2
       jmaxg = (mst(id)%lmax+1)*(mst(id)%lmax+2)/2
-      if (isRealSpace) then
-         kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
-      else
-         kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
-      endif
 !     ================================================================
       irmax = getSolutionRmeshSize(id)
       if (irmax < mst(id)%iend) then
@@ -1254,171 +1335,187 @@ contains
       dos_r_jl => aliasArray2_c(dosws_comp,irmax,jmaxg)
       Grid => getGrid(id)
 !
-      js = 0
       if (add_SingleSite) then
          pau00 => aliasArray2_c(store_space,kmaxk,kmaxk)
       endif
-      do js2 = 1, n_spin_cant
-!        =============================================================
-!        If needed, add kappa*Omega to Kau00, which is equivalent to add
-!        t_mat to [tau00 - t_mat]
-!        =============================================================
-         if (add_SingleSite) then
-!           ----------------------------------------------------------
-            OmegaHat => getOmegaHatMatrix(js2,id)
-!           ----------------------------------------------------------
+      do ia = 1, getLocalNumSpecies(id)
+         if (isLSMS()) then
+            kau00 => getClusterKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         else if (isKKR()) then
+            kau00 => getCrystalKau(local_id=id) ! Kau00 = energy * S^{-1} * [Tau00 - t_matrix] * S^{-1*}
+         else if ( isKKRCPA() .or. isEmbeddedCluster()) then
+            kau00 => getImpurityMatrix('Kau_a',site=id,atom=ia)
          endif
-         PhiLr_right => getRegSolution(js2,id)
-         do js1 = 1, n_spin_cant
-            PhiLr_left => getRegSolution(js1,id)
-            js = js + 1
-            p_kau00 => kau00(:,:,js)
+         js = 0
+         do js2 = 1, n_spin_cant
 !           ==========================================================
-!           gf is the multiple scattering part of the Green function
-!           multiplied by r^2:
-!               gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
-!                  = Phi_L*Kau00*Phi_L^{*}*r^2
-!           Here implements the 1st method
-!
 !           If needed, add kappa*Omega to Kau00, which is equivalent to add
 !           t_mat to [tau00 - t_mat]
 !           ==========================================================
-            if (add_SingleSite .and. js1 == js2) then
+            if (add_SingleSite) then
 !              -------------------------------------------------------
-               call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
-               call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
-!              -------------------------------------------------------
-               p_kau00 => pau00
-            endif
-!
-!           **********************************************************
-!           ==========================================================
-!           ppr(ir,klp1,kl) = sum_kl1 PhiLr_left(ir,klp1,kl1) * p_kau00(kl1,kl)
-!           ----------------------------------------------------------
-            call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left,irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
-!           ----------------------------------------------------------
-            np = mod(kmaxk,NumPEsInGroup)
-            dos_buf = ZERO
-            do kl = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
-               m = mofk(kl)
-               klc = kl -2*m
-               cfac = m1m(m)
-!              =======================================================
-!              ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) * gaunt(klp1,klg,klp2)
-!              -------------------------------------------------------
-               call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
-!              -------------------------------------------------------
-!
-!              =======================================================
-!              gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
-!              =======================================================
-               gf = CZERO
-               do klp2 = 1, kmaxp
-                  do klg = 1, kmaxg
-                     do ir = 1, mst(id)%iend
-                        gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
-                     enddo
-                  enddo
-               enddo
-!
-               cfac = SQRTm1/PI2
-               do jlg = 1, jmaxg
-                  lg = lofj(jlg); mg = mofj(jlg); 
-                  klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
-                  do ir = 1, mst(id)%iend
-                     dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
-                  enddo
-               enddo
-!
-!              =======================================================
-!              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
-!              =======================================================
-               if (isDosSymmOn) then
-                  dos_flags => getSymmetryFlags(id)
-                  do jlg = 1, jmaxg
-                     if (dos_flags(jlg) == 0) then
-                        dos_r_jl(:,jlg) = CZERO
-                     endif
-                  enddo
-               endif
-!              =======================================================
-!
-!              -------------------------------------------------------
-               dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
-                                                     jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
-!              -------------------------------------------------------
-            enddo ! kl
-!
-            if (NumPEsInGroup > 1) then
-!              -------------------------------------------------------
-               call GlobalSumInGroup(kGID,dos_buf,kmax_phi_max,2)
+               OmegaHat => getOmegaHatMatrix(js2,site=id,atom=ia)
 !              -------------------------------------------------------
             endif
+            PhiLr_right => getRegSolution(js2,site=id,atom=ia)
+            do js1 = 1, n_spin_cant
+               PhiLr_left => getRegSolution(js1,site=id,atom=ia)
+               js = js + 1
+               p_kau00 => kau00(:,:,js)
+!              =======================================================
+!              gf is the multiple scattering part of the Green function
+!              multiplied by r^2:
+!                  gf = Z_L*(Tau00-t_matrix)*Z_L^{*}*r^2
+!                     = Phi_L*Kau00*Phi_L^{*}*r^2
+!              Here implements the 1st method
 !
-            do kl = kmaxk-np+1,kmaxk
-               m = mofk(kl)
-               klc = kl -2*m
-               cfac = m1m(m)
+!              If needed, add kappa*Omega to Kau00, which is equivalent to add
+!              t_mat to [tau00 - t_mat]
 !              =======================================================
-!              ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) * gaunt(klp1,klg,klp2)
-!              -------------------------------------------------------
-               call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc),irmax,gaunt,kmaxp,CZERO,ppg,irmax)
-!              -------------------------------------------------------
+               if (add_SingleSite .and. js1 == js2) then
+!                 ----------------------------------------------------
+                  call zcopy(kmaxk*kmaxk,p_kau00,1,pau00,1)
+                  call zaxpy(kmaxk*kmaxk,kappa,OmegaHat,1,pau00,1)
+!                 ----------------------------------------------------
+                  p_kau00 => pau00
+               endif
 !
+!              *******************************************************
 !              =======================================================
-!              gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
-!              =======================================================
-               gf = CZERO
-               do klp2 = 1, kmaxp
-                  do klg = 1, kmaxg
-                     do ir = 1, mst(id)%iend
-                        gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
+!              ppr(ir,klp1,kl) = sum_kl1 PhiLr_left(ir,klp1,kl1) * 
+!                                        p_kau00(kl1,kl)
+!              -------------------------------------------------------
+               call zgemm('n','n',irmax*kmaxp,kmaxk,kmaxk,CONE,PhiLr_left, &
+                          irmax*kmaxp,p_kau00,kmaxk,CZERO,ppr,irmax*kmaxp)
+!              -------------------------------------------------------
+               np = mod(kmaxk,NumPEsInGroup)
+               dos_buf = ZERO
+               do kl = MyPEinGroup+1, kmaxk-np, NumPEsInGroup
+                  m = mofk(kl)
+                  klc = kl -2*m
+                  cfac = m1m(m)
+!                 ====================================================
+!                 ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) *
+!                                                         gaunt(klp1,klg,klp2)
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc), &
+                             irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                 ----------------------------------------------------
+!
+!                 ====================================================
+!                 gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
+!                 ====================================================
+                  gf = CZERO
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
+                        do ir = 1, mst(id)%iend
+                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
+                        enddo
                      enddo
                   enddo
-               enddo
 !
-               cfac = SQRTm1/PI2
-               do jlg = 1, jmaxg
-                  lg = lofj(jlg); mg = mofj(jlg); 
-                  klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
-                  do ir = 1, mst(id)%iend
-                     dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
-                  enddo
-               enddo
-!
-!              =======================================================
-!              Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
-!              =======================================================
-               if (isDosSymmOn) then
-                  dos_flags => getSymmetryFlags(id)
+                  cfac = SQRTm1/PI2
                   do jlg = 1, jmaxg
-                     if (dos_flags(jlg) == 0) then
-                        dos_r_jl(:,jlg) = CZERO
-                     endif
+                     lg = lofj(jlg); mg = mofj(jlg); 
+                     klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
+                     do ir = 1, mst(id)%iend
+                        dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
+                     enddo
                   enddo
+!
+!                 ====================================================
+!                 Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!                 ====================================================
+                  if (isDosSymmOn) then
+                     dos_flags => getSymmetryFlags(id)
+                     do jlg = 1, jmaxg
+                        if (dos_flags(jlg) == 0) then
+                           dos_r_jl(:,jlg) = CZERO
+                        endif
+                     enddo
+                  endif
+!                 ====================================================
+!
+!                 ----------------------------------------------------
+                  dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
+                                                        jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+!                 ----------------------------------------------------
+               enddo ! kl
+!
+               if (NumPEsInGroup > 1) then
+!                 ----------------------------------------------------
+                  call GlobalSumInGroup(kGID,dos_buf,kmax_phi_max,2)
+!                 ----------------------------------------------------
                endif
-!              =======================================================
 !
-!              -------------------------------------------------------
-               dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
-                                                     jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
-!              -------------------------------------------------------
-            enddo
+               do kl = kmaxk-np+1,kmaxk
+                  m = mofk(kl)
+                  klc = kl -2*m
+                  cfac = m1m(m)
+!                 ====================================================
+!                 ppg(ir,klg,klp2;kl) = sum_klp1 (-1)^m * ppr(ir,klp1,klc) * gaunt(klp1,klg,klp2)
+!                 ----------------------------------------------------
+                  call zgemm('n','n',irmax,kmaxg*kmaxp,kmaxp,cfac,ppr(1,klc), &
+                             irmax,gaunt,kmaxp,CZERO,ppg,irmax)
+!                 ----------------------------------------------------
 !
-            ns = max(js,is)
-            space_integrated_msdos_cell(ns,id) = ZERO
-            space_integrated_msdos_mt(ns,id) = ZERO
-            do kl = kmaxk, 1, -1
-               space_integrated_mspdos_cell(kl,ns,id) = dos_buf(kl,1)
-               space_integrated_mspdos_mt(kl,ns,id) = dos_buf(kl,2)
-               space_integrated_msdos_cell(ns,id) = space_integrated_msdos_cell(ns,id) + &
-                                                    space_integrated_mspdos_cell(kl,ns,id)
-               space_integrated_msdos_mt(ns,id) = space_integrated_msdos_mt(ns,id) +     &
-                                                  space_integrated_mspdos_mt(kl,ns,id)
-            enddo
-!           **********************************************************
-         enddo ! do js1
-      enddo ! do js2
+!                 ====================================================
+!                 gf(ir,klg) = sum_{klp2} ppg(ir,klg,klp2;kl) * PhiLr_right(ir,klp2,kl)
+!                 ====================================================
+                  gf = CZERO
+                  do klp2 = 1, kmaxp
+                     do klg = 1, kmaxg
+                        do ir = 1, mst(id)%iend
+                           gf(ir,klg) =  gf(ir,klg) + ppg(ir,klg,klp2)*PhiLr_right(ir,klp2,kl)
+                        enddo
+                     enddo
+                  enddo
+!
+                  cfac = SQRTm1/PI2
+                  do jlg = 1, jmaxg
+                     lg = lofj(jlg); mg = mofj(jlg); 
+                     klg = (lg+1)*(lg+1)-lg+mg; klgc = (lg+1)*(lg+1)-lg-mg
+                     do ir = 1, mst(id)%iend
+                        dos_r_jl(ir,jlg) = cfac*(gf(ir,klg) - m1m(mg)*conjg(gf(ir,klgc)))
+                     enddo
+                  enddo
+!
+!                 ====================================================
+!                 Symmetrizing the DOS, if needed.  Added by Yang on 09-21-2018
+!                 ====================================================
+                  if (isDosSymmOn) then
+                     dos_flags => getSymmetryFlags(id)
+                     do jlg = 1, jmaxg
+                        if (dos_flags(jlg) == 0) then
+                           dos_r_jl(:,jlg) = CZERO
+                        endif
+                     enddo
+                  endif
+!                 ====================================================
+!
+!                 ----------------------------------------------------
+                  dos_buf(kl,1) = getVolumeIntegration( id, mst(id)%iend, Grid%r_mesh, &
+                                                        jmaxg, 2, dos_r_jl, dos_buf(kl,2) )
+!                 ----------------------------------------------------
+               enddo
+!
+               ns = max(js,is)
+               SpaceIntegratedDOS(id)%msdos_cell(ns,ia) = ZERO
+               SpaceIntegratedDOS(id)%msdos_mt(ns,ia) = ZERO
+               do kl = kmaxk, 1, -1
+                  SpaceIntegratedDOS(id)%mspdos_cell(kl,ns,ia) = dos_buf(kl,1)
+                  SpaceIntegratedDOS(id)%mspdos_mt(kl,ns,ia) = dos_buf(kl,2)
+                  SpaceIntegratedDOS(id)%msdos_cell(ns,ia) =          &
+                           SpaceIntegratedDOS(id)%msdos_cell(ns,ia) + &
+                           SpaceIntegratedDOS(id)%mspdos_cell(kl,ns,ia)
+                  SpaceIntegratedDOS(id)%msdos_mt(ns,ia) =            &
+                           SpaceIntegratedDOS(id)%msdos_mt(ns,ia) +   &
+                           SpaceIntegratedDOS(id)%mspdos_mt(kl,ns,ia)
+               enddo
+!              *******************************************************
+            enddo ! do js1
+         enddo ! do js2
+      enddo ! do ia
    enddo ! do id
 !
    nullify(p_kau00, pau00, OmegaHat)
@@ -1429,15 +1526,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMSCellDOS(ks,id) result(dos)
+   function getMSCellDOS(ks,id,ia) result(dos)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: ks, id
+   integer (kind=IntKind), intent(in) :: ks, id, ia
 !
    real (kind=RealKind) :: dos
 !
-   dos = space_integrated_msdos_cell(ks,id)
+   dos = SpaceIntegratedDOS(id)%msdos_cell(ks,ia)
 !
    end function getMSCellDOS
 !  ===================================================================
@@ -1445,15 +1542,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMSMTSphereDOS(ks,id) result(dos)
+   function getMSMTSphereDOS(ks,id,ia) result(dos)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: ks, id
+   integer (kind=IntKind), intent(in) :: ks, id, ia
 !
    real (kind=RealKind) :: dos
 !
-   dos = space_integrated_msdos_mt(ks,id)
+   dos = SpaceIntegratedDOS(id)%msdos_mt(ks,ia)
 !
    end function getMSMTSphereDOS
 !  ===================================================================
@@ -1461,15 +1558,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMSCellPDOS(ks,id) result(pdos)
+   function getMSCellPDOS(ks,id,ia) result(pdos)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: ks, id
+   integer (kind=IntKind), intent(in) :: ks, id, ia
 !
    real (kind=RealKind), pointer :: pdos(:)
 !
-   pdos => space_integrated_mspdos_cell(:,ks,id)
+   pdos => SpaceIntegratedDOS(id)%mspdos_cell(:,ks,ia)
 !
    end function getMSCellPDOS
 !  ===================================================================
@@ -1477,15 +1574,15 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMSMTSpherePDOS(ks,id) result(pdos)
+   function getMSMTSpherePDOS(ks,id,ia) result(pdos)
 !  ===================================================================
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: ks, id
+   integer (kind=IntKind), intent(in) :: ks, id, ia
 !
    real (kind=RealKind), pointer :: pdos(:)
 !
-   pdos => space_integrated_mspdos_mt(:,ks,id)
+   pdos => SpaceIntegratedDOS(id)%mspdos_mt(:,ks,ia)
 !
    end function getMSMTSpherePDOS
 !  ===================================================================

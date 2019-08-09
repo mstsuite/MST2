@@ -233,10 +233,11 @@ contains
       endif
       do idq = 1,NumQuantities(idt)
          NumTotalMix = NumTotalMix +1
-         if ( idq==NumQuantities(idt)) cycle
-         allocate(p_RAL%next)
-         p_RAL => p_RAL%next
-         nullify( p_RAL%next )
+         if ( idq < NumQuantities(idt)) then
+            allocate(p_RAL%next)
+            p_RAL => p_RAL%next
+            nullify( p_RAL%next )
+         endif
       enddo
    enddo
 !   nullify( p_RAL%next )
@@ -281,10 +282,11 @@ contains
       endif
       do idq = 1,NumQuantities(idt)
          NumTotalMix = NumTotalMix +1
-         if (idq==NumQuantities(idt)) cycle
-         allocate(p_CAL%next)
-         p_CAL => p_CAL%next
-         nullify( p_CAL%next )
+         if (idq < NumQuantities(idt)) then
+            allocate(p_CAL%next)
+            p_CAL => p_CAL%next
+            nullify( p_CAL%next )
+         endif
       enddo
    enddo
 !   nullify( p_CAL%next )

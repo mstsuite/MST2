@@ -8,6 +8,7 @@
    use MPPModule, only : MyPE
 !
    use PublicTypeDefinitionsModule, only : InputTableStruct
+   use PublicParamDefinitionsModule, only : MaxLenFileName
 !
    implicit none
 !
@@ -30,7 +31,7 @@
    integer (kind=IntKind), parameter :: max_adjust = 100
 !
    character (len=50) :: cpath
-   character (len=100) :: ipfile
+   character (len=MaxLenFileName) :: ipfile
    character (len=70) :: text
    character (len=90) :: citpath
    character (len=90) :: ciepath

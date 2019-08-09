@@ -1,6 +1,7 @@
 module BookKeepingModule
    use KindParamModule, only : IntKind, RealKind
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
+   use PublicParamDefinitionsModule, only : MaxLenFileName
 !
 public :: initBookKeeping,  &
           endBookKeeping,   &
@@ -16,7 +17,7 @@ public :: initBookKeeping,  &
    end interface
 !
 private
-   character (len=100) :: fname
+   character (len=MaxLenFileName) :: fname
 !
    logical :: FileExist = .false.
 !

@@ -56,15 +56,15 @@ private
 !
    integer (kind=IntKind) :: host_kmax_kkr
 !
-   complex (kind=CmplxKind), allocatable, target :: t_host_inv(:) ! t-matrix inverse, in global spin frame, of the 
-                                                                    ! host sites on local CPU
+   complex (kind=CmplxKind), allocatable, target :: t_host_inv(:) ! t-matrix inverse, in local spin frame, of the 
+                                                                  ! host sites on local CPU
 !
 contains
 !
    include '../lib/arrayTools.F90'
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine initEmbeddedCluster(cant, lmax_kkr, istop, iprint)
+   subroutine initEmbeddedCluster(cant, istop, iprint)
 !  ===================================================================
    use MPPModule, only : MyPE
    use GroupCommModule, only : getGroupID, getNumPEsInGroup, getMyPEinGroup
@@ -77,12 +77,11 @@ contains
    character (len=*), intent(in) :: istop
 !
    integer (kind=IntKind), intent(in) :: cant    ! Spin cantinf index
-   integer (kind=IntKind), intent(in) :: lmax_kkr
    integer (kind=IntKind), intent(in) :: iprint
 !
    character (len=14) :: sname = "initEmbeddedCluster"
 !
-   integer (kind=IntKind) :: i, j, ig, na, n, k, nk
+   integer (kind=IntKind) :: i, j, ig, na, n, k, nk, lmax_kkr
    integer (kind=IntKind) :: kmax_kkr, kmax_kkr_ns, tsize
    integer (kind=IntKind) :: KKRMatrixSize
    integer (kind=IntKind) :: KKRMatrixSizeCant
@@ -123,22 +122,31 @@ contains
    allocate( EmbeddedClusterMatrixBand(LocalNumSitesInCluster) )
    allocate( gid_array(GlobalNumSitesInCluster) )
 !
-   kmax_kkr = (lmax_kkr+1)**2
-   kmax_kkr_ns = kmax_kkr*nSpinCant
-!
+   BandSize = 0
    do j = 1, LocalNumSitesInCluster
-      EmbeddedClusterMatrixBand(j)%global_index = getGlobalSiteIndex(j)
+      ig = getGlobalSiteIndex(j)
+      EmbeddedClusterMatrixBand(j)%global_index = ig
+      lmax_kkr = getLmaxKKR(ig)
+      kmax_kkr = (lmax_kkr+1)**2
+      kmax_kkr_ns = kmax_kkr*nSpinCant
+      BandSize = BandSize + kmax_kkr
       EmbeddedClusterMatrixBand(j)%lmax_kkr = lmax_kkr
       EmbeddedClusterMatrixBand(j)%kmax_kkr = kmax_kkr
       allocate( EmbeddedClusterMatrixBand(j)%MatrixBlock(GlobalNumSitesInCluster) )
       EmbeddedClusterMatrixBand(j)%column_index = (j-1)*kmax_kkr_ns + 1
    enddo
 !
-   BandSize = LocalNumSitesInCluster*kmax_kkr
    BandSizeCant = BandSize*nSpinCant
-   KKRMatrixSize = GlobalNumSitesInCluster*kmax_kkr
+   KKRMatrixSize = 0
+   tsize = 0
+   do ig = 1, GlobalNumSitesInCluster
+      lmax_kkr = getLmaxKKR(ig)
+      kmax_kkr = (lmax_kkr+1)**2
+      kmax_kkr_ns = kmax_kkr*nSpinCant
+      KKRMatrixSize = KKRMatrixSize + kmax_kkr
+      tsize = max(tsize,kmax_kkr_ns*kmax_kkr_ns)
+   enddo
    KKRMatrixSizeCant = KKRMatrixSize*nSpinCant
-   tsize = kmax_kkr_ns*kmax_kkr_ns
 !
    allocate ( Tau_MatrixBand(tsize,GlobalNumSitesInCluster,LocalNumSitesInCluster) )
    allocate ( TMP_MatrixBand(KKRMatrixSizeCant*BandSizeCant) )
@@ -160,11 +168,20 @@ contains
       do i = 1, na
          n = n + 1
          ig = getGlobalSiteIndex(i,k-1)
+         lmax_kkr = getLmaxKKR(ig)
+         kmax_kkr = (lmax_kkr+1)**2
+         kmax_kkr_ns = kmax_kkr*nSpinCant
          do j = 1, LocalNumSitesInCluster
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%lmax_kkr = lmax_kkr
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%kmax_kkr = kmax_kkr
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%global_index = ig
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%row_index = nk + 1
+!           ==========================================================
+!           Note: kau_l stores tau_a, the tau-matrix for the atom in a
+!                 cluster embedded in effective medium
+!                 tau_l stores tau_c, the tau-matrix for the effective
+!                 medium.
+!           ==========================================================
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%kau_l =>      &
                aliasArray3_c(Tau_MatrixBand(:,ig,j),kmax_kkr,kmax_kkr,&
                              nSpinCant*nSpinCant)
@@ -188,6 +205,7 @@ contains
       allocate(head_embed%next)
       head_embed%next%prev => head_embed
       head_embed => head_embed%next
+      kmax_kkr_ns = EmbeddedClusterMatrixBand(j)%kmax_kkr*nSpinCant
       allocate(head_embed%diff_TmatInv(kmax_kkr_ns,kmax_kkr_ns))
       nullify(head_embed%next)
    enddo
@@ -198,7 +216,6 @@ contains
       write(6,*) "===================================================="
       write(6,*) "init EmbeddedCluster Module ::  "
       write(6,'(a,i5)') "   LocalNumSites   : ", LocalNumSitesInCluster
-      write(6,'(a,i5)') "   lmax            : ", lmax_kkr
       write(6,'(a,i5)') "   n_spin_cant     : ", nSpinCant
       write(6,'(a,i5)') "   KKR_row_dim     : ", KKRMatrixSize
       write(6,'(a,i5)') "   KKR_col_dim     : ", BandSize
@@ -274,6 +291,11 @@ contains
 !  ===================================================================
    implicit none
 !
+!  *******************************************************************
+!  This function returns tau-matrix for the atoms, with local_id, in 
+!  the cluster embedded in the effective.
+!  *******************************************************************
+!
    integer (kind=IntKind), intent(in), optional :: local_id ! Local index
    integer (kind=IntKind), intent(in), optional :: global_i, global_j
    integer (kind=IntKind), intent(out), optional :: dsize
@@ -324,6 +346,11 @@ contains
    endif
 !
    ni = gid_array(ig)
+!  ===================================================================
+!  Note: kau_l stores tau_a, the tau-matrix for the atom in a cluster
+!        embedded in the effective medium
+!  tau is in the local spin framework.
+!  ===================================================================
    tau => EmbeddedClusterMatrixBand(jd)%MatrixBlock(ni)%kau_l
 !
    if (present(dsize)) then
@@ -413,10 +440,12 @@ contains
       end function getMediumTau
    end interface
 !
+!  ===================================================================
+!  Setup t_host_inv...................................................
+!  ===================================================================
    host_kmax_kkr = size(t_host,1)
    p_thinv => aliasArray2_c(t_host_inv,host_kmax_kkr,host_kmax_kkr)
    p_thinv = t_host
-!
 !  ===================================================================
 !  If t_host is t-matrix, rather than t-matrix inverse. Its inverse
 !  needs to be performed.
@@ -458,7 +487,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine embedScatterInHostMedium(id,tmat_a)
+   subroutine embedScatterInHostMedium(id,tmat_a,isInverse)
 !  ===================================================================
 !
 !  place a species described by tmat at site "id" of the medium
@@ -471,7 +500,9 @@ contains
    integer (kind=IntKind), intent(in) :: id
    integer (kind=IntKind) :: i, ni, n, ig, dsize
 !
-   complex (kind=CmplxKind), target :: tmat_a(:,:)
+   logical, intent(in) :: isInverse
+!
+   complex (kind=CmplxKind), intent(in) :: tmat_a(:,:)
    complex (kind=CmplxKind), pointer :: p_thinv(:,:)
    complex (kind=CmplxKind), pointer :: p_tainv(:,:)
    complex (kind=CmplxKind), pointer :: tau_c(:,:)
@@ -512,13 +543,17 @@ contains
 !
 !  -------------------------------------------------------------------
    p_thinv => aliasArray2_c(t_host_inv,dsize,dsize)
-   p_tainv => aliasArray2_c(WORK,dsize,dsize)
 !  -------------------------------------------------------------------
-   p_tainv = tmat_a
-   call MtxInv_LU(p_tainv,dsize)
-!  -------------------------------------------------------------------
-!
-   present_embed%diff_TmatInv = p_tainv - p_thinv
+   if (isInverse) then ! tmat_a is the inverse of t-matrix
+      present_embed%diff_TmatInv = tmat_a - p_thinv
+   else
+      p_tainv => aliasArray2_c(WORK,dsize,dsize)
+      p_tainv = tmat_a
+!     ----------------------------------------------------------------
+      call MtxInv_LU(p_tainv,dsize)
+!     ----------------------------------------------------------------
+      present_embed%diff_TmatInv = p_tainv - p_thinv
+   endif
 !
    nullify(p_tainv, p_thinv)
 !

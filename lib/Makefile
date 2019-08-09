@@ -96,7 +96,8 @@ pz_LogTrace.o \
 PrimeFactorsModule.o \
 computeProdExpan.o \
 BroydenLib.o \
-AndersonLib.o
+AndersonLib.o \
+newtc.o
 
 .SUFFIXES:	.o .f .F .f90 .F90 
 #.SUFFIXES:	.o .F .F90 

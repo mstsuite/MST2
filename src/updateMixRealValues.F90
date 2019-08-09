@@ -32,19 +32,19 @@
    implicit none
 !
    integer (kind=IntKind), intent(in) :: LocalNumAtoms,n_spin_pola
-   integer (kind=IntKind) :: id, ia, nr, is, data_size, MaxSpecies
+   integer (kind=IntKind) :: id, ia, nr, is, data_size, num_items, p_item
 !
-   real (kind=RealKind), pointer :: pStore_old(:,:,:), pStore_new(:,:,:)
+   real (kind=RealKind), pointer :: pStore_old(:,:), pStore_new(:,:)
    real (kind=RealKind), pointer :: ptmp1(:), ptmp2(:)
 !
    type (MixListRealStruct), target :: RealArrayList
    type (MixListRealStruct), pointer :: p_RAL
 !
-   data_size = 0; MaxSpecies = 0
+   data_size = 0; num_items = 0
    do id = 1,LocalNumAtoms
       nr = getNumRmesh(id)+1
       data_size = max(data_size,nr)
-      MaxSpecies = max(MaxSpecies,getLocalNumSpecies(id))
+      num_items = num_items + getLocalNumSpecies(id)
    enddo
    data_size = data_size*n_spin_pola
    if (.not.isDataStorageExisting("MixingVectorOld")) then
@@ -54,16 +54,16 @@
       call ErrorHandler('updateMixRealValues','MixingVectorNew not defined')
    endif
 !
-   pStore_old => getDataStorage("MixingVectorOld",data_size, &
-                                MaxSpecies,LocalNumAtoms,RealMark)
-   pStore_new => getDataStorage("MixingVectorNew",data_size, &
-                                MaxSpecies,LocalNumAtoms,RealMark)
+   pStore_old => getDataStorage("MixingVectorOld",data_size,num_items,RealMark)
+   pStore_new => getDataStorage("MixingVectorNew",data_size,num_items,RealMark)
    p_RAL => RealArrayList
+   p_item = 0
    do id = 1, LocalNumAtoms
       nr = getNumRmesh(id)+1
       do ia = 1, getLocalNumSpecies(id)
-         p_RAL%vector_old => pStore_old(1:nr*n_spin_pola,ia,id)
-         p_RAL%vector_new => pStore_new(1:nr*n_spin_pola,ia,id)
+         p_item = p_item + 1
+         p_RAL%vector_old => pStore_old(1:nr*n_spin_pola,p_item)
+         p_RAL%vector_new => pStore_new(1:nr*n_spin_pola,p_item)
          do is = 1, n_spin_pola
             if (isPotentialMixing()) then
                ptmp2 => getNewSphPotr(id,ia,is)

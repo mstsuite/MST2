@@ -50,6 +50,7 @@ $(ODIR)/ContourModule.o \
 $(ODIR)/CoreStatesModule.o \
 $(ODIR)/GauntFactorsModule.o \
 $(ODIR)/getpotg.o \
+$(ODIR)/DefaultParamModule.o  \
 $(ODIR)/InputModule.o  \
 $(ODIR)/IsoparametricIntegrationModule.o \
 $(ODIR)/lattice.o  \

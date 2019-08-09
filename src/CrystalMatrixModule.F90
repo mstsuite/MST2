@@ -567,7 +567,7 @@ contains
          endif
          t0size = kkri_ns*kkri_ns
 !        -------------------------------------------------------------
-         call zcopy(t0size,tm1,1,tmat_g(1,i),1)
+         call zcopy(t0size,tm1(1,1),1,tmat_g(1,i),1)
 !        -------------------------------------------------------------
       enddo
       nullify(tm1,tm2,pm,gmat)
@@ -849,6 +849,8 @@ contains
 !  for lmax > 3 and gives rise to a non-zero force, even though
 !  very small, acting on each atom in a crystal.
 !  Using method = 2, calculting tau-matrix will only involve t-matrix.
+!
+!  KKR_MatrixBand is the integration of p_MatrixBand over IBZ
 !  ===================================================================
    method = 0
    if (present(use_tmat)) then
@@ -869,7 +871,9 @@ contains
    call setupSSMatrixBuf(getSingleScatteringMatrix,method,site_config)
 !  -------------------------------------------------------------------
 !
-   if ( present(tau_needed) ) then
+   if (method == 2) then
+      calculate_tau = .true.
+   else if ( present(tau_needed) ) then
       calculate_tau = tau_needed
    else 
       calculate_tau = .false.
@@ -1378,6 +1382,11 @@ contains
          do js = 1, nSpinCant
             tm => getSingleScatteringMatrix('T-Matrix',spin=js,       &
                                             site=j,atom=site_config(j))
+!           call writeMatrix('tm',tm,kmaxj,kmaxj,TEN2m8)
+!           ==========================================================
+!           Note: wau_l is the integration of [ 1 - (B(k,e)+i*kappa) * t(e) ]^{-1}
+!                 over IBZ.
+!           ==========================================================
             do is = 1, nSpinCant
                ns = ns + 1
                tau_l => MatrixBand(j)%MatrixBlock(i)%tau_l(:,:,ns)
@@ -1386,6 +1395,7 @@ contains
                call zgemm('n', 'n', kmaxj, kmaxj, kmaxj, CONE,        &
                           tm, kmaxj, pw, kmaxj, CZERO, tau_l, kmaxj)
 !              -------------------------------------------------------
+!              call writeMatrix('tau',tau_l,kmaxj,kmaxj,TEN2m8)
             enddo
          enddo
       endif
@@ -1416,7 +1426,7 @@ contains
    complex (kind=CmplxKind), pointer :: p_jinvi(:)
    complex (kind=CmplxKind), pointer :: p_sinej(:), w2(:,:)
    complex (kind=CmplxKind), intent(out), target :: p_MatrixBand(:)
-   complex (kind=CmplxKInd) :: cfac
+   complex (kind=CmplxKInd) :: cfac, wfac
 !
    interface
       subroutine convertGijToRel(gij, bgij, kkr1, kkr2, ce)
@@ -1558,13 +1568,15 @@ contains
          t0size = kmaxj_ns*kmaxj_ns
          if (method == 0 .or. method == 1) then
             p_sinej => sine_g(:,j)
+            wfac = CONE/kappa
          else
             p_sinej => tmat_g(:,j)
+            wfac = CONE
          endif
          ni = MatrixBand(j)%MatrixBlock(i)%row_index-1
 !        -------------------------------------------------------------
-         call zgemm('n', 'n', kmaxi_ns, kmaxj_ns, kmaxj_ns, CONE/kappa, &
-                    jinvB, kmaxi_ns, p_sinej, kmaxj_ns, CZERO,          &
+         call zgemm('n', 'n', kmaxi_ns, kmaxj_ns, kmaxj_ns, wfac,     &
+                    jinvB, kmaxi_ns, p_sinej, kmaxj_ns, CZERO,        &
                     WORK(KKRMatrixSizeCant*nj+ni+1), KKRMatrixSizeCant)
 !        -------------------------------------------------------------
       enddo
@@ -1810,6 +1822,7 @@ contains
 !              -------------------------------------------------------
                call zcopy(kkrsz*kkrsz,w0,1,tmb,1)
 !              -------------------------------------------------------
+!              call writeMatrix('tau',tmb,kkrsz,kkrsz,TEN2m8)
             endif
          enddo
       enddo

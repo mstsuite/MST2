@@ -98,7 +98,7 @@ contains
 !
    max_ns = 0
    do id=1,nlocal
-      max_ns=max(max_ns,getLocalnumSpecies(id))
+      max_ns=max(max_ns,getLocalNumSpecies(id))
    enddo
    allocate(SiteEnPres(2,nlocal))
    InitFactors = .false.
@@ -265,7 +265,7 @@ contains
 !
    use PolyhedraModule, only : getVolume, getInscrSphVolume
 !
-   use ChargeDensityModule, only : getMultipoleMoment, getRhoLmax,     &
+   use ChargeDensityModule, only : getRhoLmax,     &
                                    getChargeDensity, getMomentDensity, &
                                    getPseudoNumRPts, getNeutralChargeDensity
 !
@@ -797,7 +797,8 @@ contains
    use ChargeDistributionModule, only : getInterstitialElectronDensity, &
                                         getInterstitialMomentDensity,   &
                                         getGlobalMTSphereElectronTable, &
-                                        getGlobalVPCellElectronTable
+                                        getGlobalVPCellElectronTable,   &
+                                        getGlobalTableLine
 !
    use PotentialModule, only : getOldSphPotr => getSphPotr
 !
@@ -825,9 +826,10 @@ contains
    type (GridStruct), pointer :: Grid
 !
    integer (kind=IntKind) :: jmt
-   integer (kind=IntKind) :: is, ir, na, j, ia
+   integer (kind=IntKind) :: is, ir, na, ia, ig, lig
 !
    integer (kind=IntKind), parameter :: janak_form = 2
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    real (kind=RealKind), pointer :: rho_tot(:), der_rho_tot(:)
    real (kind=RealKind), pointer :: mom_tot(:), der_mom_tot(:)
@@ -869,6 +871,7 @@ contains
    real (kind=RealKind) :: etot, press, ecorr
    real (kind=RealKind) :: u0i(LocalNumAtoms)
 !
+   global_table_line => getGlobalTableLine()
    Qmt_Table => getGlobalMTSphereElectronTable()
    Qvp_Table => getGlobalVPCellElectronTable()
 !
@@ -899,7 +902,8 @@ contains
          write(6,'(80(''=''))')
          write(6,'(/,a,i5)')'  Local Atom Index:',na
       endif
-!     rho_tot => getDataStorage(na,'NewSphericalElectronDensity',jmt,RealMark)
+!     rho_tot => getDataStorage(na,'NewSphericalElectronDensity',jmt,getLocalNumSpecies(na),RealMark)
+!     mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,getLocalNumSpecies(na),RealMark)
       Grid => getGrid(na)
       jmt = Grid%jmt
       rr => Grid%r_mesh(1:jmt)
@@ -915,7 +919,6 @@ contains
                call calSphExchangeCorrelation(jmt,rho_tot,der_rho_den=der_rho_tot)
 !              -------------------------------------------------------
             else
-!              mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,RealMark)
                mom_tot => getSphMomentDensity('TotalNew',na,ia,der_mom_tot)
 !              -------------------------------------------------------
                call calSphExchangeCorrelation(jmt,rho_tot,der_rho_tot,mom_tot,der_mom_tot)
@@ -928,7 +931,6 @@ contains
                call calSphExchangeCorrelation(jmt,rho_tot)
 !              -------------------------------------------------------
             else
-!              mom_tot => getDataStorage(na,'NewSphericalMomentDensity',jmt,RealMark)
                mom_tot => getSphMomentDensity('TotalNew',na,ia)
 !              -------------------------------------------------------
                call calSphExchangeCorrelation(jmt,rho_tot,mag_den=mom_tot)
@@ -1082,8 +1084,13 @@ contains
          Grid => getGrid(na)
          rmt = Grid%rmt
          omegmt = PI4*THIRD*rmt**3
-         j = GlobalIndex(na)
-         dq = Qvp_Table(j) - Qmt_Table(j) - rhoint*(getVolume(na)-omegmt)
+         ig = GlobalIndex(na)
+         dq = ZERO
+         do ia = 1, getLocalNumSpecies(na)
+            lig = global_table_line(ig) + ia
+            dq = dq + getLocalSpeciesContent(na,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
+         enddo
+         dq = dq - rhoint*(getVolume(na)-omegmt)
          if (gga_functional) then
             if (n_spin_pola == 1) then
 !              -------------------------------------------------------
@@ -1720,7 +1727,7 @@ contains
 !
    use PolyhedraModule, only : getVolume
 !
-   use SystemModule, only : getAtomicNumber
+   use SystemModule, only : getAtomicNumber, getNumAlloyElements, getAlloyElementContent
 !
    use SystemVolumeModule, only : getAtomicVPVolume
 !
@@ -1729,16 +1736,20 @@ contains
    use PotentialTypeModule, only : isMuffintinASAPotential,           &
                                    isMuffintinPotential
 !
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
+!
    use ChargeDistributionModule, only : getInterstitialElectronDensity, &
                                         getGlobalOnSiteElectronTable,   &
                                         getGlobalMTSphereElectronTable, &
-                                        getGlobalVPCellElectronTable
+                                        getGlobalVPCellElectronTable,   &
+                                        getGlobalTableLine
 !
    use RadialGridModule, only : getGrid
 !
    implicit   none
 !
-   integer (kind=IntKind) :: i, j, k
+   integer (kind=IntKind) :: id, ig, lig, ia
+   integer (kind=IntKind), pointer :: global_table_line(:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -1765,6 +1776,7 @@ contains
 !  ===================================================================
    rhoint = getInterstitialElectronDensity()
 !
+   global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTable()
    Qmt_Table => getGlobalMTSphereElectronTable()
    Qvp_Table => getGlobalVPCellElectronTable()
@@ -1772,34 +1784,54 @@ contains
    u0 = ZERO
    u0i = ZERO
    if(isMuffintinPotential() .or. isMuffintinASAPotential()) then
-       do i=1, LocalNumAtoms
-           Grid => getGrid(i)
+       do id=1, LocalNumAtoms
+           Grid => getGrid(id)
            rmt = Grid%rmt
-           j = GlobalIndex(i)
+           ig = GlobalIndex(id)
            surfamt=PI4*rmt*rmt
            omegmt=surfamt*rmt*THIRD
-           qsub_j = getAtomicNumber(j)-Q_Table(j)+rhoint*getAtomicVPVolume(j)
+           qsub_j = ZERO
+           do ia = 1, getLocalNumSpecies(id)
+              lig = global_table_line(ig) + ia
+              qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+           enddo
+           qsub_j = qsub_j+rhoint*getAtomicVPVolume(ig)
            u0=u0+rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
-           u0i(i) = rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
+           u0i(id) = rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
            if(isMuffintinASAPotential()) then
-               dq_mt = Qmt_Table(j) - getAtomicNumber(j)
-               dq = Qvp_Table(j) - Qmt_Table(j) - rhoint*(getVolume(i)-omegmt)
-               u0=u0+dq*(TWO*dq_mt+dq)/rmt
+              dq_mt = ZERO; dq = ZERO
+              do ia = 1, getLocalNumSpecies(id)
+                 lig = global_table_line(ig) + ia
+                 dq_mt = getLocalSpeciesContent(id,ia)*(Qmt_Table(lig)-getAtomicNumber(ig,ia))
+                 dq = dq + getLocalSpeciesContent(id,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
+              enddo
+              dq = dq - rhoint*(getVolume(id)-omegmt)
+              u0=u0+dq*(TWO*dq_mt+dq)/rmt
            endif
        enddo
    endif
 !
-   do k = 1, LocalNumAtoms
-       madmat => getMadelungMatrix(k)
-       j = GlobalIndex(k)
-       qsub_j = getAtomicNumber(j)-Q_Table(j) + rhoint*getAtomicVPVolume(j)
-       do i=1,GlobalNumAtoms
-           qsub_i = getAtomicNumber(i)-Q_Table(i) + rhoint*getAtomicVPVolume(i)
-           u0=u0+madmat(i)*qsub_j*qsub_i
-           u0i(k) = u0i(k) + madmat(i)*qsub_j*qsub_i
-           if (maxval(print_level) >= 0) then
-              write(6,'(a,i4,a,2f18.14)')'Atom =',i,',  madmat, qsub = ',madmat(i),qsub_i
-           endif
+   do id = 1, LocalNumAtoms
+       madmat => getMadelungMatrix(id)
+       ig = GlobalIndex(id)
+       qsub_j = ZERO
+       do ia = 1, getLocalNumSpecies(id)
+          lig = global_table_line(ig) + ia
+          qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+       enddo
+       qsub_j = qsub_j + rhoint*getAtomicVPVolume(ig)
+       do ig=1,GlobalNumAtoms
+          qsub_i = ZERO
+          do ia = 1, getNumAlloyElements(ig)
+             lig = global_table_line(ig) + ia
+             qsub_i = qsub_i + getAlloyElementContent(ig,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+          enddo
+          qsub_i = qsub_i + rhoint*getAtomicVPVolume(ig)
+          u0=u0+madmat(ig)*qsub_j*qsub_i
+          u0i(id) = u0i(id) + madmat(ig)*qsub_j*qsub_i
+          if (maxval(print_level) >= 0) then
+             write(6,'(a,i4,a,2f18.14)')'Atom =',ig,',  madmat, qsub = ',madmat(ig),qsub_i
+          endif
        enddo
    enddo
 !

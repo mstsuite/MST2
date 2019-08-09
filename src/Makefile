@@ -8,7 +8,8 @@ PublicParamDefinitionsModule.o \
 AdaptIntegrationModule.o \
 MatrixBlockInversionModule.o \
 BinvMatrix.o \
-WriteFunctionModule.o
+WriteFunctionModule.o \
+DefaultParamModule.o
 
 BasicRoutines = \
 readPositionData.o \
@@ -172,3 +173,5 @@ clean:
 	make clear; rm -f $(ODIR)/$(EXEC_NAME) $(ODIR)/preproc
 
 printSystemMovie.o: $(Modules_2)
+
+DefaultParamModule.o: DefaultParameters.h

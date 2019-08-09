@@ -1,10 +1,3 @@
-#ifdef CRAY
-#define zgemv cgemv
-#define zgemm cgemm
-#define zcopy ccopy
-#define zgetrf cgetrf
-#define zgetrs cgetrs
-#endif
 !  cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine BinvMatrix( nblk,blk_sz,b,ldb,nb,         &
                           a,lda,na,alg )

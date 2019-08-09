@@ -34,7 +34,7 @@
 !
    use PotentialGenerationModule, only : getNewPotential => getPotential
    use PotentialGenerationModule, only : getNewVdif => getVdif
-   use PotentialGenerationModule, only : isPotComponentZero, getPotLmax
+   use PotentialGenerationModule, only : getPotLmax
    use PotentialGenerationModule, only : getPotComponentFlag
 !
    use PublicTypeDefinitionsModule, only : MixListCmplxStruct
@@ -54,18 +54,18 @@
    integer (kind=IntKind), save :: data_size_save = 0
 !
    integer (kind=IntKind) :: id, ia, nr, is, data_size, data_size_ns, reset_flag
-   integer (kind=IntKind) :: lmax, jl, jl_nonZero, ind_jl, jmax, MaxSpecies
+   integer (kind=IntKind) :: lmax, jl, jl_nonZero, ind_jl, jmax, num_items, p_item
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
    real (kind=RealKind) :: factor
    real (kind=RealKind), pointer :: rptmp(:)
 !
    complex (kind=CmplxKind), pointer :: ptmp1(:), ptmp2(:)
-   complex (kind=CmplxKind), pointer :: pStore_old(:,:,:), pStore_new(:,:,:)
+   complex (kind=CmplxKind), pointer :: pStore_old(:,:), pStore_new(:,:)
    type (MixListCmplxStruct), pointer :: p_CAL
 !
    data_size = 0
-   MaxSpecies = 0
+   num_items = 0
    do id = 1,LocalNumAtoms
       nr = getNumRmesh(id)
       if ( isPotentialMixing() ) then
@@ -84,7 +84,7 @@
       enddo
 !      jl_nonZero = jmax
       data_size = max(data_size,nr*jl_nonZero)
-      MaxSpecies = max(MaxSpecies, getLocalNumSpecies(id))
+      num_items = num_items + getLocalNumSpecies(id)
    enddo
    data_size_ns = data_size*n_spin_pola+n_spin_pola
 !
@@ -107,41 +107,33 @@
 !
    if (.not.isDataStorageExisting('MixingVectorOld')) then
 !     ----------------------------------------------------------------
-      call createDataStorage('MixingVectorOld',                        &
-                             LocalNumAtoms*MaxSpecies*data_size_ns,ComplexType)
+      call createDataStorage('MixingVectorOld',num_items*data_size_ns,ComplexType)
       call setDataStorage2Value('MixingVectorOld',CZERO)
 !     ----------------------------------------------------------------
-      do id = 1,LocalNumAtoms
-!        -------------------------------------------------------------
-         call setDataStorageLDA('MixingVectorOld',data_size_ns)
-!        -------------------------------------------------------------
-      enddo
+      call setDataStorageLDA('MixingVectorOld',data_size_ns)
+!     ----------------------------------------------------------------
    endif
    if (.not.isDataStorageExisting('MixingVectorNew')) then
-      call createDataStorage('MixingVectorNew',                        &
-                             LocalNumAtoms*MaxSpecies*data_size_ns,ComplexType)
+      call createDataStorage('MixingVectorNew',num_items*data_size_ns,ComplexType)
       call setDataStorage2Value('MixingVectorNew',CZERO)
 !     ----------------------------------------------------------------
-      do id = 1,LocalNumAtoms
-!        -------------------------------------------------------------
-         call setDataStorageLDA('MixingVectorNew',data_size_ns)
-!        -------------------------------------------------------------
-      enddo
+      call setDataStorageLDA('MixingVectorNew',data_size_ns)
+!     ----------------------------------------------------------------
    endif
 !
-   pStore_old => getDataStorage('MixingVectorOld',data_size_ns,        &
-                                MaxSpecies,LocalNumAtoms,ComplexMark)
-   pStore_new => getDataStorage('MixingVectorNew',data_size_ns,        &
-                                MaxSpecies,LocalNumAtoms,ComplexMark)
+   pStore_old => getDataStorage('MixingVectorOld',data_size_ns,num_items,ComplexMark)
+   pStore_new => getDataStorage('MixingVectorNew',data_size_ns,num_items,ComplexMark)
 !
    p_CAL => CmplxArrayList
+   p_item = 0
    do id = 1, LocalNumAtoms
       nr = getNumRmesh(id)
-      p_CAL%size = data_size_ns
-      p_CAL%mesh => getRmesh(id)
       do ia = 1, getLocalNumSpecies(id)
-         p_CAL%vector_old => pStore_old(1:data_size_ns,ia,id)
-         p_CAL%vector_new => pStore_new(1:data_size_ns,ia,id)
+         p_item = p_item + 1
+         p_CAL%size = data_size_ns
+         p_CAL%mesh => getRmesh(id)
+         p_CAL%vector_old => pStore_old(1:data_size_ns,p_item)
+         p_CAL%vector_new => pStore_new(1:data_size_ns,p_item)
          p_CAL%vector_old(:) = CZERO
          p_CAL%vector_new(:) = CZERO
          p_CAL%rms = ZERO

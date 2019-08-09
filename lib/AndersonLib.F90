@@ -1,12 +1,11 @@
-!
 !     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine dgaleq(a,y,n,ipits,info)
 !     ================================================================
       use KindParamModule, only : IntKind, RealKind
 !
-      use MathParamModule, only : ONE, TEN2m8
+      use MathParamModule, only : ONE, TEN2m12
 !
-      use ErrorHandlermodule, only : ErrorHandler
+      use ErrorHandlermodule, only : ErrorHandler, WarningHandler
 !
       implicit   none
 !
@@ -33,8 +32,9 @@
       endif
 !
       info = 0
-      do i=1,n
-         if (abs(a(i,i)) < TEN2m8) then
+      do i=1,n-1
+         if (abs(a(i,i)) < TEN2m12) then
+!           call WarningHandler('dgaleq','Ill conditioned a < 10^{-12}',a(i,i))
             info = 1
             return
          endif
@@ -86,3 +86,4 @@
       enddo
 !
       end function dptc
+!     ================================================================

@@ -149,7 +149,6 @@ private
    integer (kind=IntKind) :: LocalNumAtoms
    integer (kind=IntKind) :: GlobalNumAtoms
    integer (kind=IntKind) :: MaxLocalNumAtoms
-   integer (kind=IntKind) :: MaxSpecies
    integer (kind=IntKind) :: n_spin_pola
    integer (kind=IntKind) :: n_spin_cant
    integer (kind=IntKind) :: jmax_max, lmax_max, NumRPts_max
@@ -163,6 +162,8 @@ private
 !  integer (kind=IntKind), allocatable :: flag_jl(:)
 !
    integer (kind=IntKind) :: NumPEsInGroup, MyPEinGroup, GroupID
+   integer (kind=IntKind) :: MM_size
+   integer (kind=IntKind), allocatable, target :: MM_table_line(:)
 !
    integer (kind=IntKind), parameter :: n_inter = 5 ! order of polynomial
                                                     ! interpolation
@@ -198,7 +199,7 @@ contains
    use IntegerFactorsModule, only : initIntegerFactors
    use Atom2ProcModule, only : getMaxLocalNumAtoms
    use RadialGridModule, only : getNumRmesh, getRmesh, getGrid
-   use SystemModule, only : getNumAtoms, getLmaxRho
+   use SystemModule, only : getNumAtoms, getLmaxRho, getNumAlloyElements
    use AtomModule, only : getRcutPseudo, getLocalNumSpecies
    use PotentialTypeModule, only : isFullPotential, isMuffinTinFullPotential
    use ScfDataModule, only : isChargeSymm, isFittedChargeDen
@@ -214,7 +215,7 @@ contains
 !
    logical, intent(in), optional :: isGGA
 !
-   integer (kind=IntKind) :: id, ia, nr, ns, l, jl, m, lmax, jmax, ir, jmt
+   integer (kind=IntKind) :: id, ia, nr, ns, l, jl, m, lmax, jmax, ir, jmt, ig
    integer (kind=IntKind), allocatable :: DataSize(:), DataSizeL(:)
 !
    real (kind=RealKind) :: r_ps
@@ -269,13 +270,8 @@ contains
    allocate( ws_den(n_inter,jmax_max), ws_der_den(n_inter,jmax_max) )
 !
    allocate( DataSize(LocalNumAtoms) )
-   MaxSpecies = 0
    do id = 1,LocalNumAtoms
-      MaxSpecies = max(MaxSpecies, getLocalNumSpecies(id))
-   enddo
-!
-   do id = 1,LocalNumAtoms
-      DataSize(id)  = (getNumRmesh(id)+1)*MaxSpecies
+      DataSize(id)  = (getNumRmesh(id)+1)*getLocalNumSpecies(id)
    enddo
 !
    isChargeSymmOn = isChargeSymm()
@@ -380,7 +376,7 @@ contains
 !
    if ( isSphericalCharge ) then
       do id = 1,LocalNumAtoms
-         DataSize(id)  = getNumRmesh(id)*MaxSpecies
+         DataSize(id)  = getNumRmesh(id)*getLocalNumSpecies(id)
       enddo
 !
       if (.not.isDataStorageExisting('NewL-ElectronDensity')) then
@@ -496,61 +492,57 @@ contains
       p_CDL%NumSpecies = getLocalNumSpecies(id)
 !
       p_CDL%rhoSph_Total => getDataStorage( id,'NewSphericalElectronDensity', &
-                                            nr+1, MaxSpecies, RealMark )
+                                            nr+1, getLocalNumSpecies(id), RealMark )
       if (n_spin_pola == 2) then
          p_CDL%momSph_Total => getDataStorage( id,'NewSphericalMomentDensity', &
-                                               nr+1, MaxSpecies, RealMark )
+                                               nr+1, getLocalNumSpecies(id), RealMark )
       endif
 !
       if (rad_derivative) then
          p_CDL%der_rhoSph_Total => getDataStorage( id,'SphericalElectronDensityDer', &
-                                                   nr+1, MaxSpecies, RealMark )
+                                                   nr+1, getLocalNumSpecies(id), RealMark )
          if (n_spin_pola == 2) then
             p_CDL%der_momSph_Total => getDataStorage( id,'SphericalMomentDensityDer',&
-                                                      nr+1, MaxSpecies, RealMark )
+                                                      nr+1, getLocalNumSpecies(id), RealMark )
          endif
       endif
 !
       p_CDL%rhoSph_TotalOld => getDataStorage( id,'OldSphericalElectronDensity', &
-                                               nr+1, MaxSpecies, RealMark )
+                                               nr+1, getLocalNumSpecies(id), RealMark )
       if (n_spin_pola == 2) then
          p_CDL%momSph_TotalOld => getDataStorage( id,'OldSphericalMomentDensity', &
-                                                  nr+1, MaxSpecies, RealMark )
+                                                  nr+1, getLocalNumSpecies(id), RealMark )
       endif
 !
       if ( isSphericalCharge ) then
          p_CDL%rhoL_Total => getDataStorage( id,'NewL-ElectronDensity', &
-                                             nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                             nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
          if (n_spin_pola == 2) then
             p_CDL%momL_Total => getDataStorage( id,'NewL-MomentDensity', &
-                                                nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                                nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
          if (rad_derivative) then
             p_CDL%der_rhoL_Total => getDataStorage( id,'L-ElectronDensityDer', &
-                                                    nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                                    nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
             if (n_spin_pola == 2) then
                p_CDL%der_momL_Total => getDataStorage( id,'L-MomentDensityDer', &
-                                                       nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                                       nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
             endif
          endif
 !
          p_CDL%rhoL_TotalOld => getDataStorage( id,'OldL-ElectronDensity', &
-                                                nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                                nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
          do ia = 1, p_CDL%NumSpecies
             p_CDL%rhoL_TotalOld(1:nr,1,ia) = p_CDL%rhoSph_TotalOld(1:nr,ia)/Y0
          enddo
          if (n_spin_pola == 2) then
             p_CDL%momL_TotalOld => getDataStorage( id,'OldL-MomentDensity', &
-                                                   nr, p_CDL%jmax, MaxSpecies, ComplexMark )
+                                                   nr, p_CDL%jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
-!        p_CDL%rhoL_Valence => getDataStorage( id, 'L-ValenceElectronDensity', &
-!                                              nr, p_CDL%jmax, MaxSpecies, ComplexMark )
          p_CDL%rhoL_Valence => getValenceElectronDensity(id)
          if (n_spin_pola == 2) then
-!           p_CDL%momL_Valence => getDataStorage( id, 'L-ValenceMomentDensity', &
-!                                                 nr, p_CDL%jmax, MaxSpecies, ComplexMark )
             p_CDL%momL_Valence => getValenceMomentDensity(id)
          endif
       endif
@@ -566,7 +558,7 @@ contains
       allocate( DataSizeL(LocalNumAtoms) )
       do id = 1,LocalNumAtoms
          p_CDL => ChargeDensityList(id)
-         DataSizeL(id) = getNumRmesh(id)*p_CDL%jmax*MaxSpecies
+         DataSizeL(id) = getNumRmesh(id)*p_CDL%jmax*getLocalNumSpecies(id)
       enddo
 !
       if (.not.isDataStorageExisting('NewL-ElectronDensity')) then
@@ -816,18 +808,24 @@ contains
          endif
       endif
 !
+      allocate(MM_table_line(GlobalNumAtoms))
+      MM_size = 0
+      do ig = 1, GlobalNumAtoms
+         MM_table_line(ig) = MM_size
+         MM_size = MM_size + getNumAlloyElements(ig)
+      enddo
       jmax_glb = jmax_max
       call GlobalMaxInGroup(GroupID,jmax_glb)
       if ( .not.isDataStorageExisting('MultipoleMoments') ) then
          call createDataStorage('MultipoleMoments', &
-                                jmax_glb*GlobalNumAtoms, ComplexType)
+                                jmax_glb*MM_size, ComplexType)
 !        -------------------------------------------------------------
          call setDataStorage2Value('MultipoleMoments',CZERO)
 !        -------------------------------------------------------------
       endif
 !
       MultipoleMom => getDataStorage( 'MultipoleMoments',    &
-                                      GlobalNumAtoms, jmax_glb, ComplexMark )
+                                      MM_size, jmax_glb, ComplexMark )
 !
       do id = 1,LocalNumAtoms
          p_CDL => ChargeDensityList(id)
@@ -862,76 +860,72 @@ contains
          jmax = p_CDL%jmax
          lmax = p_CDL%lmax
          p_CDL%rhoL_Total => getDataStorage( id,'NewL-ElectronDensity', &
-                                             nr, jmax, MaxSpecies, ComplexMark )
+                                             nr, jmax, getLocalNumSpecies(id), ComplexMark )
          if (n_spin_pola == 2) then
             p_CDL%momL_Total => getDataStorage( id,'NewL-MomentDensity', &
-                                                nr, jmax, MaxSpecies, ComplexMark )
+                                                nr, jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
          if (rad_derivative) then
             p_CDL%der_rhoL_Total => getDataStorage( id,'L-ElectronDensityDer', &
-                                                    nr, jmax, MaxSpecies, ComplexMark )
+                                                    nr, jmax, getLocalNumSpecies(id), ComplexMark )
             if (n_spin_pola == 2) then
                p_CDL%der_momL_Total => getDataStorage( id,'L-MomentDensityDer', &
-                                                       nr, jmax, MaxSpecies, ComplexMark )
+                                                       nr, jmax, getLocalNumSpecies(id), ComplexMark )
             endif
          endif
 !
          p_CDL%rhoL_TotalOld => getDataStorage( id,'OldL-ElectronDensity', &
-                                             nr, jmax, MaxSpecies, ComplexMark )
+                                             nr, jmax, getLocalNumSpecies(id), ComplexMark )
          do ia = 1, p_CDL%NumSpecies
             p_CDL%rhoL_TotalOld(1:nr,1,ia) = p_CDL%rhoSph_TotalOld(1:nr,ia)/Y0
          enddo
          if (n_spin_pola == 2) then
             p_CDL%momL_TotalOld => getDataStorage( id,'OldL-MomentDensity', &
-                                                nr, jmax, MaxSpecies, ComplexMark )
+                                                nr, jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
          if (.not.isMTFP) then
             p_CDL%rhoSph_Pseudo => getDataStorage( id,'PseudoElectronDensity', &
-                                                   nr, MaxSpecies, RealMark )
+                                                   nr, getLocalNumSpecies(id), RealMark )
             if (n_spin_pola == 2) then
                p_CDL%momSph_Pseudo => getDataStorage( id,'PseudoMomentDensity', &
-                                                      nr, MaxSpecies, RealMark )
+                                                      nr, getLocalNumSpecies(id), RealMark )
             endif
 !
             p_CDL%rhoL_Pseudo => getDataStorage( id,'L-PseudoElectronDensity', &
-                                                 nr, jmax, MaxSpecies, ComplexMark )
+                                                 nr, jmax, getLocalNumSpecies(id), ComplexMark )
             if (n_spin_pola == 2) then
                p_CDL%momL_Pseudo => getDataStorage( id,'L-PseudoMomentDensity', &
-                                                    nr, jmax, MaxSpecies, ComplexMark )
+                                                    nr, jmax, getLocalNumSpecies(id), ComplexMark )
             endif
 !
             p_CDL%rhoL_ValPseudo => getDataStorage( id,'L-PseudoValElectronDensity', &
-                                                    nr, jmax, MaxSpecies, ComplexMark )
+                                                    nr, jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
          p_CDL%rhoSph_Tilda => getDataStorage( id,'TildaElectronDensity', &
-                                               nr, MaxSpecies, RealMark )
+                                               nr, getLocalNumSpecies(id), RealMark )
          if (n_spin_pola == 2) then
             p_CDL%momSph_Tilda => getDataStorage( id,'TildaMomentDensity', &
-                                                  nr, MaxSpecies, RealMark )
+                                                  nr, getLocalNumSpecies(id), RealMark )
          endif
 !
          p_CDL%rhoL_Tilda => getDataStorage( id,'L-TildaElectronDensity', &
-                                             nr, jmax, MaxSpecies, ComplexMark )
+                                             nr, jmax, getLocalNumSpecies(id), ComplexMark )
          if (n_spin_pola == 2) then
             p_CDL%momL_Tilda => getDataStorage( id,'L-TildaMomentDensity', &
-                                                 nr, jmax, MaxSpecies, ComplexMark )
+                                                 nr, jmax, getLocalNumSpecies(id), ComplexMark )
          endif
 !
-!        p_CDL%rhoL_Valence => getDataStorage( id, 'L-ValenceElectronDensity', &
-!                                              nr, jmax, MaxSpecies, ComplexMark )
          p_CDL%rhoL_Valence => getValenceElectronDensity(id)
          if (n_spin_pola == 2) then
-!           p_CDL%momL_Valence => getDataStorage( id, 'L-ValenceMomentDensity', &
-!                                         nr, jmax, MaxSpecies, ComplexMark )
             p_CDL%momL_Valence => getValenceMomentDensity(id)
          endif
 !
-         allocate( p_CDL%multipole_mom(1:jmax,MaxSpecies) )
+         allocate( p_CDL%multipole_mom(jmax,getLocalNumSpecies(id)) )
 !
-         p_CDL%ChargeCompFlag(1:jmax) = 0
+         p_CDL%ChargeCompFlag = 0
          p_CDL%ChargeCompFlag(1) = 1
 !
       enddo
@@ -1000,7 +994,11 @@ contains
       deallocate( p_CDL%ChargeCompFlag )
 !
    enddo
-   nullify( p_CDL )
+   nullify( p_CDL, MultipoleMom )
+!
+   if ( .not.isSphericalCharge ) then
+      deallocate( MM_table_line )
+   endif
 !
    deallocate( ChargeDensityList )
    deallocate( ws_den, ws_der_den, ws_ylm, ws_grad_ylm )
@@ -1898,10 +1896,11 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMM()                                       result(p_mm)
+   function getMM(table_line)                             result(p_mm)
 !  ===================================================================
    implicit none
 !
+   integer (kind=IntKind), pointer, intent(out) :: table_line(:)
    complex (kind=CmplxKind), pointer :: p_mm(:,:)
 !
    if ( .not.Initialized ) then
@@ -1909,6 +1908,7 @@ contains
                         " needs to be in itialized first")
    endif
 !
+   table_line => MM_table_line
    p_mm => MultipoleMom(:,:)
 !
    end function getMM
@@ -1917,24 +1917,29 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMM_idj( id, jl )                           result(p_mm)
+   function getMM_idj( ig, ia, jl )                       result(p_mm)
 !  ===================================================================
+   use SystemModule, only : getNumAlloyElements
    implicit none
 !
-   integer (kind=IntKind), intent(in) :: id,  jl
+   integer (kind=IntKind), intent(in) :: ig, ia, jl
+   integer (kind=IntKind) :: lig
 !
    complex (kind=CmplxKind) :: p_mm
 !
    if ( .not.Initialized ) then
       call ErrorHandler("getMultipoleMoment"," Module ChargeDensity"// &
                         " needs to be in itialized first")
-   else if ( id<1 .or. id> GlobalNumAtoms ) then
-      call ErrorHandler("getMultipoleMoment"," Invalid local atom index",id)
+   else if ( ig<1 .or. ig> GlobalNumAtoms ) then
+      call ErrorHandler("getMultipoleMoment"," Invalid global site index",ig)
+   else if ( ia<1 .or. ia> getNumAlloyElements(ig) ) then
+      call ErrorHandler("getMultipoleMoment"," Invalid atom index on global site",ia,ig)
    else if ( jl<1 .or. jl> jmax_glb ) then
       call ErrorHandler("getMultipoleMoment"," Invalid j index",jl,jmax_glb)
    endif
 !
-   p_mm = MultipoleMom( id, jl )
+   lig = MM_table_line(ig) + ia
+   p_mm = MultipoleMom( lig, jl )
 !
    end function getMM_idj
 !  ===================================================================
@@ -1942,11 +1947,12 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   function getMM_j( jl )                                 result(p_mm)
+   function getMM_j( jl, table_line )                     result(p_mm)
 !  ===================================================================
    implicit none
 !
    integer (kind=IntKind), intent(in) ::  jl
+   integer (kind=IntKind), pointer, intent(out) :: table_line(:)
 !
    complex (kind=CmplxKind), pointer :: p_mm(:)
 !
@@ -1957,7 +1963,8 @@ contains
       call ErrorHandler("getMultipoleMoment"," Invalid jl index",jl,jmax_glb)
    endif
 !
-   p_mm => MultipoleMom(1:GlobalNumAtoms,jl)
+   table_line => MM_table_line
+   p_mm => MultipoleMom(:,jl)
 !
    end function getMM_j
 !  ===================================================================
@@ -2055,7 +2062,7 @@ contains
    character (len=6) :: denFlag, jlFlag
    character (len=2) :: specFlag
 !
-   integer (kind=IntKind) :: id, ia, nr, nr_ps, ir, is, ns, jl, jmax, jmt, l, jend, kmax, id_glb
+   integer (kind=IntKind) :: id, ia, nr, nr_ps, ir, is, ns, jl, jmax, jmt, l, jend, kmax, id_glb, lig
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
    real (kind=RealKind) :: evec(3), mvec(3), msgbuf(3)
@@ -2111,13 +2118,6 @@ contains
 !     Total Spherical Densities
 !     =============================
 !
-!     rho2p_r => getDataStorage( id,'ValenceElectronDensity',          &
-!                                nr, MaxSpecies, RealMark )
-!
-!     p_CDL%rho_Core => getDataStorage( id,'CoreDensity',             &
-!                                       nr, n_spin_pola, MaxSpecies, RealMark )
-!     p_CDL%rho_SemiCore => getDataStorage( id,'SemiCoreDensity',     &
-!                                           nr, n_spin_pola, MaxSpecies, RealMark )
       p_CDL%rho_Core => getDeepCoreDensity(id)
       p_CDL%rho_SemiCore => getSemiCoreDensity(id)
       if (rad_derivative) then
@@ -2135,9 +2135,10 @@ contains
          if ( print_level(id) >= 0 ) then
             q_tmp = getVolumeIntegration( id, jend, r_mesh, 0,           &
                                           rho2p_r(1:nr), q_tmp_mt )
-            write(6,'(a,f20.14)') "Charge Density :: Spherical Valence Charge in MT-Sphere  = ",  &
+            write(6,'(a,i4,a,i4,a)')'+++++ id = ',id,',   ia = ',ia,' +++++'
+            write(6,'(a,f20.14)') "Charge Density :: Spherical Val Charge in MT   = ",  &
                        q_tmp_mt
-            write(6,'(a,f20.14)') "Charge Density :: Spherical Valence Charge in VP         = ",  &
+            write(6,'(a,f20.14)') "Charge Density :: Spherical Val Charge in VP   = ",  &
                        q_tmp
          endif
 !
@@ -2174,7 +2175,6 @@ contains
 !
             call calIntegration(nr+1,sqrt_r(0:nr),den_r(0:nr),den_r1(0:nr),3)
 !
-            write(6,'(/)')
             write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in MT-Sphere = ", &
                                           den_r1(jmt)*PI8
             write(6,'(a,f20.14)') "Charge Density :: DeepCore Charge in WS-Sphere = ", &
@@ -2231,7 +2231,7 @@ contains
 !        =============================================================
          do ir = 1, nr
             if (rho0(ir) < ZERO) then
-               if (rho0(ir) > -TEN2m5 .or. getLocalAtomicNumber(id) == 0) then
+               if (rho0(ir) > -TEN2m5 .or. getLocalAtomicNumber(id,ia) == 0) then
                   rho0(ir) = ZERO
                else
                   call ErrorHandler('constructChargeDensity','rho0(ir) < 0',rho0(ir),.true.)
@@ -2254,7 +2254,7 @@ contains
             Grid => getGrid(id)
             jend = Grid%jend
             corr = rho0(1)*r_mesh(1)*r_mesh(1)*r_mesh(1)*PI2
-            qint = qint + getLocalAtomicNumber(id) -                     &
+            qint = qint + getLocalAtomicNumber(id,ia) -                  &
                    getVolumeIntegration(id,jend,r_mesh(1:jend),0,        &
                                         rho0(1:jend),truncated=.false.) + corr
          endif
@@ -2263,21 +2263,10 @@ contains
 !
             mom0 => p_CDL%momSph_Total(1:nr+1,ia)
             mom0 = ZERO
-!           rho3_r => getDataStorage( id,'CoreDensity', &
-!                                     nr, n_spin_pola, MaxSpecies, RealMark )
-!           rho2_r => rho3_r(1:nr,1:n_spin_pola,ia)
             rho2_r => p_CDL%rho_Core(:,:,ia)
             mom0(1:nr) = mom0(1:nr) + rho2_r(1:nr,1) - rho2_r(1:nr,2)
-!
-!           rho3_r => getDataStorage( id,'SemiCoreDensity', &
-!                                     nr, n_spin_pola, MaxSpecies, RealMark )
-!           rho2_r => rho3_r(1:nr,1:n_spin_pola,ia)
             rho2_r => p_CDL%rho_SemiCore(:,:,ia)
             mom0(1:nr) = mom0(1:nr) + rho2_r(1:nr,1) - rho2_r(1:nr,2)
-!
-!           mom3_r => getDataStorage( id,'ValenceMomentDensity', &
-!                                     nr, ns, MaxSpecies, RealMark )
-!           mom2_r => mom3_r(1:nr,1:ns,ia)
             mom2_r => getValenceSphericalMomentDensity(id,ia)
             mvec = getValenceVPMoment(id,ia)
             if ( n_spin_cant==1 ) then
@@ -2299,7 +2288,7 @@ contains
 !           ==========================================================
             do ir = 1,nr
                if (rho0(ir) < abs(mom0(ir))) then
-                  if (rho0(ir) < TEN2m5 .or. getLocalAtomicNumber(id) == 0) then
+                  if (rho0(ir) < TEN2m5 .or. getLocalAtomicNumber(id,ia) == 0) then
                      mom0(ir) = ZERO
                   else
 !                    call ErrorHandler('constructChargeDensity','rho0 < mom0',rho0(ir),mom0(ir),.true.)
@@ -2326,18 +2315,16 @@ contains
 !
             call calIntegration(nr+1,sqrt_r(0:nr),den_r(0:nr),den_r1(0:nr),3)
 !
-            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in MT-Sphere    = ", &
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in MT = ", &
                                           den_r1(jmt)*PI8
-            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in WS-Sphere    = ", &
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in BS = ", &
                                           den_r1(jend)*PI8
             den_r(0)    = ZERO
             do ir = 1,nr
                den_r(ir) = rho0(ir)
             enddo
-            q_tmp = getVolumeIntegration( id, jend, r_mesh(1:jend), 0,      &
-                                             den_r(1:jend) )
-            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in VP           = ", q_tmp
-            write(6,'(/)')
+            q_tmp = getVolumeIntegration( id, jend, r_mesh(1:jend), 0, den_r(1:jend) )
+            write(6,'(a,f20.14)') "Charge Density :: Total Spherical Charge in VP = ", q_tmp
          endif
 !
          if ( .not.isSphericalCharge ) then
@@ -2446,8 +2433,6 @@ contains
             if ( n_spin_pola == 2 ) then
                momL => p_CDL%momL_Total(1:nr,1:jmax,ia)
                momL = CZERO
-!              mom4_c => getDataStorage( id,'L-ValenceMomentDensity',    &
-!                                        nr, jmax, ns, MaxSpecies, ComplexMark )
                mom4_c => getValenceMomentDensity(id)
                if ( n_spin_cant==1 ) then
                   do jl = 1,jmax
@@ -2471,7 +2456,7 @@ contains
 !              cause exchange correlation potential calculate to fail. 05/29/17 - Hopefully 
 !              there will be better way to address this problem in the future.
 !              =======================================================
-!              if (getLocalAtomicNumber(id) == 0) then
+!              if (getLocalAtomicNumber(id,ia) == 0) then
 !                 do jl = 1,jmax
 !                    do ir = 1, nr
 !                       if (abs(p_CDL%rhoL_Total(ir,jl,ia)) < TEN2m5) then
@@ -2485,9 +2470,9 @@ contains
 !
             q_tmp = getVolumeIntegration( id, nr, r_mesh, kmax, jmax,   &
                                             0, p_CDL%rhoL_Total(1:nr,1:jmax,ia), q_tmp_mt )
-            qlost = qlost+(getLocalAtomicNumber(ia) - q_tmp)
+            qlost = qlost+(getLocalAtomicNumber(id,ia) - q_tmp)
             if (print_level(id) >= 0) then
-               write(6,'(a,f18.14)')'Checking -- Missing charge in atomic cell      = ',qlost
+               write(6,'(a,f20.14)')'Checking -- Missing charge in atomic cell      = ',qlost
             endif
 !qlost = qlost+(getLocalAtomicNumber(ia) - q_tmp_mt)
 !if (print_level(id) >= 0) then
@@ -2661,7 +2646,8 @@ contains
 !  ===================================================================
    qlost = qlost/(omega_vp-omega_mt)
    if (maxval(print_level) >= 0) then
-      write(6,'(a,f18.14)')'Checking -- Missing density in interstial area = ',qlost
+      write(6,'(a)')'+++++++++++++++++++++++++++++++++'
+      write(6,'(a,f20.14)')'Checking -- Missing density in interstial area = ',qlost
    endif
 !! qlost = ZERO
 !
@@ -2707,10 +2693,10 @@ contains
                                             0, p_CDL%rhoL_Total(1:nr,1:jmax,ia), &
                                             q_tmp_mt )
             if (print_level(id) >= 0) then
-               write(6,'(a,f20.14)') "Charge Density :: Total Charge in MT-Sphere    = ", &
-                                                 q_tmp_mt
-               write(6,'(a,f20.14)') "Charge Density :: Total Charge in VP           = ", &
-                                                 q_tmp
+               write(6,'(a,2i5,f20.14)') "id, ia, Total Charge in MT = ", &
+                                                 id, ia, q_tmp_mt
+               write(6,'(a,2i5,f20.14)') "id, ia, Total Charge in VP = ", &
+                                                 id, ia, q_tmp
             endif
             rho0(nr+1) = q_tmp_mt
          enddo
@@ -2796,9 +2782,9 @@ contains
       endif
 !
       if ( print_level(1) >= 0 ) then
-         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge density  =",  &
+         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge density  = ",  &
                     rho0_neutral
-         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge Per Atom =",  &
+         write(6,'(a,f20.14)') "Charge Density :: Neutralizing Charge Per Atom = ",  &
                     rho0_neutral*volume/GlobalNumAtoms
          write(6,'(80(''-''),/)')
       endif
@@ -2819,17 +2805,17 @@ contains
             p_CDL => ChargeDensityList(id)
             id_glb = getGlobalIndex(id)
             do ia = 1, p_CDL%NumSpecies
+               lig = MM_table_line(id_glb) + ia
                do ir = 1, p_CDL%NumRPts_Pseudo
                   p_CDL%rhoL_Tilda(ir,1,ia) = p_CDL%rhoL_Tilda(ir,1,ia) + rho0_neutral/Y0
                enddo
                p_CDL%multipole_mom(1,ia) = p_CDL%multipole_mom(1,ia) +   &
                                            rho0_neutral/Y0*PI4*THIRD*p_CDL%RcutPseudo**3
-               p_MultipoleMom(id_glb) = p_MultipoleMom(id_glb) +  &
-                                        p_CDL%multipole_mom(1,ia)*getLocalSpeciesContent(id,ia)
+               p_MultipoleMom(lig) = p_CDL%multipole_mom(1,ia)
             enddo
          enddo
 !        -------------------------------------------------------------
-         call GlobalSumInGroup(GroupID,p_MultipoleMom,GlobalNumAtoms)
+         call GlobalSumInGroup(GroupID,p_MultipoleMom,MM_size)
 !        -------------------------------------------------------------
       else
          do id = 1,LocalNumAtoms
@@ -3085,7 +3071,7 @@ contains
    implicit none
 !
    integer (kind=IntKind) :: nr, nr_ps, id, ia, ir, id_glb, pe, jmt
-   integer (kind=IntKind) :: jl, l, jmax
+   integer (kind=IntKind) :: jl, l, jmax, lig
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
    real (kind=RealKind) :: Z
@@ -3147,7 +3133,8 @@ contains
 !
          rho0_neutral = rho0_neutral + (Z -real(p_mm(1),kind=RealKind)*Y0)*getLocalSpeciesContent(id,ia)
       enddo
-      if (print_level(id) >= 0) then
+      if (print_level(id) >= 1) then
+         write(6,'(/,a)')'In constructMultipoleMoments......'
          write(6,'(a,3i5,2x,f20.14)')'id,jmt,nr_ps, net charge: ',id,jmt,nr_ps,rho0_neutral
       endif
    enddo
@@ -3156,8 +3143,8 @@ contains
 !
    rho0_neutral = rho0_neutral + getAdditionalElectrons()
    rho0_neutral = rho0_neutral/getSystemVolume()
-   if (maxval(print_level) >= 0) then
-      write(6,'(a,f20.14)')'Neutralizing density: ',rho0_neutral
+   if (maxval(print_level) >= 1) then
+      write(6,'(a,f20.14,/)')'Neutralizing density: ',rho0_neutral
    endif
 !
    MultipoleMom = CZERO
@@ -3166,15 +3153,15 @@ contains
       p_CDL => ChargeDensityList(id)
       jmax   =  p_CDL%jmax
       do ia = 1, p_CDL%NumSpecies
+         lig = MM_table_line(id_glb) + ia
          p_mm => p_CDL%multipole_mom(1:jmax,ia)
          do jl = 1,jmax
-            MultipoleMom(id_glb,jl) = MultipoleMom(id_glb,jl) +       &
-                                p_mm(jl)*getLocalSpeciesContent(id,ia)
+            MultipoleMom(lig,jl) = p_mm(jl)
          enddo
       enddo
    enddo
 !  -------------------------------------------------------------------
-   call GlobalSumInGroup(GroupID,MultipoleMom,GlobalNumAtoms,jmax_glb)
+   call GlobalSumInGroup(GroupID,MultipoleMom,MM_size,jmax_glb)
 !  -------------------------------------------------------------------
 !
    end subroutine constructMultipoleMoments
@@ -3653,19 +3640,21 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printMultipoleMom(id)
+   subroutine printMultipoleMom(id,ia)
 !  ===================================================================
    use MPPModule, only : MyPE
    use MathParamModule, only: Ten2m8
+   use SystemModule, only : getNumAlloyElements
+   use Atom2ProcModule, only : getGlobalIndex
 !
    implicit none
 !
-   integer (kind=IntKind), optional :: id
+   integer (kind=IntKind), optional, intent(in) :: id, ia
 !
    complex (kind=CmplxKind), pointer :: mmom(:,:)
 !
    character(len=20) :: file_mm
-   integer (kind=IntKind) :: jl, funit, na, l, m
+   integer (kind=IntKind) :: jl, funit, ig, ja, l, m, lig
    integer (kind=IntKind) :: offset = 100000
    integer (kind=IntKind), allocatable :: flag_jl(:)
 !
@@ -3678,15 +3667,25 @@ contains
    flag_jl(1:jmax_glb) = 0
 !
    if ( present(id) ) then
-      write(file_mm(14:19),'(i6)') offset+MyPE+id
+      if (.not.present(ia)) then
+         call ErrorHandler('printMultipoleMom','atom index on site is not specified')
+      endif
+      if (id < 1 .or. id > LocalNumAtoms) then
+         call ErrorHandler('printMultipoleMom','local site index out of range',id)
+      else if (ia < 1 .or. ia > ChargeDensityList(id)%NumSpecies) then
+         call ErrorHandler('printMultipoleMom','atom index out of range',ia)
+      endif
+      ig = getGlobalIndex(id)
+      write(file_mm(14:19),'(i6)') offset+ig*10+ia
       file_mm(14:14) = 'n'
       funit = 55+id
       open(unit=funit,file=trim(file_mm),status='unknown')
-      write(funit,'(a,i4,/,a)') "# Atom ID::",id,"    jl   (lm):"
+      write(funit,'(a,i4,a,i4,/,a)') "# Global Site ID::",ig,", Atom ID::",ia,"    jl   (lm):"
       write(funit,'(a)') "  "
-      mmom => MultipoleMom(1:GlobalNumAtoms,1:jmax_glb)
+      lig = MM_table_line(ig) + ia
+      mmom => MultipoleMom
       do jl = 1,ChargeDensityList(id)%jmax
-         if ( abs(mmom(id,jl)) > Ten2m8) then
+         if ( abs(mmom(lig,jl)) > Ten2m8) then
                flag_jl(jl) = 1
          endif
       enddo
@@ -3694,22 +3693,27 @@ contains
          if ( flag_jl(jl) == 1 ) then
             l = lofj(jl)
             m = mofj(jl)
-            write(funit,'(2i4,4x,2(1x,d16.8))') l, m, mmom(id,jl)
+            write(funit,'(2i4,4x,2(1x,d16.8))') l, m, mmom(lig,jl)
          endif
       enddo
       write(funit,'(a)') " "
       close(funit)
+   else if (present(ia)) then
+      call ErrorHandler('printMultipoleMom','site index is not specified')
    else
       file_mm(14:19)="system"
       funit = 29
       open(unit=funit,file=trim(file_mm),status='unknown')
-      mmom => MultipoleMom(1:GlobalNumAtoms,1:jmax_glb)
+      mmom => MultipoleMom
       do jl = 1,jmax_glb
-         FlagLOOP: do na = 1,GlobalNumAtoms
-            if ( abs(mmom(na,jl)) > Ten2m8) then
-               flag_jl(jl) = 1
-               exit FlagLOOP
-            endif
+         FlagLOOP: do ig = 1,GlobalNumAtoms
+            do ja = 1, getNumAlloyElements(ig)
+               lig = MM_table_line(ig) + ja
+               if ( abs(mmom(lig,jl)) > Ten2m8) then
+                  flag_jl(jl) = 1
+                  exit FlagLOOP
+               endif
+            enddo
          enddo FlagLOOP
       enddo
       write(funit,'(a,$)') "#AtomID(jl)::     "
@@ -3722,12 +3726,15 @@ contains
           endif
       enddo
       write(funit,'(a)') "  "
-      do na = 1, GlobalNumAtoms
-         write(funit,'(i4,3x,$)') na
-         do jl = 1,jmax_glb
-            if (flag_jl(jl)==1) then
-               write(funit,'(2(1x,d16.8),$)') mmom(na,jl)
-            endif
+      do ig = 1, GlobalNumAtoms
+         do ja = 1, getNumAlloyElements(ig)
+            lig = MM_table_line(ig) + ja
+            write(funit,'(i4,3x,i4,3x,$)') ig, ja
+            do jl = 1,jmax_glb
+               if (flag_jl(jl)==1) then
+                  write(funit,'(2(1x,d16.8),$)') mmom(lig,jl)
+               endif
+            enddo
          enddo
          write(funit,'(a)') " "
       enddo

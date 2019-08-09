@@ -258,7 +258,9 @@ include '../lib/arrayTools.F90'
 !need to be revised after test finished
 
    !=================================================================
-   subroutine initRelSSSolver(na, lmax, lmax_pot, lmax_green, z, isBxyz, iprint, stop_routine, evec_in)
+   subroutine initRelSSSolver(na, lmax, lmax_pot, lmax_green,        &
+                              getNumSpecies, getAtomicNumber,        &
+                              isBxyz, iprint, stop_routine, evec_in)
    !=================================================================
    use RadialGridModule, only : getGrid
 
@@ -273,7 +275,6 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind), intent(in) :: lmax(na)
    integer (kind=IntKind), intent(in) :: lmax_pot(na)
    integer (kind=IntKind), intent(in) :: lmax_green(na)
-   integer (kind=IntKind), intent(in) :: z(na) !atomic number
    integer (kind=IntKind), intent(in) :: iprint(na)
    character (len=*), intent(in) :: stop_routine
    logical, intent(in) :: isBxyz(na)
@@ -286,6 +287,23 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind) :: inda, indb
    real (kind=RealKind) :: evec(3)
    integer (kind=IntKind) :: id,lamax,sz,lpot,loc1,loc2,lgreen
+!
+   interface
+      function getNumSpecies(id) result(n)
+         use KindParamModule, only : IntKind
+         implicit none
+         integer (kind=IntKind), intent(in) :: id
+         integer (kind=IntKind) :: n
+      end function getNumSpecies
+!
+      function getAtomicNumber(id,ic) result(n)
+         use KindParamModule, only : IntKind
+         implicit none
+         integer (kind=IntKind), intent(in) :: id
+         integer (kind=IntKind), intent(in), optional :: ic
+         integer (kind=IntKind) :: n
+      end function getAtomicNumber
+   end interface
 
    evec=(/1.d0,0.d0,0.d0/) !default direction vector, (z,x,y)
 !   list_vl=(/1,17,21,25,39,43,47,65,69,73,77,81/)
@@ -334,11 +352,10 @@ include '../lib/arrayTools.F90'
    sz_ind_solutions=0
    do ia=1,LocalNumAtoms
       print_instruction(ia) = iprint(ia)
-!      if (z(ia) < 0 .or. z(ia) > 108) then
-!         call ErrorHandler('initSSSolver',                    &
-!                           'invalid atomic number',z(ia))
-!      endif
-      AtomicNumber(ia) = z(ia)
+      AtomicNumber(ia) = getAtomicNumber(ia) ! Needs to be fixed for the CPA case
+!     if (AtomicNumber(ia) < 0 .or. AtomicNumber(ia) > 108) then
+!         call ErrorHandler('initSSSolver','invalid atomic number',AtomicNumber(ia))
+!     endif
       Grid => getGrid(ia)
       if (Grid%nmult .ne. 1) then  !numlt=hin/hout here only single log grid is used
          call ErrorHandler('initRelSSSolver', &

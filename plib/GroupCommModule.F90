@@ -90,11 +90,14 @@ public ::                   &
 !
    interface GlobalSumInGroup
       module procedure GlobalSumInGroup_i0, GlobalSumInGroup_i1, &
-                       GlobalSumInGroup_i2, GlobalSumInGroup_i3
+                       GlobalSumInGroup_i2, GlobalSumInGroup_i3, &
+                       GlobalSumInGroup_i4
       module procedure GlobalSumInGroup_r0, GlobalSumInGroup_r1, &
-                       GlobalSumInGroup_r2, GlobalSumInGroup_r3
+                       GlobalSumInGroup_r2, GlobalSumInGroup_r3, &
+                       GlobalSumInGroup_r4
       module procedure GlobalSumInGroup_c0, GlobalSumInGroup_c1, &
-                       GlobalSumInGroup_c2, GlobalSumInGroup_c3
+                       GlobalSumInGroup_c2, GlobalSumInGroup_c3, &
+                       GlobalSumInGroup_c4
    end interface GlobalSumInGroup
 !
    interface GlobalMaxInGroup
@@ -2119,6 +2122,62 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine GlobalSumInGroup_i4(g,f,n1,n2,n3,n4)
+!  ===================================================================
+   implicit none
+!
+   character (len=20), parameter :: sname = 'GlobalSumInGroup'
+!
+   integer (kind=IntKind), intent(in) :: g,n1,n2,n3,n4
+!
+   integer (kind=IntKind), intent(inout) :: f(1:n1,1:n2,1:n3,1:n4)
+   integer (kind=IntKind), allocatable :: a(:,:,:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler(sname,'GroupCommModule is not initialized')
+   else if (NumGroups == 0) then
+      call ErrorHandler(sname,'NumGroups = 0')
+   else if (g > NumGroups .or. g < 1) then
+      call ErrorHandler(sname,'Invalid MPI group index',g)
+   else if (n1 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n1 < 1',n1)
+   else if (n2 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n2 < 1',n2)
+   else if (n3 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n3 < 1',n3)
+   else if (n4 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n4 < 1',n4)
+   endif
+!
+   call searchGroup(sname,g)
+!
+   if ( ptr2CommGr%Size < 2) then
+      return
+   endif
+!
+#ifdef MPI
+   if (n1*n2*n3*n4 <= MPP_BUFFER_MEM/4) then
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(MPI_IN_PLACE,f,n1*n2*n3*n4,MPI_INTEGER,MPI_SUM, &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+   else
+      allocate(a(n1,n2,n3,n4))
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(f,a,n1*n2*n3*n4,MPI_INTEGER,MPI_SUM,            &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+      f = a
+      deallocate(a)
+   endif
+#endif
+!
+   end subroutine GlobalSumInGroup_i4
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine GlobalSumInGroup_r0(g,f)
 !  ===================================================================
    implicit none
@@ -2314,6 +2373,62 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine GlobalSumInGroup_r4(g,f,n1,n2,n3,n4)
+!  ===================================================================
+   implicit none
+!
+   character (len=20), parameter :: sname = 'GlobalSumInGroup'
+!
+   integer (kind=IntKind), intent(in) :: g,n1,n2,n3,n4
+!
+   real (kind=RealKind), intent(inout) :: f(1:n1,1:n2,1:n3,1:n4)
+   real (kind=RealKind), allocatable :: a(:,:,:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler(sname,'GroupCommModule is not initialized')
+   else if (NumGroups == 0) then
+      call ErrorHandler(sname,'NumGroups = 0')
+   else if (g > NumGroups .or. g < 1) then
+      call ErrorHandler(sname,'Invalid MPI group index',g)
+   else if (n1 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n1 < 1',n1)
+   else if (n2 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n2 < 1',n2)
+   else if (n3 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n3 < 1',n3)
+   else if (n4 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n4 < 1',n4)
+   endif
+!
+   call searchGroup(sname,g)
+!
+   if ( ptr2CommGr%Size < 2) then
+      return
+   endif
+!
+#ifdef MPI
+   if (n1*n2*n3*n4 <= MPP_BUFFER_MEM/8) then
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(MPI_IN_PLACE,f,n1*n2*n3*n4,MPI_DOUBLE_PRECISION,MPI_SUM, &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+   else
+      allocate(a(n1,n2,n3,n4))
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(f,a,n1*n2*n3*n4,MPI_DOUBLE_PRECISION,MPI_SUM, &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+      f = a
+      deallocate(a)
+   endif
+#endif
+!
+   end subroutine GlobalSumInGroup_r4
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
    subroutine GlobalSumInGroup_c0(g,f)
 !  ===================================================================
    implicit none
@@ -2504,6 +2619,62 @@ contains
 #endif
 !
    end subroutine GlobalSumInGroup_c3
+!  ===================================================================
+!
+!  *******************************************************************
+!
+!  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+   subroutine GlobalSumInGroup_c4(g,f,n1,n2,n3,n4)
+!  ===================================================================
+   implicit none
+!
+   character (len=20), parameter :: sname = 'GlobalSumInGroup'
+!
+   integer (kind=IntKind), intent(in) :: g,n1,n2,n3,n4
+!
+   complex (kind=CmplxKind), intent(inout) :: f(1:n1,1:n2,1:n3,1:n4)
+   complex (kind=CmplxKind), allocatable :: a(:,:,:,:)
+!
+   if (.not.Initialized) then
+      call ErrorHandler(sname,'GroupCommModule is not initialized')
+   else if (NumGroups == 0) then
+      call ErrorHandler(sname,'NumGroups = 0')
+   else if (g > NumGroups .or. g < 1) then
+      call ErrorHandler(sname,'Invalid MPI group index',g)
+   else if (n1 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n1 < 1',n1)
+   else if (n2 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n2 < 1',n2)
+   else if (n3 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n3 < 1',n3)
+   else if (n4 < 1) then
+      call ErrorHandler(sname,'Invalid array dimension: n4 < 1',n4)
+   endif
+!
+   call searchGroup(sname,g)
+!
+   if ( ptr2CommGr%Size < 2) then
+      return
+   endif
+!
+#ifdef MPI
+   if (n1*n2*n3*n4 <= MPP_BUFFER_MEM/16) then
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(MPI_IN_PLACE,f,n1*n2*n3*n4,MPI_DOUBLE_COMPLEX,MPI_SUM, &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+   else
+      allocate(a(n1,n2,n3,n4))
+!     ----------------------------------------------------------------
+      call MPI_ALLREDUCE(f,a,n1*n2*n3*n4,MPI_DOUBLE_COMPLEX,MPI_SUM,     &
+                         ptr2CommGr%Communicator,info)
+!     ----------------------------------------------------------------
+      f = a
+      deallocate(a)
+   endif
+#endif
+!
+   end subroutine GlobalSumInGroup_c4
 !  ===================================================================
 !
 !  *******************************************************************

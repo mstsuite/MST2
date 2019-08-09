@@ -486,6 +486,8 @@ contains
    use ChemElementModule, only : getZtot, getZcor
    use ChemElementModule, only : getNumCoreStates, setNumCoreStates
 !
+   use PublicParamDefinitionsModule, only : MaxLenFileName
+!
    use MPPModule, only : MyPE
 !
    use AtomModule, only : getLocalAtomNickName
@@ -495,7 +497,7 @@ contains
    logical :: nmd
 !
    character (len=1) :: dummy
-   character (len=100) :: inp
+   character (len=MaxLenFileName) :: inp
    character (len=MaxLenOfAtomName) :: an
    character (len=17), parameter :: sname='readFormattedData'
 !
@@ -1956,17 +1958,17 @@ contains
    write(6,'(  24x,a )')'*  Output from printCoreStates  *'
    write(6,'( 24x,a,/)')'*********************************'
 !
-   write(6,'(''Local Atom Index: '',i5)')id
+   write(6,'(''Local Atom Index: '',i6)')id
+   write(6,'(''jend, jcore     : '',2i6)')Core(id)%Grid%jend,Core(id)%jcore
    write(6,'(''Upper limit of core level'',t31,''='',f20.11)')etopcor
-   write(6,'(''jend, jcore     : '',2(1x,i5))')Core(id)%Grid%jend,Core(id)%jcore
    do ia = 1, Core(id)%NumSpecies
-      if (Core(id)%NumSpecies > 1) then
-         write(6,'(''Local Specie Index: '',i5)')ia
-      endif
-      write(6,'(''ztotss          : '',i5)')int(Core(id)%ztotss(ia))
       write(6,'(80(''=''))')
+      if (Core(id)%NumSpecies > 1) then
+         write(6,'(''Species Index   : '',i6)')ia
+      endif
+      write(6,'(''ztotss          : '',i6)')int(Core(id)%ztotss(ia))
       do is=1,n_spin_pola
-         write(6,'(''Spin Index : '',1i5)')is
+         write(6,'(''Spin Index      : '',i6)')is
          write(6,                                                        &
             '(''Eigenvalues: '',t20,''n'',t25,''l'',t30,''k'',t41,''energy'')')
          do i=1,Core(id)%numc(ia)
@@ -2006,8 +2008,8 @@ contains
                 Core(id)%qsemws(ia)-Core(id)%zsemss(ia)
       write(6,'(  ''Lost deep-core charge'',t31,''='',f20.11)')        &
                 Core(id)%qcorws(ia)-Core(id)%zcorss(ia)
-      write(6,'(80(''=''))')
    enddo
+   write(6,'(80(''=''))')
 !
    end subroutine printCoreStates
 !  ===================================================================
