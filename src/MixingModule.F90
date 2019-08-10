@@ -131,6 +131,7 @@ private
       real(kind=RealKind) :: alpha
 !
       real(kind=RealKind) :: rms
+      real(kind=RealKind) :: weight
 !
       real(kind=RealKind), pointer :: mesh(:)
 !
@@ -928,8 +929,8 @@ contains
    integer(kind=IntKind) :: i, j, k, info, iter, idq, idt, id
    integer(kind=IntKind) :: lastm1, nn, vlen
 !
-   real(kind=RealKind) :: fac1, fac2, fnorm, dfnorm, w0
-   real(kind=RealKind) :: aij, gmi, cmj, wtmp
+   real(kind=RealKind) :: fac1, fac2, fnorm, dfnorm, w0, f0, df0
+   real(kind=RealKind) :: aij, gmi, cmj, wtmp, bij, cij
    real(kind=RealKind) :: msgbuf(2)
    real(kind=RealKind) :: rms
    real(kind=RealKind) :: alpha
@@ -952,6 +953,7 @@ contains
          id = getMixID(idt,idq)
          vlen = plq_tmp%size
          BroydenMix(id)%rms = plq_tmp%rms
+         BroydenMix(id)%weight = plq_tmp%weight
          BroydenMix(id)%vector_old_r => plq_tmp%vector_old(1:vlen)
          BroydenMix(id)%vector_new_r => plq_tmp%vector_new(1:vlen)
          if ( .not.BroydenMix(id)%Initialized ) then
@@ -1040,10 +1042,14 @@ contains
 !           find: fnorm  := |f|
 !                 dfnorm := |df|
 !           =========================================================
+            df0 = ZERO
+            f0 = ZERO
             do k = 1,vlen
-               dfnorm = dfnorm + pdf(k)*pdf(k)
-               fnorm  = fnorm  + pf(k)*pf(k)
+               df0 = df0 + pdf(k)*pdf(k)
+               f0  = f0  + pf(k)*pf(k)
             enddo
+            dfnorm = dfnorm + BroydenMix(id)%weight*df0
+            fnorm  = fnorm  + BroydenMix(id)%weight*f0
          enddo
 !
          msgbuf(1) = dfnorm
@@ -1108,9 +1114,11 @@ contains
                      cycle
                   endif
                   pvt => BroydenMix(id)%vt_r(1:vlen,1:NumBroydenIter)
+                  bij = ZERO
                   do k = 1,vlen
-                     aij = aij + pvt(k,j)*pvt(k,i)
+                     bij = bij + pvt(k,j)*pvt(k,i)
                   enddo
+                  aij = aij + BroydenMix(id)%weight*bij
                enddo
 !              ------------------------------------------------------
 !              call GlobalSumInGroup(GroupID,aij)
@@ -1131,10 +1139,14 @@ contains
                endif
                pvt => BroydenMix(id)%vt_r(1:vlen,1:NumBroydenIter)
                pf  => BroydenMix(id)%f_r(1:vlen)
+               cij = ZERO
+               bij = ZERO
                do k = 1,vlen
-                  cmj = cmj + pvt(k,i)*pf(k)
-                  aij = aij + pvt(k,i)*pvt(k,i)
+                  cij = cij + pvt(k,i)*pf(k)
+                  bij = bij + pvt(k,i)*pvt(k,i)
                enddo
+               cmj = cmj + BroydenMix(id)%weight*cij
+               aij = aij + BroydenMix(id)%weight*bij
             enddo
 !           msgbuf(1) = aij
 !           msgbuf(2) = cmj
@@ -1271,13 +1283,13 @@ contains
    integer(kind=IntKind) :: i, j, k, info, iter, idq, idt, id
    integer(kind=IntKind) :: lastm1, nn, vlen
 !
-   real(kind=RealKind) :: fac1, fac2, fnorm, dfnorm, w0
+   real(kind=RealKind) :: fac1, fac2, fnorm, dfnorm, w0, df0, f0
    real(kind=RealKind) :: wtmp
    real(kind=RealKind) :: msgbuf(2)
    real(kind=RealKind) :: rms
    real(kind=RealKind) :: alpha
 !
-   complex(kind=CmplxKind) :: aij, gmi, cmj
+   complex(kind=CmplxKind) :: aij, gmi, cmj, bij, cij
    complex(kind=CmplxKind), pointer :: pf(:), pdf(:), pu(:,:), pw(:), pvt(:,:)
    complex(kind=CmplxKind), pointer :: pvect_old(:), pvect_new(:), pvold(:)
    complex(kind=CmplxKind), pointer :: pad(:), pbd(:)
@@ -1296,6 +1308,7 @@ contains
          id = getMixID(idt,idq)
          vlen = plq_tmp%size
          BroydenMix(id)%rms = plq_tmp%rms
+         BroydenMix(id)%weight = plq_tmp%weight
          BroydenMix(id)%vector_old_c => plq_tmp%vector_old(1:vlen)
          BroydenMix(id)%vector_new_c => plq_tmp%vector_new(1:vlen)
          if ( .not.BroydenMix(id)%Initialized ) then
@@ -1384,10 +1397,14 @@ contains
 !           find: fnorm  := |f|
 !                 dfnorm := |df|
 !           =========================================================
+            df0 = ZERO
+            f0 = ZERO
             do k = 1,vlen
-               dfnorm = dfnorm + real(pdf(k)*conjg(pdf(k)),kind=RealKind)
-               fnorm  = fnorm  + real(pf(k)*conjg(pf(k)),kind=RealKind)
+               df0 = df0 + real(pdf(k)*conjg(pdf(k)),kind=RealKind)
+               f0  = f0  + real(pf(k)*conjg(pf(k)),kind=RealKind)
             enddo
+            dfnorm = dfnorm + BroydenMix(id)%weight*df0
+            fnorm  = fnorm  + BroydenMix(id)%weight*f0
          enddo
 !
          msgbuf(1) = dfnorm
@@ -1452,9 +1469,11 @@ contains
                      cycle
                   endif
                   pvt => BroydenMix(id)%vt_c(1:vlen,1:NumBroydenIter)
+                  bij = CZERO
                   do k = 1,vlen
-                     aij = aij + conjg(pvt(k,j))*pvt(k,i)
+                     bij = bij + conjg(pvt(k,j))*pvt(k,i)
                   enddo
+                  aij = aij + BroydenMix(id)%weight*bij
                enddo
 !              ------------------------------------------------------
 !              call GlobalSumInGroup(GroupID,aij)
@@ -1475,10 +1494,14 @@ contains
                endif
                pvt => BroydenMix(id)%vt_c(1:vlen,1:NumBroydenIter)
                pf  => BroydenMix(id)%f_c(1:vlen)
+               cij = CZERO
+               bij = CZERO
                do k = 1,vlen
-                  cmj = cmj + conjg(pvt(k,i))*pf(k)
-                  aij = aij + conjg(pvt(k,i))*pvt(k,i)
+                  cij = cij + conjg(pvt(k,i))*pf(k)
+                  bij = bij + conjg(pvt(k,i))*pvt(k,i)
                enddo
+               cmj = cmj + BroydenMix(id)%weight*cij
+               aij = aij + BroydenMix(id)%weight*bij
             enddo
 !           msgbuf(1) = aij
 !           msgbuf(2) = cmj

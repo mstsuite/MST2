@@ -315,7 +315,8 @@ program mst2
    real (kind=RealKind), allocatable :: LocalEvec(:,:)
    real (kind=RealKind), allocatable :: radius(:)
 !
-   real (kind=RealKind), allocatable :: rho_rms(:,:),pot_rms(:,:)
+   real (kind=RealKind) :: rho_rms_av(2), pot_rms_av(2)
+   real (kind=RealKind), allocatable :: rho_rms(:,:), pot_rms(:,:)
    real (kind=RealKind), allocatable :: evec_rms(:), bcon_rms(:)
    real (kind=RealKind), allocatable :: bcon_sd(:,:)
    real (kind=RealKind) :: ef_diff, tote_diff
@@ -325,7 +326,7 @@ program mst2
    real (kind=RealKind) :: bravais(3,3)
    real (kind=RealKind) :: alat
    real (kind=RealKind) :: rmt, rinsc, rend, rws
-   real (kind=RealKind) :: Efermi, volume
+   real (kind=RealKind) :: Efermi, volume, cfac
    real (kind=RealKind) :: v0, val, evb
    real (kind=RealKind) :: t0, t1, t2, t3
 !
@@ -358,8 +359,8 @@ program mst2
          use PublicTypeDefinitionsModule, only : MixListRealStruct
          implicit none
          integer (kind=IntKind), intent(in) :: NLA,nsp
-         real (kind=RealKind), intent(in) :: r_rms(nsp,NLA)
-         real (kind=RealKind), intent(in) :: p_rms(nsp,NLA)
+         real (kind=RealKind), intent(in) :: r_rms(:,:)
+         real (kind=RealKind), intent(in) :: p_rms(:,:)
          type (MixListRealStruct), target :: RAList
       end subroutine setupMixRealArrayList
 !
@@ -368,8 +369,8 @@ program mst2
          use PublicTypeDefinitionsModule, only : MixListCmplxStruct
          implicit none
          integer (kind=IntKind), intent(in) :: NLA,nsp
-         real (kind=RealKind), intent(in) :: r_rms(nsp,NLA)
-         real (kind=RealKind), intent(in) :: p_rms(nsp,NLA)
+         real (kind=RealKind), intent(in) :: r_rms(:,:)
+         real (kind=RealKind), intent(in) :: p_rms(:,:)
          type (MixListCmplxStruct), target :: CAList
       end subroutine setupMixCmplxArrayList
 !
@@ -1297,6 +1298,8 @@ program mst2
                           n_spin_pola, n_spin_cant, atom_print_level, &
                           isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
 !  -------------------------------------------------------------------
+   call initChargeDistribution(LocalNumAtoms,GlobalNumAtoms,n_spin_pola)
+!  -------------------------------------------------------------------
    call initPotentialGeneration(LocalNumAtoms,GlobalNumAtoms,lmax_pot,&
                                 lmax_rho,n_spin_pola,istop,atom_print_level,&
                                 isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
@@ -1304,8 +1307,6 @@ program mst2
    call initTotalEnergy(LocalNumAtoms,GlobalNumAtoms,getNumVacancies(),&
                         n_spin_pola,istop,atom_print_level,            &
                         isGGA = isGGAFunctional().and.(.not.isDOSCalculationOnly))
-!  -------------------------------------------------------------------
-   call initChargeDistribution(LocalNumAtoms,GlobalNumAtoms,n_spin_pola)
 !  -------------------------------------------------------------------
 !  ===================================================================
 !
@@ -1355,8 +1356,12 @@ program mst2
 !  ===================================================================
    call initConvergenceCheck(LocalNumAtoms,n_spin_pola,atom_print_level)
 !  -------------------------------------------------------------------
-   allocate( rho_rms(n_spin_pola,LocalNumAtoms) )
-   allocate( pot_rms(n_spin_pola,LocalNumAtoms) )
+   n = 0
+   do id = 1, LocalNumAtoms
+      n = n + getLocalNumSpecies(id)
+   enddo
+   allocate( rho_rms(n_spin_pola,n) )
+   allocate( pot_rms(n_spin_pola,n) )
    allocate( evec_rms(LocalNumAtoms) )
    allocate( bcon_rms(LocalNumAtoms) )
    allocate( bcon_sd(3,LocalNumAtoms) )
@@ -1644,17 +1649,28 @@ program mst2
 !        =============================================================
          max_rms(:) = ZERO
          rms_sys=ZERO
+         n = 0
          do id = 1, LocalNumAtoms
-            rms_sys(1) = maxval(rho_rms(1:n_spin_pola,id))
-            rms_sys(2) = maxval(pot_rms(1:n_spin_pola,id))
+            rho_rms_av = 0
+            pot_rms_av = 0
+            do ia = 1, getLocalNumSpecies(id)
+               n = n + 1
+               cfac = getLocalSpeciesContent(id,ia)
+               rho_rms_av(1:n_spin_pola) = rho_rms_av(1:n_spin_pola) + &
+                                           cfac*rho_rms(1:n_spin_pola,n)
+               pot_rms_av(1:n_spin_pola) = pot_rms_av(1:n_spin_pola) + &
+                                           cfac*pot_rms(1:n_spin_pola,n)
+            enddo
+            rms_sys(1) = maxval(rho_rms_av(1:n_spin_pola))
+            rms_sys(2) = maxval(pot_rms_av(1:n_spin_pola))
             if ( n_spin_cant==2 ) then
                rms_sys(3:4) = getFieldRms(id)
             endif
-            max_rms(1) = max(max_rms(1),rho_rms(1,id))
-            max_rms(3) = max(max_rms(3),pot_rms(1,id))
+            max_rms(1) = max(max_rms(1),rho_rms_av(1))
+            max_rms(3) = max(max_rms(3),pot_rms_av(1))
             if (n_spin_pola==2) then
-               max_rms(2) = max(max_rms(2),rho_rms(2,id))
-               max_rms(4) = max(max_rms(4),pot_rms(2,id))
+               max_rms(2) = max(max_rms(2),rho_rms_av(2))
+               max_rms(4) = max(max_rms(4),pot_rms_av(2))
             endif
             max_rms(5) = max(max_rms(5),ef_diff)
             max_rms(6) = max(max_rms(6),tote_diff)

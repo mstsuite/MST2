@@ -426,7 +426,7 @@
          call potredg(jmtmax, jwsmax, nr, numcmax_in, imsgbuf(5:7,ia),&
                       cmsgbuf(lenc*(ns-1)+1:lenc*ns,ia),              &
                       fspace(lenf*(ns-1)+1:lenf*ns,ia),               &
-                      alat,efpot,                                     &
+                      alat,efpot(ia),                                 &
                       jmt,jws,r_mesh,vr(1:nr,ns,ia),vdif,             &
                       rhotot(1:nr,ns,ia),                             &
                       xvalws(ns,ia),ztotss(ia),zcorss(ia),numc(ia),   &

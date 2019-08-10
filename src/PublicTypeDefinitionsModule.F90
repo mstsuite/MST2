@@ -32,6 +32,7 @@ public
    type MixListRealStruct
       integer (kind=IntKind) :: size
       real (kind=RealKind) :: rms
+      real (kind=RealKind) :: weight
       real (kind=RealKind), pointer :: mesh(:)
       real (kind=RealKind), pointer :: vector_old(:)
       real (kind=RealKind), pointer :: vector_new(:)
@@ -41,6 +42,7 @@ public
    type MixListCmplxStruct
       integer (kind=IntKind) :: size
       real (kind=RealKind) :: rms
+      real (kind=RealKind) :: weight
       real (kind=RealKind), pointer :: mesh(:)
       complex (kind=CmplxKind), pointer :: vector_old(:)
       complex (kind=CmplxKind), pointer :: vector_new(:)

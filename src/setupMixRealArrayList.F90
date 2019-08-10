@@ -6,7 +6,7 @@
 !
    use ErrorHandlerModule, only : ErrorHandler
 !
-   use MathParamModule, only : ZERO, HALF
+   use MathParamModule, only : ZERO, HALF, ONE
 !
    use MPPModule, only : GlobalSum
 !
@@ -23,7 +23,7 @@
    use PotentialModule, only : getOldSphPotr => getSphPotr
    use PotentialModule, only : getOldVdif => getVdif
 !
-   use AtomModule, only : getLocalNumSpecies
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
 !
    use PotentialGenerationModule, only : getNewSphPotr => getSphPotr
    use PotentialGenerationModule, only : getNewVdif => getVdif
@@ -40,8 +40,8 @@
    implicit none
 !
    integer (kind=IntKind), intent(in) :: LocalNumAtoms,n_spin_pola
-   real (kind=RealKind), intent(in) :: r_rms(n_spin_pola,LocalNumAtoms)
-   real (kind=RealKind), intent(in) :: p_rms(n_spin_pola,LocalNumAtoms)
+   real (kind=RealKind), intent(in) :: r_rms(:,:)
+   real (kind=RealKind), intent(in) :: p_rms(:,:)
 !
    type (MixListRealStruct), target :: RealArrayList
 !
@@ -102,6 +102,8 @@
          p_RAL%vector_old(:) = ZERO
          p_RAL%vector_new(:) = ZERO
          p_RAL%rms = ZERO
+!!!!!!   p_RAL%weight = getLocalSpeciesContent(id,ia)
+         p_RAL%weight = ONE
          do is = 1, n_spin_pola
             if (isPotentialMixing()) then
                factor = real(2-is,kind=RealKind)
@@ -114,9 +116,9 @@
 !                 call writeMatrix('New Vr',p_RAL%vector_new(nr*(is-1)+1:nr*is),nr)
 !              endif
                if (n_spin_pola==1) then
-                 p_RAL%rms = p_rms(is,id)
+                 p_RAL%rms = p_rms(is,p_item)
                else
-                 p_RAL%rms = (p_rms(1,id)+p_rms(2,id))*half
+                 p_RAL%rms = (p_rms(1,p_item)+p_rms(2,p_item))*half
                endif
             else
                factor = real(3-is*2,kind=RealKind)
@@ -139,9 +141,9 @@
                   p_RAL%vector_new(1:nr) = ptmp1(1:nr)
                endif
                if (n_spin_pola==1) then
-                 p_RAL%rms = r_rms(is,id)
+                 p_RAL%rms = r_rms(is,p_item)
                else
-                 p_RAL%rms = r_rms(1,id)*half
+                 p_RAL%rms = r_rms(1,p_item)*half
                endif
             endif
          enddo

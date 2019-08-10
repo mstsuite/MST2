@@ -2803,7 +2803,7 @@ contains
    if (na == 1) then
       write(fu,'(a)')' Atom   Index      Q          Qmt        dQ        Vmad        Local Energy'
    else
-      write(fu,'(a)')' Atom   Index           Q          Qmt        dQ        Vmad        Local Energy'
+      write(fu,'(a)')' Atom  Site  Species    Q          Qmt        dQ        Vmad        Local Energy'
    endif
    global_table_line => getGlobalTableLine()
    Q_Table => getGlobalOnSiteElectronTableOld()
@@ -2822,7 +2822,7 @@ contains
             write(fu,'(2x,a3,2x,i6,2x,i2,4(2x,f9.5),6x,f12.5)')getAtomName(ig,ia), ig, ia,  &
                                                  Q_Table(lig),Qmt_Table(lig),         &
                                                  Q_Table(lig)-getAtomicNumber(ig,ia), &
-                                                 MadelungShiftTable(lig),atom_en(1,ig)
+                                                 MadelungShiftTable(ig),atom_en(1,ig)
          endif
       enddo
    enddo

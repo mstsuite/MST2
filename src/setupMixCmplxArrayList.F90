@@ -6,7 +6,7 @@
 !
    use ErrorHandlerModule, only : ErrorHandler
 !
-   use MathParamModule, only : ZERO, HALF, CZERO
+   use MathParamModule, only : ZERO, HALF, CZERO, ONE
 !
    use MPPModule, only : GlobalSum
 !
@@ -46,8 +46,8 @@
    implicit none
 !
    integer (kind=IntKind), intent(in) :: LocalNumAtoms,n_spin_pola
-   real (kind=RealKind), intent(in) :: r_rms(n_spin_pola,LocalNumAtoms)
-   real (kind=RealKind), intent(in) :: p_rms(n_spin_pola,LocalNumAtoms)
+   real (kind=RealKind), intent(in) :: r_rms(:,:)
+   real (kind=RealKind), intent(in) :: p_rms(:,:)
 !
    type (MixListCmplxStruct), target :: CmplxArrayList
 !
@@ -137,6 +137,8 @@
          p_CAL%vector_old(:) = CZERO
          p_CAL%vector_new(:) = CZERO
          p_CAL%rms = ZERO
+!!!!!!   p_CAL%weight = getLocalSpeciesContent(id,ia)
+         p_CAL%weight = ONE
          flag_jl => getPotComponentFlag(id)
          do is = 1, n_spin_pola
             ind_jl = data_size*(is-1)+is-1
@@ -158,9 +160,9 @@
                rptmp => getNewVdif()
                p_CAL%vector_new(ind_jl+1) = factor*rptmp(1)
                if (n_spin_pola==1) then
-                  p_CAL%rms = p_rms(is,id)
+                  p_CAL%rms = p_rms(is,p_item)
                else
-                  p_CAL%rms = (p_rms(1,id)+p_rms(2,id))*half
+                  p_CAL%rms = (p_rms(1,p_item)+p_rms(2,p_item))*half
                endif
             else
                lmax = getRhoLmax(id)
@@ -193,11 +195,11 @@
                                                factor*getVPMomSize('Old',id,ia))
                   p_CAL%vector_new(ind_jl+1) = half*(getVPCharge('New',id,ia)+ &
                                                factor*getVPMomSize('New',id,ia))
-                  p_CAL%rms = r_rms(1,id)*half
+                  p_CAL%rms = r_rms(1,p_item)*half
                else
                   p_CAL%vector_old(ind_jl+1) = getVPCharge('Old',id,ia)
                   p_CAL%vector_new(ind_jl+1) = getVPCharge('New',id,ia)
-                  p_CAL%rms = r_rms(is,id)
+                  p_CAL%rms = r_rms(is,p_item)
                endif
             endif
          enddo

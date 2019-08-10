@@ -108,7 +108,7 @@ contains
    use ChargeDensityModule, only : getMomentDensity
    use ChargeDensityModule, only : getChargeComponentFlag
 !
-   use AtomModule, only : getLocalNumSpecies
+   use AtomModule, only : getLocalNumSpecies, getLocalSpeciesContent
 !
    use PotentialModule, only : getPotLmax
    use PotentialModule, only : getOldSphPotr => getSphPotr
@@ -122,14 +122,14 @@ contains
 !
    implicit none
 !
-   integer (kind=IntKind) :: is, ir, jmt, id, jl, jend, ia
+   integer (kind=IntKind) :: is, ir, jmt, id, jl, jend, ia, n
    integer (kind=IntKind) :: lmax_l, jmax_l, kmax_l
    integer (kind=IntKind) :: lmax_prod, jmax_prod, kmax_prod
    integer (kind=IntKind), pointer :: flag_jl(:)
 !
    real (kind=RealKind), intent(in) :: efermi, etot
-   real (kind=RealKind), intent(out) :: rho_rms(n_spin_pola,LocalNumAtoms)
-   real (kind=RealKind), intent(out) :: pot_rms(n_spin_pola,LocalNumAtoms)
+   real (kind=RealKind), intent(out) :: rho_rms(:,:)
+   real (kind=RealKind), intent(out) :: pot_rms(:,:)
    real (kind=RealKind), intent(out) :: evec_rms(LocalNumAtoms)
    real (kind=RealKind), intent(out) :: bcon_rms(LocalNumAtoms)
    real (kind=RealKind), intent(out) :: ef_diff, et_diff
@@ -139,6 +139,7 @@ contains
    real (kind=RealKind), pointer :: r_mesh(:)
    real (kind=RealKind), allocatable :: wk(:)
    real (kind=RealKind) :: mt_volume, vol_int, VP_volume, tol, vint_mt
+   real (kind=RealKind) :: cfac, rho_rms_av(n_spin_pola), pot_rms_av(n_spin_pola)
 !
    complex (kind=CmplxKind), pointer :: p_den1(:,:)
    complex (kind=CmplxKind), pointer :: p_den2(:,:)
@@ -178,6 +179,9 @@ contains
 !
    if ( .not.isFullPot ) then
       allocate( wk(nr_max) )
+      n = 0
+      rho_rms = ZERO
+      pot_rms = ZERO
       do id = 1, LocalNumAtoms
          Grid => getGrid(id)
          jmt = Grid%jmt
@@ -187,7 +191,11 @@ contains
 !        =============================================================
 !        calculate RMS of density.
 !        =============================================================
+         rho_rms_av = ZERO
+         pot_rms_av = ZERO
          do ia = 1, getLocalNumSpecies(id)
+            n = n + 1
+            cfac = getLocalSpeciesContent(id,ia)
             if (n_spin_pola == 1) then
                vec1 => getSphChargeDensity("TotalOld",id,ia)
                vec2 => getSphChargeDensity("TotalNew",id,ia)
@@ -195,7 +203,8 @@ contains
                   wk(ir)=(vec1(ir)-vec2(ir))**2
                enddo
                vol_int = getVolumeIntegration( id, jmt, r_mesh, 0, wk )
-               rho_rms(1,id) = sqrt(vol_int)/mt_volume
+               rho_rms(1,n) = sqrt(vol_int)/mt_volume
+               rho_rms_av(1) = rho_rms_av(1) + cfac*rho_rms(1,n)
             else
                vec1 => getSphChargeDensity("TotalOld",id,ia)
                vec2 => getSphChargeDensity("TotalNew",id,ia)
@@ -203,14 +212,16 @@ contains
                   wk(ir)=(vec1(ir)-vec2(ir))**2
                enddo
                vol_int = getVolumeIntegration( id, jmt, r_mesh, 0, wk )
-               rho_rms(1,id) = sqrt(vol_int)/mt_volume
+               rho_rms(1,n) = sqrt(vol_int)/mt_volume
+               rho_rms_av(1) = rho_rms_av(1) + cfac*rho_rms(1,n)
                vec1 => getSphMomentDensity("TotalOld",id,ia)
                vec2 => getSphMomentDensity("TotalNew",id,ia)
                do ir=1,jmt
                   wk(ir)=(vec1(ir)-vec2(ir))**2
                enddo
                vol_int = getVolumeIntegration( id, jmt, r_mesh, 0, wk )
-               rho_rms(2,id) = sqrt(vol_int)/mt_volume
+               rho_rms(2,n) = sqrt(vol_int)/mt_volume
+               rho_rms_av(2) = rho_rms_av(2) + cfac*rho_rms(2,n)
             endif
 !
 !           ==========================================================
@@ -223,34 +234,41 @@ contains
                   wk(ir)=( vec1(ir)-vec2(ir) )**2
                enddo
                vol_int = getVolumeIntegration( id, jmt, r_mesh, 0, wk )
-               pot_rms(is,id) = sqrt(vol_int)/mt_volume
+               pot_rms(is,n) = sqrt(vol_int)/mt_volume
+               pot_rms_av(is) = pot_rms_av(is) + cfac*pot_rms(is,n)
             enddo
-!
-            if (Print_Level(id) >= 0) then
-               write(6,'(/,80(''=''))')
-               write(6,'(1x,a)')                                         &
-                       'AtomId    Iter    RMS of Rho   RMS of Pot      Diff Ef    Diff Etot'
-               write(6,'(80(''-''))')
-               write(6,'(i7,1x,i7,1x,4(1x,d12.5))')getGlobalIndex(id),   &
-                      iteration,max(rho_rms(1,id),rho_rms(n_spin_pola,id)), &
-                      max(pot_rms(1,id),pot_rms(n_spin_pola,id)),ef_diff,et_diff
-               write(6,'(80(''=''),/)')
-            endif
          enddo
+!
+         if (Print_Level(id) >= 0) then
+            write(6,'(/,80(''=''))')
+            write(6,'(1x,a)')                                         &
+                    'AtomId    Iter    RMS of Rho   RMS of Pot      Diff Ef    Diff Etot'
+            write(6,'(80(''-''))')
+            write(6,'(i7,1x,i7,1x,4(1x,d12.5))')getGlobalIndex(id),   &
+                   iteration,max(rho_rms_av(1),rho_rms_av(n_spin_pola)), &
+                   max(pot_rms_av(1),pot_rms_av(n_spin_pola)),ef_diff,et_diff
+            write(6,'(80(''=''),/)')
+         endif
       enddo
 !
       deallocate( wk )
    else
-!
       tol = Ten2m14
       allocate( wk_c(nr_max*jmax), wk_prod(nr_max*(2*lmax+1)*(lmax+1)))
+      n = 0
+      rho_rms = ZERO
+      pot_rms = ZERO
       do id = 1, LocalNumAtoms
          Grid => getGrid(id)
          jend = Grid%jend
          r_mesh => Grid%r_mesh(1:jend)
          VP_volume = getVolume(id)
 !
+         rho_rms_av = ZERO
+         pot_rms_av = ZERO
          do ia = 1, getLocalNumSpecies(id)
+            n = n + 1
+            cfac = getLocalSpeciesContent(id,ia)
 !           ==========================================================
 !           calculate RMS of density.
 !           ==========================================================
@@ -280,7 +298,8 @@ contains
                vol_int = getVolumeIntegration( id, jend, r_mesh,         &
                                                kmax_prod, jmax_prod, 0, prod, vint_mt, tol_in=tol)
 !              -------------------------------------------------------
-               rho_rms(1,id) = sqrt(abs(vol_int))/VP_volume
+               rho_rms(1,n) = sqrt(abs(vol_int))/VP_volume
+               rho_rms_av(1) = rho_rms_av(1) + cfac*rho_rms(1,n)
             else
                p_den1 => getChargeDensity("TotalOld",id,ia)
                p_den2 => getChargeDensity("TotalNew",id,ia)
@@ -298,7 +317,8 @@ contains
                vol_int = getVolumeIntegration( id, jend, r_mesh,         &
                                                kmax_prod, jmax_prod, 0, prod, vint_mt, tol_in=tol)
 !              -------------------------------------------------------
-               rho_rms(1,id) = sqrt(abs(vol_int))/VP_volume
+               rho_rms(1,n) = sqrt(abs(vol_int))/VP_volume
+               rho_rms_av(1) = rho_rms_av(1) + cfac*rho_rms(1,n)
                p_den1 => getMomentDensity("TotalOld",id,ia)
                p_den2 => getMomentDensity("TotalNew",id,ia)
                p_wk = CZERO
@@ -315,7 +335,8 @@ contains
                vol_int = getVolumeIntegration( id, jend, r_mesh,         &
                                                kmax_prod, jmax_prod, 0, prod, vint_mt, tol_in=tol)
 !              -------------------------------------------------------
-               rho_rms(2,id) = sqrt(abs(vol_int))/VP_volume
+               rho_rms(2,n) = sqrt(abs(vol_int))/VP_volume
+               rho_rms_av(2) = rho_rms_av(2) + cfac*rho_rms(2,n)
             endif
 !
 !           ==========================================================
@@ -347,20 +368,21 @@ contains
                vol_int = getVolumeIntegration( id, jend, r_mesh,         &
                                                kmax_prod, jmax_prod, 0, prod, vint_mt, tol_in=tol)
 !              -------------------------------------------------------
-               pot_rms(is,id) = sqrt(abs(vol_int))/VP_volume
+               pot_rms(is,n) = sqrt(abs(vol_int))/VP_volume
+               pot_rms_av(is) = pot_rms_av(is) + cfac*pot_rms(2,n)
             enddo
-!
-            if (Print_Level(id) >= 0) then
-               write(6,'(/,80(''=''))')
-               write(6,'(1x,a)')                                            &
-                       'AtomId    Iter    RMS of Rho   RMS of Pot      Diff Ef    Diff Etot'
-               write(6,'(80(''-''))')
-               write(6,'(i7,1x,i7,4(1x,d12.5))')getGlobalIndex(id),   &
-                      iteration, maxval(rho_rms(1:n_spin_pola,id)),         &
-                      maxval(pot_rms(1:n_spin_pola,id)), ef_diff, et_diff
-               write(6,'(80(''=''),/)')
-            endif
          enddo
+!
+         if (Print_Level(id) >= 0) then
+            write(6,'(/,80(''=''))')
+            write(6,'(1x,a)')                                            &
+                    'AtomId    Iter    RMS of Rho   RMS of Pot      Diff Ef    Diff Etot'
+            write(6,'(80(''-''))')
+            write(6,'(i7,1x,i7,4(1x,d12.5))')getGlobalIndex(id),   &
+                   iteration, maxval(rho_rms_av(1:n_spin_pola)),         &
+                   maxval(pot_rms_av(1:n_spin_pola)), ef_diff, et_diff
+            write(6,'(80(''=''),/)')
+         endif
       enddo
       nullify( p_wk, p_den1, p_den2, prod )
       deallocate( wk_c, wk_prod )
