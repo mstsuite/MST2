@@ -2232,7 +2232,7 @@ contains
       write(6,'(23x,a,/)')'***********************************'
 !
       write(6,'(''id = '',i3,'', ia = '',i3,'', Charge_MT = '',f22.16)') id,ia,Density(id)%ChargeMT(ia)
-      write(6,'(20x,''Charge_VP ='',f22.16)') Density(id)%ChargeVP(ia)
+      write(6,'(20x,''Charge_VP = '',f22.16)') Density(id)%ChargeVP(ia)
       if ( n_spin_pola/=1 ) then
          write(6,'(10x,''Moment_MT ='',3f22.16)') Density(id)%MomentMT(:,ia)
          write(6,'(10x,''Moment_VP ='',3f22.16)') Density(id)%MomentVP(:,ia)

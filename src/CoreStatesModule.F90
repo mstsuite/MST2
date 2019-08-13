@@ -2161,6 +2161,7 @@ contains
 !     ----------------------------------------------------------------
       call calIntegration(last2+1,sqrt_r(0:last2),ftmp(0:last2),qmp(0:last2),3)
 !     ----------------------------------------------------------------
+#ifdef CORE_NORM2INFINITY
       call IntegrateSphHankelSq(Core(id)%lc(i,ia),r(last2),Core(id)%ec(i,is,ia),norm_frac)
 !     ----------------------------------------------------------------
       if (print_level >= 0) then
@@ -2171,6 +2172,9 @@ contains
                ', norm_frac, h2nrm = ',norm_frac,h2nrm
       endif
       gnrm=ONE/(TWO*PI4*qmp(last2)+PI4*norm_frac*h2nrm) ! Normalized to R = infinity
+#else
+      gnrm=ONE/(TWO*PI4*qmp(last2)) ! Normalized to R = r(last2)
+#endif
       do j=1,last2
          ftmp(j)=ftmp(j)*gnrm/r(j)    ! get rid off another factor r so that
                                       ! at this stage, ftmp is just density

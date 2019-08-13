@@ -436,7 +436,7 @@ contains
 !     -------------------------------------------------------------------
    endif
 !
-   allocate(wk_green(green_size*4),wk_dos((nsize+4)*n_spin_cant*n_spin_cant+12))
+   allocate(wk_green(green_size*4),wk_dos((nsize+4*MaxNumSpecies)*n_spin_cant*n_spin_cant+12))
    wk_green = CZERO; wk_dos = CZERO
    if (rad_derivative) then
       allocate(wk_dgreen(green_size*4))
@@ -2009,7 +2009,7 @@ contains
 !
    use RadialGridModule, only : getGrid
 !
-   use ScfDataModule, only : isKKR
+   use ScfDataModule, only : isKKR, isKKRCPA
 !
    use PotentialTypeModule, only : isASAPotential
 !
@@ -2088,15 +2088,6 @@ contains
                         stop_routine, print_level)
 !     ----------------------------------------------------------------
    endif
-!
-!  ===================================================================
-!  initialize Multiple scattering solver
-!  -------------------------------------------------------------------
-   call initMSSolver(LocalNumAtoms, AtomIndex,                        &
-                     lmax_kkr, lmax_phi, lmax_green, posi,            &
-                     n_spin_pola, n_spin_cant, RelativisticFlag,      &
-                     stop_routine, print_level)
-!  -------------------------------------------------------------------
 !
    kmax_phi_max = 1
    do id = 1, LocalNumAtoms
@@ -2197,10 +2188,17 @@ contains
 !  ==================================================================
 !  Solve the multiple scattering problem for e = er, which is
 !  set to be (er,0.001) in KKR case.
-!  ==================================================================
+!
+!  initialize Multiple scattering solver
+!  -------------------------------------------------------------------
+   call initMSSolver(LocalNumAtoms, AtomIndex,                        &
+                     lmax_kkr, lmax_phi, lmax_green, posi,            &
+                     n_spin_pola, n_spin_cant, RelativisticFlag,      &
+                     stop_routine, print_level)
+!  -------------------------------------------------------------------
    ns_sqr = n_spin_cant*n_spin_cant
    do is = 1, n_spin_pola/n_spin_cant
-      if (isKKR()) then
+      if (isKKR() .or. isKKRCPA()) then
          ec = adjustEnergy(is,cmplx(er,0.001d0,kind=CmplxKind))
       else
          ec = adjustEnergy(is,cmplx(er,0.000d0,kind=CmplxKind))
@@ -2210,7 +2208,7 @@ contains
 !     Calculate the DOS of the multiple scattering term for e = ec,
 !     and add the single site results (at er, not ec) to it.
 !     ----------------------------------------------------------------
-      call computeMSPDOS(is,adjustEnergy(is,ec))
+      call computeMSPDOS(is,ec)
 !     ----------------------------------------------------------------
       do id = 1, LocalNumAtoms
          do ia = 1, getLocalNumSpecies(id)
@@ -2256,6 +2254,9 @@ contains
          enddo
       enddo
    enddo
+!  -------------------------------------------------------------------
+   call endMSSolver()
+!  -------------------------------------------------------------------
 !
    do is = 1, n_spin_pola
       ks = (2*n_spin_cant-1)*is - 2*(n_spin_cant-1)
@@ -2349,7 +2350,6 @@ contains
 !     ----------------------------------------------------------------
    else
 !     ----------------------------------------------------------------
-      call endMSSolver()
       call endSSSolver()
 !     ----------------------------------------------------------------
    endif

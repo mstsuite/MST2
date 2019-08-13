@@ -661,7 +661,7 @@ contains
    allocate( wks_OmegaHat(sz_ind_kkrkkr) )
    allocate( wks_OmegaHatInv(sz_ind_kkrkkr) )
    allocate( wks_S(sz_ind_kkrkkr) )
-   allocate( wks_PS(2*kmax_max_phi*LocalNumSites*NumSpins) )
+   allocate( wks_PS(2*kmax_max_phi*LocalNumSites*NumSpins*MaxSpecies) )
 !
 !tmat_global   if (NumSpins == 2) then
 !tmat_global      allocate(wks_tmatg(sz_ind_intint*4))
@@ -6533,6 +6533,9 @@ use MPPModule, only : MyPE, syncAllPEs
       call ZGETRF_nopivot(kmax, kmax, Scatter(id)%Solutions(ic,is)%S_mat, &
                           kmax, IPVT, INFO)
 !     ----------------------------------------------------------------
+      if (INFO /= 0) then
+         call ErrorHandler('computePhaseShift','Unsuccessful S-matrix diagonalization',INFO)
+      endif
 !
 !     ================================================================
 !     Determine the generialized partial phase shift based on
