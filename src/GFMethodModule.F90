@@ -3362,9 +3362,9 @@ contains
             do id =  1, LocalNumAtoms
                do ia = 1, ssIntegrValue(id)%NumSpecies
                   write(6,'(/,a)')'================================================================================'
-                  write(6,'(a,2i4,2x,f14.8)')'The integrated DOS in atomic cell over the lower contour = ', &
+                  write(6,'(a,3i4,2x,f14.8)')'The integrated DOS in atomic cell over the lower contour = ', &
                         id,ia,is,real(ssIntegrValue(id)%dos(ns,ia),RealKind)
-                  write(6,'(a,2i4,2x,f14.8)')'The integrated DOS in muffin-tin  over the lower contour = ', &
+                  write(6,'(a,3i4,2x,f14.8)')'The integrated DOS in muffin-tin  over the lower contour = ', &
                         id,ia,is,real(ssIntegrValue(id)%dos_mt(ns,ia),RealKind)
                   write(6,'(a,/)')'================================================================================'
                enddo

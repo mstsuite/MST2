@@ -944,6 +944,8 @@ contains
                     KKR_MatrixBand,1)
 !        -------------------------------------------------------------
       endif
+!     call writeMatrix('KKR_MatrixBand',KKR_MatrixBand,KKRMatrixSizeCant, &
+!                      BandSizeCant,TEN2m8,.true.)
    enddo
 !  -------------------------------------------------------------------
    call GlobalSumInGroup(kGID,KKR_MatrixBand,KKRMatrixSizeCant*BandSizeCant)
@@ -1581,6 +1583,7 @@ contains
 !        -------------------------------------------------------------
       enddo
    enddo
+!  call writeMatrix('WORK',WORK,KKRMatrixSizeCant,KKRMatrixSizeCant,TEN2m8,.true.)
 !
    nullify(jinvB)
 !
@@ -1622,6 +1625,8 @@ contains
             endif
          enddo LOOP_n2
       enddo
+!     call writeMatrix('p_MatrixBand',p_MatrixBand,KKRMatrixSizeCant, &
+!                      KKRMatrixSizeCant,TEN2m8)
    else if (method == 1) then
 !     ================================================================
 !     WORK = S(e)^{T*} * B(k,e) * S(e)/kappa
@@ -1787,6 +1792,7 @@ contains
 !ywg              kmb(klp,kl) = KKR_MatrixBand(np+klp)
 !ywg           enddo
 !ywg        enddo
+!           call writeMatrix('kmb before sum rot',kmb,kkrsz,kkrsz,TEN2m8)
             w0 = CZERO
             do irot = 1, nrot
                rotmat => getIBZRotationMatrix('c',irot)
@@ -1808,6 +1814,7 @@ contains
 !           ----------------------------------------------------------
             call zcopy(kkrsz*kkrsz,w0,1,kmb,1)
 !           ----------------------------------------------------------
+!           call writeMatrix('kmb after sum rot',kmb,kkrsz,kkrsz,TEN2m8)
 !
             if (calculate_tau) then
                tmb => MatrixBand(jd)%MatrixBlock(id)%tau_l(:,:,ns)
