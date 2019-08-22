@@ -329,7 +329,7 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind) :: t0size_ns, kkri_ns
 
    complex (kind=CmplxKind), intent(in) :: e
-   complex (kind=CmplxKind), pointer :: gmat(:,:), tmp1(:,:), tmp2(:,:)
+   complex (kind=CmplxKind), pointer :: gmat(:,:), tmp1(:,:), tmp2(:,:), p1(:)
 
    if (.not.Initialized) then
       call ErrorHandler('solveRelSST', 'module is not initialized')
@@ -367,7 +367,8 @@ include '../lib/arrayTools.F90'
    do i = i0,i1
       t0size = 4*kmax_kkr(i)*kmax_kkr(i)
       kkri_ns =  kmax_kkr(i)*n_spin_cant
-      gmat => aliasArray2_c(tmat_g(1:t0size,i),kkri_ns,kkri_ns)
+      p1 => tmat_g(1:t0size,i)
+      gmat => aliasArray2_c(p1,kkri_ns,kkri_ns)
 
       call repl(gmat, RelSolutionComp(i)%tmat, kkri_ns, kkri_ns)
 

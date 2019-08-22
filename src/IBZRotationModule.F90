@@ -10,7 +10,10 @@ public :: initIBZRotation,          &
           getNumProperIBZRotations, &
           getIBZRotationMatrix,     &
           getIBZRotationMatrix3D,   &
-          printIBZRotationMatrix
+          printIBZRotationMatrix,   &
+          checkCrystalSymmetry,     &
+          setupBasisRotationTable,  &
+          getBasisRotationTable
 !
 private
 !
@@ -24,6 +27,9 @@ private
       integer (kind=IntKind) :: NumProperRotations
       integer (kind=IntKind), parameter :: maxrot = 48
 !
+      integer (kind=intKind), allocatable, target :: rt(:,:)
+      integer (kind=intKind), allocatable :: nshift(:,:,:)
+!
       real (kind=RealKind), target :: rot3d(3,3,maxrot)
       real (kind=RealKind) :: euler(3,maxrot/2)
       real (kind=RealKind), allocatable :: fact(:)
@@ -33,6 +39,7 @@ private
       complex (kind=CmplxKind), allocatable, target :: djc(:,:,:)
 !
       logical :: Initialized = .false.
+      logical :: Computed = .false.
 !
 contains
 !
@@ -99,6 +106,7 @@ contains
       deallocate( fact, reflex, dj, djc )
 !
       Initialized = .false.
+      Computed = .false.
 !
       end subroutine endIBZRotation
 !     ================================================================
@@ -106,9 +114,15 @@ contains
 !     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       subroutine computeRotationMatrix()
 !     ================================================================
+      use ErrorHandlerModule, only : ErrorHandler
+!
       implicit none
 !
       integer (kind=IntKind) :: i, kl, klp
+!
+      if (.not.Initialized) then
+         call ErrorHandler('computeRotationMatrix','IBZRotationModule is not initialized')
+      endif
 !
       if (symmetrize) then
 !        -------------------------------------------------------------
@@ -134,6 +148,8 @@ contains
          enddo
          djc = dj
       endif
+!
+      Computed = .true.
 !
       end subroutine computeRotationMatrix
 !     ================================================================
@@ -965,5 +981,232 @@ contains
       endif
 !
       end function vcoup
-!     ==================================================================
+!     ================================================================
+!
+!     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      function checkCrystalSymmetry(bravais,nbasis,apos,aname,anum) result(y)
+!     ================================================================
+!     Purpose: check if the crystal has the symmetry determined by
+!              the rotation matrices.
+!
+!     input:   bravais - Bravais lattice vectors
+!              nbasis  - The number of basis atoms at each lattice point
+!              apot    - The position of the basis atoms.
+!              aname   - The name of the basis atoms.
+!              anum    - The atomic number of the basis atoms.
+!
+!     return:  .true. , if the crystal has the symmetry determined by 
+!                       the rotation matrices.
+!              .false., if the crystal does not have the symmetry determined
+!                       by the rotation matrices.
+!     ================================================================
+      use MathParamModule, only : TEN2m8
+      use ErrorHandlerModule, only : ErrorHandler
+      use WriteMatrixModule,  only : writeMatrix
+      use VectorModule, only : getVecLength
+!
+      implicit none
+!
+      integer (kind=intKind), intent(in) :: nbasis
+      integer (kind=intKind), intent(in), optional :: anum(nbasis)
+      integer (kind=intKind) :: ib, jb, ir, n
+      integer (kind=intKind) :: nmax, na, nb, nc, is, js, ks
+!
+      character (len=*), intent(in), optional :: aname(nbasis)
+!
+      real (kind=RealKind), intent(in) :: bravais(3,3)
+      real (kind=RealKind), intent(in) :: apos(3,nbasis)
+      real (kind=RealKind) :: apos_rot(3), apos_ori(3)
+      real (kind=RealKind) :: alen, blen, clen, max_len
+!
+      logical :: y, found
+!
+      if (.not.Computed) then
+         call ErrorHandler('checkCrystalSymmetry','Rotation matrix is not calculated')
+      endif
+!
+      alen = getVecLength(3,bravais(1:3,1))
+      blen = getVecLength(3,bravais(1:3,2))
+      clen = getVecLength(3,bravais(1:3,3))
+      max_len = max(alen,blen,clen)
+      na = ceiling(max_len/alen)
+      nb = ceiling(max_len/blen)
+      nc = ceiling(max_len/clen)
+      nmax = (2*na+1)*(2*nb+1)*(2*nc+1)
+!
+      y = .true.
+!
+      do ir = 1, NumRotations
+         do ib = 1, nbasis
+            apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(1,2,ir)*apos(2,ib)+rot3d(1,3,ir)*apos(3,ib)
+            apos_rot(2) = rot3d(2,1,ir)*apos(1,ib)+rot3d(2,2,ir)*apos(2,ib)+rot3d(2,3,ir)*apos(3,ib)
+            apos_rot(3) = rot3d(3,1,ir)*apos(1,ib)+rot3d(3,2,ir)*apos(2,ib)+rot3d(3,3,ir)*apos(3,ib)
+            found = .false.
+            LOOP_jb: do jb = 1, nbasis
+               do n = 1, nmax
+                  is = mod(n-1,2*na+1) - na                         ! is = -na,...,0,...,+na
+                  js = mod((n-is-na-1)/(2*na+1),2*nb+1) - nb        ! js = -nb,...,0,...,+nb
+                  ks = ((n-is-na-1)/(2*na+1)-(js+nb))/(2*nb+1) - nc ! ks = -nc,...,0,...,+nc
+                  apos_ori(1) = apos(1,jb) + is*bravais(1,1)+js*bravais(1,2)+ks*bravais(1,3)
+                  apos_ori(2) = apos(2,jb) + is*bravais(2,1)+js*bravais(2,2)+ks*bravais(2,3)
+                  apos_ori(3) = apos(3,jb) + is*bravais(3,1)+js*bravais(3,2)+ks*bravais(3,3)
+                  if (present(aname)) then
+                     if (abs(apos_rot(1)-apos_ori(1)) < TEN2m8 .and.           &
+                         abs(apos_rot(2)-apos_ori(2)) < TEN2m8 .and.           &
+                         abs(apos_rot(3)-apos_ori(3)) < TEN2m8 .and. aname(ib) == aname(jb)) then
+                         found = .true.
+                         exit LOOP_jb
+                     endif
+                  else if (present(anum)) then
+                     if (abs(apos_rot(1)-apos_ori(1)) < TEN2m8 .and.           &
+                         abs(apos_rot(2)-apos_ori(2)) < TEN2m8 .and.           &
+                         abs(apos_rot(3)-apos_ori(3)) < TEN2m8 .and. anum(ib) == anum(jb)) then
+                         found = .true.
+                         exit LOOP_jb
+                     endif
+                  else
+                     call ErrorHandler('checkCrystalSymmetry',                 &
+                                       'Either atomic name or atomic number needs to be passed in')
+                  endif
+               enddo
+            enddo LOOP_jb
+            if (.not.found) then
+               y = .false.
+               return
+            endif
+         enddo
+      enddo
+!
+      end function checkCrystalSymmetry
+!     ================================================================
+!
+!     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      subroutine setupBasisRotationTable(bravais,nbasis,apos,inverse)
+!     ================================================================
+!     Purpose: setup the basis atom rotation table
+!
+!     input:   bravais - Bravais lattice vectors
+!              nbasis  - The number of basis atoms at each lattice point
+!              apot    - The position of the basis atoms.
+!              inverse - If specified and is true, the inverse rotation
+!                        is considered here.
+!
+!     Determine:
+!              rt - rt(1:nbasis,1:nrot)
+!                   The rotation table contains the relation between
+!                   a pair of basis atoms related by a rotation, plus
+!                   a translation. Specifically, if atom i is at
+!                   atom j position after rotation ir, then
+!                   rt(i,ir) = j.
+!          nshift - nshift(1:3,1:nbasis,1:nrot)
+!                   contains (n1,n2,n3) to determine the translation vector Rn,
+!                   which gives rise to
+!                         Rot(:,:,ir) * apos(:,i) = apos(:,j) + Rn(:)
+!                   and 
+!                 Rn(:) = n1*bravais(:,1) + n2*bravais(:,2) + n3*bravais(:,3)
+!     ================================================================
+      use MathParamModule, only : TEN2m8
+      use ErrorHandlerModule, only : ErrorHandler
+      use WriteMatrixModule,  only : writeMatrix
+      use VectorModule, only : getVecLength
+!
+      implicit none
+!
+      logical, optional, intent(in) :: inverse
+      logical :: inv, found
+!
+      integer (kind=intKind), intent(in) :: nbasis
+      integer (kind=intKind) :: ib, jb, kb, ir, n, ni, nj
+      integer (kind=intKind) :: nmax, na, nb, nc, is, js, ks
+!
+      real (kind=RealKind), intent(in) :: bravais(3,3)
+      real (kind=RealKind), intent(in) :: apos(3,nbasis)
+      real (kind=RealKind) :: apos_rot(3), apos_ori(3)
+      real (kind=RealKind) :: alen, blen, clen, max_len
+!
+      if (.not.Computed) then
+         call ErrorHandler('setBasisRotationTable','Rotation matrix is not calculated')
+      endif
+!
+      if (.not.allocated(rt)) then
+         allocate(rt(nbasis,NumRotations))
+         allocate(nshift(3,nbasis,NumRotations))
+      endif
+!
+      if (present(inverse)) then
+         inv = inverse
+      else
+         inv = .false.
+      endif
+!
+      alen = getVecLength(3,bravais(1:3,1))
+      blen = getVecLength(3,bravais(1:3,2))
+      clen = getVecLength(3,bravais(1:3,3))
+      max_len = max(alen,blen,clen)
+      na = ceiling(max_len/alen)
+      nb = ceiling(max_len/blen)
+      nc = ceiling(max_len/clen)
+      nmax = (2*na+1)*(2*nb+1)*(2*nc+1)
+!
+      rt = 0
+      nshift = 0
+      do ir = 1, NumRotations
+         do ib = 1, nbasis
+            if (inv) then
+               apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(2,1,ir)*apos(2,ib)+rot3d(3,1,ir)*apos(3,ib)
+               apos_rot(2) = rot3d(1,2,ir)*apos(1,ib)+rot3d(2,2,ir)*apos(2,ib)+rot3d(3,2,ir)*apos(3,ib)
+               apos_rot(3) = rot3d(1,3,ir)*apos(1,ib)+rot3d(2,3,ir)*apos(2,ib)+rot3d(3,3,ir)*apos(3,ib)
+            else
+               apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(1,2,ir)*apos(2,ib)+rot3d(1,3,ir)*apos(3,ib)
+               apos_rot(2) = rot3d(2,1,ir)*apos(1,ib)+rot3d(2,2,ir)*apos(2,ib)+rot3d(2,3,ir)*apos(3,ib)
+               apos_rot(3) = rot3d(3,1,ir)*apos(1,ib)+rot3d(3,2,ir)*apos(2,ib)+rot3d(3,3,ir)*apos(3,ib)
+            endif
+            kb = 0
+            LOOP_jb: do jb = 1, nbasis
+               do n = 1, nmax
+                  is = mod(n-1,2*na+1) - na                         ! is = -na,...,0,...,+na
+                  js = mod((n-is-na-1)/(2*na+1),2*nb+1) - nb        ! js = -nb,...,0,...,+nb
+                  ks = ((n-is-na-1)/(2*na+1)-(js+nb))/(2*nb+1) - nc ! ks = -nc,...,0,...,+nc
+                  apos_ori(1) = apos(1,jb) + is*bravais(1,1)+js*bravais(1,2)+ks*bravais(1,3)
+                  apos_ori(2) = apos(2,jb) + is*bravais(2,1)+js*bravais(2,2)+ks*bravais(2,3)
+                  apos_ori(3) = apos(3,jb) + is*bravais(3,1)+js*bravais(3,2)+ks*bravais(3,3)
+                  if (abs(apos_rot(1)-apos_ori(1)) < TEN2m8 .and.     &
+                      abs(apos_rot(2)-apos_ori(2)) < TEN2m8 .and.     &
+                      abs(apos_rot(3)-apos_ori(3)) < TEN2m8) then
+                      kb = jb
+                      exit LOOP_jb
+                  endif
+               enddo
+            enddo LOOP_jb
+            if (kb == 0) then
+               call writeMatrix('3-D rotation matrix',rot3d(:,:,ir),3,3)
+               call ErrorHandler('setBasisRotationTable','The crystal cystem does not possess the rotation symmetry')
+            else
+               rt(ib,ir) = kb
+               nshift(1,ib,ir) = is
+               nshift(2,ib,ir) = js
+               nshift(3,ib,ir) = ks
+            endif
+         enddo
+      enddo
+!
+      end subroutine setupBasisRotationTable
+!     ================================================================
+!
+!     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      function getBasisRotationTable(ntab) result(p)
+!     ================================================================
+      implicit none
+!
+      integer (kind=IntKind), intent(out), optional :: ntab(:,:,:)
+      integer (kind=IntKind), pointer :: p(:,:)
+!
+      if (present(ntab)) then
+         ntab = nshift
+      endif
+!
+      p => rt
+!
+      end function getBasisRotationTable
+!     ================================================================
 end module IBZRotationModule

@@ -134,6 +134,8 @@ contains
    integer (kind=IntKind) :: wsTau00_size, pos_tau
    integer (kind=IntKind), allocatable :: nblck(:),kblocks(:,:)
 !
+   complex (kind=CmplxKind), pointer :: p1(:)
+!
    n_spin_cant = cant
    Relativity = rel
    LocalNumAtoms = num_latoms
@@ -225,10 +227,14 @@ contains
          lmax_max = max(lmax_max,lmax)
          kblocks(j+1,i) = (lmax+1)*(lmax+1)*n_spin_cant 
       enddo
-      Tau00(i)%tau_l => aliasArray3_c( wsTau00L(pos_tau+1:pos_tau+kmaxns*kmaxns),&
-                                       kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
-      Tau00(i)%kau_l => aliasArray3_c( wsKau00L(pos_tau+1:pos_tau+kmaxns*kmaxns),&
-                                       kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
+!     Tau00(i)%tau_l => aliasArray3_c( wsTau00L(pos_tau+1:pos_tau+kmaxns*kmaxns),&
+!                                      kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
+      p1 => wsTau00L(pos_tau+1:pos_tau+kmaxns*kmaxns)
+      Tau00(i)%tau_l => aliasArray3_c( p1, kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
+!     Tau00(i)%kau_l => aliasArray3_c( wsKau00L(pos_tau+1:pos_tau+kmaxns*kmaxns),&
+!                                      kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
+      p1 => wsKau00L(pos_tau+1:pos_tau+kmaxns*kmaxns)
+      Tau00(i)%kau_l => aliasArray3_c( p1, kmax_kkr(i), kmax_kkr(i), n_spin_cant*n_spin_cant )
       pos_tau = pos_tau + kmaxns*kmaxns
       numnb_max = max(numnb_max, Neighbor%NumAtoms)
    enddo
@@ -431,7 +437,7 @@ contains
    integer (kind=IntKind) :: proc, gid, t0size, t0size_ns, kkri_ns
 !
    complex (kind=CmplxKind), pointer :: sm1(:,:), sm2(:,:), gmat(:,:)
-   complex (kind=CmplxKind), pointer :: jm1(:,:), jm2(:,:)
+   complex (kind=CmplxKind), pointer :: jm1(:,:), jm2(:,:), p1(:)
 #ifdef OpenMPI
    complex (kind=CmplxKind), pointer :: p_trecv(:,:)
 #endif
@@ -485,7 +491,9 @@ contains
 !        -------------------------------------------------------------
          sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,site=i)
          sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=2,site=i)
-         gmat => aliasArray2_c(sine_g(1:t0size_ns),kkri_ns,kkri_ns)
+!        gmat => aliasArray2_c(sine_g(1:t0size_ns),kkri_ns,kkri_ns)
+         p1 => sine_g(1:t0size_ns)
+         gmat => aliasArray2_c(p1,kkri_ns,kkri_ns)
 !        -------------------------------------------------------------
          call rotateLtoG(i, kmax_kkr(i), kmax_kkr(i), sm1, sm2, gmat)
 !        -------------------------------------------------------------

@@ -236,6 +236,7 @@ contains
    integer (kind=IntKind), allocatable :: NumRs(:)
 !
    real (kind=RealKind), intent(in) :: posi_in(3,na)
+   real (kind=RealKind), pointer :: p1(:)
 !
    logical, intent(in), optional :: isGGA
 !
@@ -340,8 +341,8 @@ contains
       ssIDOS_out(id)%n1 = n_spin_pola*n_spin_cant
       ssIDOS_out(id)%n2 = getLocalNumSpecies(id)
       n = ssIDOS_out(id)%n1*ssIDOS_out(id)%n2
-      ssIDOS_out(id)%rarray2 => aliasArray2_r(wk_ssIDOS_out(nsize+1:nsize+n), &
-                                              ssIDOS_out(id)%n1,ssIDOS_out(id)%n2)
+      p1 => wk_ssIDOS_out(nsize+1:nsize+n)
+      ssIDOS_out(id)%rarray2 => aliasArray2_r(p1,ssIDOS_out(id)%n1,ssIDOS_out(id)%n2)
       nsize = nsize + n
    enddo
 !
@@ -553,6 +554,8 @@ contains
    integer(kind=IntKind), intent(in) :: id, NumRs, lmax
    integer(kind=IntKind), intent(inout), optional :: green_ind
 !
+   complex (kind=CmplxKind), pointer :: p1(:)
+!
    type (ElectroStruct), intent(inout) :: ES
 !
    integer(kind=IntKind) :: iend, jmax, kmax, green_size, n, ia
@@ -574,11 +577,11 @@ contains
    allocate(ES%dos_mt(4,n))
    allocate(ES%evalsum(4,n))
 !
-   ES%dos_r_jl => aliasArray4_c( wk_green(green_ind:green_ind+green_size-1),  &
-                                          iend, jmax, n_spin_cant*n_spin_pola, n )
+   p1 => wk_green(green_ind:green_ind+green_size-1)
+   ES%dos_r_jl => aliasArray4_c( p1, iend, jmax, n_spin_cant*n_spin_pola, n )
    if (rad_derivative) then
-      ES%der_dos_r_jl => aliasArray4_c( wk_dgreen(green_ind:green_ind+green_size-1),  &
-                                                  iend, jmax, n_spin_cant*n_spin_pola, n )
+      p1 => wk_dgreen(green_ind:green_ind+green_size-1)
+      ES%der_dos_r_jl => aliasArray4_c( p1, iend, jmax, n_spin_cant*n_spin_pola, n )
    endif
    green_ind = green_ind + green_size
 !
@@ -1113,6 +1116,7 @@ contains
 !
    real (kind=RealKind) :: e_imag, de, msDOS(2), ssDOS, eb
    real (kind=RealKind), allocatable :: e_real(:)
+   real (kind=RealKind), pointer :: p1(:)
 !
    complex (kind=CmplxKind) :: energy, ec
 !
@@ -1217,8 +1221,10 @@ contains
       dosdata(id)%n1=nvals
       dosdata(id)%n2=ne
       dosdata(id)%n3=num_species
-      SS_dosdata(id)%rarray3=>aliasArray3_r(wk_SS_dosdata(nsize+1:nsize+nvals*ne*num_species),nvals,ne,num_species)
-      dosdata(id)%rarray3=>aliasArray3_r(wk_dosdata(nsize+1:nsize+nvals*ne*num_species),nvals,ne,num_species)
+      p1 => wk_SS_dosdata(nsize+1:nsize+nvals*ne*num_species)
+      SS_dosdata(id)%rarray3=>aliasArray3_r(p1,nvals,ne,num_species)
+      p1 => wk_dosdata(nsize+1:nsize+nvals*ne*num_species)
+      dosdata(id)%rarray3=>aliasArray3_r(p1,nvals,ne,num_species)
       nsize = nsize+nvals*ne*num_species 
    enddo
    wk_SS_dosdata = ZERO
@@ -2506,11 +2512,11 @@ contains
 !
    real (kind=RealKind), pointer :: dos(:), dos_mt(:), dos_out(:), tps(:)
    real (kind=RealKind) :: sfac, rmul, t0, ssdos
-   real (kind=RealKind), pointer :: ps(:)
+   real (kind=RealKind), pointer :: ps(:), p1(:)
    real (kind=RealKind), pointer :: msgbuf(:,:)
    real (kind=RealKind), allocatable, target :: wks_loc(:)
 !
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
    complex (kind=CmplxKind) :: energy
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
    complex (kind=CmplxKind), pointer :: der_dos_r_jl(:,:)
@@ -2538,8 +2544,8 @@ contains
    dos_mt => wks_loc(n+1:2*n)
    dos_out => wks_loc(2*n+1:3*n)
    tps => wks_loc(3*n+1:4*n)
-   msgbuf => aliasArray2_r(wks_loc(4*n+1:4*n+(4*n+1)*NumPEsInEGroup), &
-                           4*n+1,NumPEsInEGroup)
+   p1 => wks_loc(4*n+1:4*n+(4*n+1)*NumPEsInEGroup)
+   msgbuf => aliasArray2_r(p1,4*n+1,NumPEsInEGroup)
 !
    if (present(rfac)) then
       rmul = rfac
@@ -2726,12 +2732,12 @@ contains
 !
    real (kind=RealKind) :: dos, sfac, t0
 !
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
    complex (kind=CmplxKind) :: energy, cmul, greenint, greenint_mt, ede
    complex (kind=CmplxKind), pointer :: green(:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
    complex (kind=CmplxKind), pointer :: der_green(:,:), der_dos_r_jl(:,:)
-   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
+   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:), p1(:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -2792,7 +2798,8 @@ contains
             ede = (energy-chempot)
          endif
 !
-         dos_r_jl => aliasArray2_c(aux(n+1:n+iend*jmax), iend, jmax)
+         p1 => aux(n+1:n+iend*jmax)
+         dos_r_jl => aliasArray2_c(p1, iend, jmax)
          do jl = 1, jmax
             l = lofj(jl); m = mofj(jl)
             kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -2804,7 +2811,8 @@ contains
          n = n + iend*jmax
          if (rad_derivative) then
             der_green=>getGreenFunctionDerivative(spin=is,site=id,atom=ia)
-            der_dos_r_jl => aliasArray2_c(aux(n+1:n+iend*jmax), iend, jmax)
+            p1 => aux(n+1:n+iend*jmax)
+            der_dos_r_jl => aliasArray2_c(p1, iend, jmax)
             do jl = 1, jmax
                l = lofj(jl); m = mofj(jl)
                kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -3763,11 +3771,11 @@ contains
    integer (kind=IntKind) :: is, id, ia, atom
    integer (kind=IntKind) :: js, n, p0, iend, jmax, kmax, n0
 ! 
-   complex (kind=CmplxKind), intent(in) :: dos_array(:)
+   complex (kind=CmplxKind), intent(in), target :: dos_array(:)
 !
    type (ElectroStruct), intent(out) :: CurrentValue
 !
-   complex (kind=CmplxKind), pointer :: pca_x(:,:), pca_y(:,:)
+   complex (kind=CmplxKind), pointer :: pca_x(:,:), pca_y(:,:), p1(:)
 !
    if (present(ss_int)) then
       IntegratedSingleSite = ss_int
@@ -3864,7 +3872,8 @@ contains
 !           write(6,'(a,3d15.8)')'dos_array(n+1:n+3) = ',real(dos_array(n+1:n+3))*PI
             if (isDensityMatrixNeeded) then
                kmax = CurrentValue%kmax
-               pca_x => aliasArray2_c(dos_array(n0+1:n0+kmax*kmax),kmax,kmax)
+               p1 => dos_array(n0+1:n0+kmax*kmax)
+               pca_x => aliasArray2_c(p1,kmax,kmax)
                pca_y => CurrentValue%density_matrix(:,:,js,ia)
                pca_y = pca_x
                n0 = n0 + kmax*kmax
@@ -3879,12 +3888,14 @@ contains
       do ia = 1, CurrentValue%NumSpecies
          if (atom < 0 .or. atom == ia) then
             do js = 1, ns*ns
-               pca_x => aliasArray2_c(dos_array(p0+1:p0+n),iend,jmax)
+               p1 => dos_array(p0+1:p0+n)
+               pca_x => aliasArray2_c(p1,iend,jmax)
                pca_y => CurrentValue%dos_r_jl(:,:,js,ia)
                pca_y = pca_x
                if (rad_derivative) then
                   p0 = p0 + n
-                  pca_x => aliasArray2_c(dos_array(p0+1:p0+n),iend,jmax)
+                  p1 => dos_array(p0+1:p0+n)
+                  pca_x => aliasArray2_c(p1,iend,jmax)
                   pca_y => CurrentValue%der_dos_r_jl(:,:,js,ia)
                   pca_y = pca_x
                endif
@@ -3898,7 +3909,8 @@ contains
                p0 = p0 + 4
                if (isDensityMatrixNeeded) then
                   kmax = CurrentValue%kmax
-                  pca_x => aliasArray2_c(dos_array(p0+1:p0+kmax*kmax),kmax,kmax)
+                  p1 => dos_array(p0+1:p0+kmax*kmax)
+                  pca_x => aliasArray2_c(p1,kmax,kmax)
                   pca_y => CurrentValue%density_matrix(:,:,js,ia)
                   pca_y = pca_x
                   p0 = p0 + kmax*kmax
@@ -4032,7 +4044,7 @@ contains
    complex (kind=CmplxKind), pointer :: green(:,:,:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:), pca_x(:,:), pca_y(:,:)
    complex (kind=CmplxKind), pointer :: der_green(:,:,:,:), der_dos_r_jl(:,:)
-   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
+   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:), p1(:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -4182,7 +4194,8 @@ contains
 !
          n = iend*jmax
          do ks = 1, ns_sqr
-            dos_r_jl => aliasArray2_c(dos_array(p0+1:p0+n), iend, jmax)
+            p1 => dos_array(p0+1:p0+n)
+            dos_r_jl => aliasArray2_c(p1, iend, jmax)
             do jl = 1, jmax
                l = lofj(jl); m = mofj(jl)
                kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -4193,7 +4206,8 @@ contains
             enddo
             p0 = p0 + n
             if (rad_derivative) then
-               der_dos_r_jl => aliasArray2_c(dos_array(p0+1:p0+n), iend, jmax)
+               p1 => dos_array(p0+1:p0+n)
+               der_dos_r_jl => aliasArray2_c(p1, iend, jmax)
                do jl = 1, jmax
                   l = lofj(jl); m = mofj(jl)
                   kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -4212,7 +4226,8 @@ contains
             if (isDensityMatrixNeeded) then
                kmax = size(green_matrix,1)
                pca_x => green_matrix(:,:,ks,ia)
-               pca_y => aliasArray2_c(dos_array(p0+1:p0+kmax*kmax),kmax,kmax)
+               p1 => dos_array(p0+1:p0+kmax*kmax)
+               pca_y => aliasArray2_c(p1,kmax,kmax)
                pca_y = cmul*SQRTm1*pca_x
                p0 = p0 + kmax*kmax
             endif
@@ -6273,7 +6288,7 @@ contains
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind) :: msgbuf(5,NumPEsInEGroup)
 !
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
    complex (kind=CmplxKind) :: energy
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
 !
@@ -6409,7 +6424,7 @@ contains
    real (kind=RealKind), pointer :: ps(:)
    real (kind=RealKind) :: msgbuf(5,NumPEsInEGroup)
 !
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
    complex (kind=CmplxKind) :: energy
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
 !
@@ -6576,11 +6591,11 @@ contains
 !
    real (kind=RealKind) :: dos, sfac, t0
 !
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
    complex (kind=CmplxKind) :: energy, cmul, greenint, greenint_mt, ede
    complex (kind=CmplxKind), pointer :: green(:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:)
-   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
+   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:), p1(:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -6635,7 +6650,8 @@ contains
    do ks = 1, n_spin_cant*n_spin_cant
       n0=(ks-1)*(iend*jmax+4)
       green => getRelSSGreen(ks,id)
-      dos_r_jl => aliasArray2_c(aux(n0+1:n0+n),iend,jmax)
+      p1 => aux(n0+1:n0+n)
+      dos_r_jl => aliasArray2_c(p1,iend,jmax)
       do jl = 1, jmax
          l = lofj(jl); m = mofj(jl)
          kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -6706,7 +6722,7 @@ contains
    complex (kind=CmplxKind), pointer :: green_matrix(:,:,:)
    complex (kind=CmplxKind), pointer :: green(:,:,:)
    complex (kind=CmplxKind), pointer :: dos_r_jl(:,:), pca_x(:,:), pca_y(:,:)
-   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:)
+   complex (kind=CmplxKind), pointer :: pcv_x(:), pcv_y(:), pcv_z(:), p1(:)
 !
    type (GridStruct), pointer :: Grid
 !
@@ -6821,7 +6837,8 @@ contains
    n = iend*jmax
    p0 = 0
    do ks = 1, ns_sqr
-      dos_r_jl => aliasArray2_c(dos_array(p0+1:p0+n), iend, jmax)
+      p1 => dos_array(p0+1:p0+n)
+      dos_r_jl => aliasArray2_c(p1, iend, jmax)
       do jl = 1, jmax
          l = lofj(jl); m = mofj(jl)
          kl = (l+1)**2-l+m; klc = (l+1)**2-l-m
@@ -6839,7 +6856,8 @@ contains
 !      if (isDensityMatrixNeeded) then
 !         kmax = size(green_matrix,1)
 !         pca_x => green_matrix(:,:,ks)
-!         pca_y => aliasArray2_c(dos_array(p0+1:p0+kmax*kmax),kmax,kmax)
+!         p1 => dos_array(p0+1:p0+kmax*kmax)
+!         pca_y => aliasArray2_c(p1,kmax,kmax)
 !         pca_y = cmul*SQRTm1*pca_x
 !         p0 = p0 + kmax*kmax
 !      endif

@@ -288,6 +288,9 @@ include '../lib/arrayTools.F90'
    real (kind=RealKind) :: evec(3)
    integer (kind=IntKind) :: id,lamax,sz,lpot,loc1,loc2,lgreen
 !
+   real (kind=RealKind), pointer :: p1r(:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
+!
    interface
       function getNumSpecies(id) result(n)
          use KindParamModule, only : IntKind
@@ -414,32 +417,32 @@ include '../lib/arrayTools.F90'
       lmax_pot_max = max(lmax_pot(ia),lmax_pot_max)
       inda = ind_solutions(ia)
       indb = inda + (Scatter(ia)%numrs*kkrsz*kkrsz) - 1
-      Scatter(ia)%ss_mat_r => aliasArray3_c(wks_ssmat_r(inda:indb), &
-                              kkrsz, kkrsz, Scatter(ia)%numrs)
-      Scatter(ia)%cc_mat_r => aliasArray3_c(wks_ccmat_r(inda:indb), &
-                              kkrsz, kkrsz, Scatter(ia)%numrs)
+      p1c => wks_ssmat_r(inda:indb)
+      Scatter(ia)%ss_mat_r => aliasArray3_c(p1c, kkrsz, kkrsz, Scatter(ia)%numrs)
+      p1c => wks_ccmat_r(inda:indb)
+      Scatter(ia)%cc_mat_r => aliasArray3_c(p1c, kkrsz, kkrsz, Scatter(ia)%numrs)
       inda = ind_tmat(ia) 
 !print*,"ind_tmat=",ind_tmat(ia)
       indb = inda + kkrsz*kkrsz - 1
 !print*,"indb=",indb
-      Scatter(ia)%t_mat => aliasArray2_c(wks_tmat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%S_mat => aliasArray2_c(wks_Smat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%sin_mat => aliasArray2_c(wks_sinmat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%cos_mat => aliasArray2_c(wks_cosmat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%jost_mat => aliasArray2_c(wks_jostmat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%jinv_mat => aliasArray2_c(wks_jinvmat(inda:indb), &
-                           kkrsz,kkrsz)
-!      Scatter(ia)%Omega_mat => aliasArray2_c(wks_Omega(inda:indb), &
-!                           kkrsz,kkrsz)
-      Scatter(ia)%OmegaHat_mat => aliasArray2_c(wks_OmegaHat(inda:indb), &
-                           kkrsz,kkrsz)
-      Scatter(ia)%OmegaHatInv_mat => aliasArray2_c(wks_OmegaHatInv(inda:indb), &
-                           kkrsz,kkrsz)
+      p1c => wks_tmat(inda:indb)
+      Scatter(ia)%t_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_Smat(inda:indb)
+      Scatter(ia)%S_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_sinmat(inda:indb)
+      Scatter(ia)%sin_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_cosmat(inda:indb)
+      Scatter(ia)%cos_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_jostmat(inda:indb)
+      Scatter(ia)%jost_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_jinvmat(inda:indb)
+      Scatter(ia)%jinv_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+!     p1c => wks_Omega(inda:indb)
+!     Scatter(ia)%Omega_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_OmegaHat(inda:indb)
+      Scatter(ia)%OmegaHat_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
+      p1c => wks_OmegaHatInv(inda:indb)
+      Scatter(ia)%OmegaHatInv_mat => aliasArray2_c(p1c,kkrsz,kkrsz)
    enddo
 !=============================================================================
 ! init kyk, note that wks_kyk is different from kyk_wks: wks_kyk is for output 
@@ -459,10 +462,14 @@ include '../lib/arrayTools.F90'
       lamax = Scatter(id)%lamax
       lgreen = Scatter(id)%lmax_green
       loc2 = loc1 + 2*(lgreen+1)**2*lamax*lamax
-      Scatter(id)%kyk => aliasArray4_r(wks_kyk(loc1+1:loc2),(lgreen+1)**2,2,lamax,lamax)
-      Scatter(id)%kyk_Bz => aliasArray4_r(wks_kyk_Bz(loc1+1:loc2),(lgreen+1)**2,2,lamax,lamax)
-      Scatter(id)%kyk_Bx => aliasArray4_r(wks_kyk_Bx(loc1+1:loc2),(lgreen+1)**2,2,lamax,lamax)
-      Scatter(id)%kyk_By => aliasArray4_r(wks_kyk_By(loc1+1:loc2),(lgreen+1)**2,2,lamax,lamax)
+      p1r => wks_kyk(loc1+1:loc2)
+      Scatter(id)%kyk => aliasArray4_r(p1r,(lgreen+1)**2,2,lamax,lamax)
+      p1r => wks_kyk_Bz(loc1+1:loc2)
+      Scatter(id)%kyk_Bz => aliasArray4_r(p1r,(lgreen+1)**2,2,lamax,lamax)
+      p1r => wks_kyk_Bx(loc1+1:loc2)
+      Scatter(id)%kyk_Bx => aliasArray4_r(p1r,(lgreen+1)**2,2,lamax,lamax)
+      p1r => wks_kyk_By(loc1+1:loc2)
+      Scatter(id)%kyk_By => aliasArray4_r(p1r,(lgreen+1)**2,2,lamax,lamax)
       loc1 = loc2
    enddo
 
@@ -2380,7 +2387,7 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind) :: lmax_dos, jmax_dos, kmax_kkr_loc
    complex (kind=CmplxKind), pointer :: dos(:,:),dos_Bxyz(:,:,:)
    complex (kind=CmplxKind) :: cfac, kappa, energy
-   complex (kind=CmplxKind), pointer :: green(:,:),green_Bxyz(:,:,:)
+   complex (kind=CmplxKind), pointer :: green(:,:),green_Bxyz(:,:,:), p1c(:)
 
    id = atom
    kappa=kappa_g
@@ -2404,7 +2411,8 @@ include '../lib/arrayTools.F90'
          lm = Scatter(ia)%lmax_green
          jm = (lm+1)*(lm+2)/2
          loc2 = loc1 + nr*jm
-         Scatter(ia)%dos => aliasArray2_c(wks_dos(loc1+1:loc2),nr,jm)
+         p1c => wks_dos(loc1+1:loc2)
+         Scatter(ia)%dos => aliasArray2_c(p1c,nr,jm)
          Scatter(ia)%dos = CZERO
          loc1 = loc2
       enddo
@@ -2416,7 +2424,8 @@ include '../lib/arrayTools.F90'
             lm = Scatter(ia)%lmax_green
             jm = (lm+1)*(lm+2)/2
                loc2 = loc1 + nr*jm*3
-            Scatter(ia)%dos_Bxyz => aliasArray3_c(wks_dos_Bxyz(loc1+1:loc2),nr,jm,3)
+            p1c => wks_dos_Bxyz(loc1+1:loc2)
+            Scatter(ia)%dos_Bxyz => aliasArray3_c(p1c,nr,jm,3)
             Scatter(ia)%dos_Bxyz = CZERO
             loc1 = loc2
          enddo
@@ -2510,6 +2519,7 @@ include '../lib/arrayTools.F90'
 !   complex (kind=CmplxKind), pointer :: d_c_matrix(:,:)
    complex (kind=CmplxKind), pointer :: d_ss_mat_r(:,:,:)
    complex (kind=CmplxKind), pointer :: d_cc_mat_r(:,:,:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 
    integer (kind=IntKind) :: n_kyk(Scatter(ia)%lamax,Scatter(ia)%lamax)
 
@@ -2580,7 +2590,8 @@ include '../lib/arrayTools.F90'
          nofr = Scatter(id)%numrs_cs
          km = Scatter(id)%kmax_green !kmax_green=(lgreen+1)**2
          loc2 = loc1 + nofr*km
-         Scatter(id)%green => aliasArray2_c(wks_green(loc1+1:loc2),nofr,km)
+         p1c => wks_green(loc1+1:loc2)
+         Scatter(id)%green => aliasArray2_c(p1c,nofr,km)
          loc1 = loc2
       enddo
    endif
@@ -2595,7 +2606,8 @@ include '../lib/arrayTools.F90'
          nofr = Scatter(id)%numrs_cs
          km = Scatter(id)%kmax_green !kmax_green=(lgreen+1)**2
          loc2 = loc1 + nofr*km*3
-         Scatter(id)%green_Bxyz => aliasArray3_c(wks_green_Bxyz(loc1+1:loc2),nofr,km,3)
+         p1c => wks_green_Bxyz(loc1+1:loc2)
+         Scatter(id)%green_Bxyz => aliasArray3_c(p1c,nofr,km,3)
          loc1 = loc2
       enddo
    endif

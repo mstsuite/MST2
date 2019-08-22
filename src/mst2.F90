@@ -171,7 +171,8 @@ program mst2
                            getNumKs
 !
    use IBZRotationModule, only : initIBZRotation, endIBZRotation, computeRotationMatrix, &
-                                 printIBZRotationMatrix
+                                 printIBZRotationMatrix, checkCrystalSymmetry, &
+                                 setupBasisRotationTable
 !
    use ValenceDensityModule, only : initValenceDensity, getFermiEnergy, endValenceDensity
    use ValenceDensityModule, only : printRho_L
@@ -1217,11 +1218,23 @@ program mst2
                            lmax_kkr_max,Symmetrize)
       call computeRotationMatrix()
 !     ----------------------------------------------------------------
+      if( checkCrystalSymmetry(bravais,GlobalNumAtoms,AtomPosition,   &
+                               anum=AtomicNumber) ) then
+         if (node_print_level >= 0) then
+            write(6,'(/,a,/)')'The crystal system has the point group symmetry!'
+         endif
+      else
+         call ErrorHandler('main',                                    &
+                           'The crystal system does not have the point group symmetry')
+      endif
       if (node_print_level >= 1) then
 !        -------------------------------------------------------------
          call printIBZRotationMatrix()
 !        -------------------------------------------------------------
       endif
+!     ----------------------------------------------------------------
+      call setupBasisRotationTable(bravais,GlobalNumAtoms,AtomPosition,inverse=.true.)
+!     ----------------------------------------------------------------
 !
 !     if ( Symmetrize<0 .or. Symmetrize==1 ) then
 !        NumRotations = getNumRotations()

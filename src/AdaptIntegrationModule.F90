@@ -310,7 +310,7 @@ contains
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
-         complex (kind=CmplxKind), intent(out) :: aux(:)
+         complex (kind=CmplxKind), intent(out), target :: aux(:)
          logical, intent(in), optional :: redundant
       end function func
    end interface
@@ -420,7 +420,7 @@ contains
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
-         complex (kind=CmplxKind), intent(out) :: aux(:)
+         complex (kind=CmplxKind), intent(out), target :: aux(:)
          logical, intent(in), optional :: redundant
       end function func
    end interface
@@ -632,7 +632,7 @@ contains
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
-         complex (kind=CmplxKind), intent(out) :: aux(:)
+         complex (kind=CmplxKind), intent(out), target :: aux(:)
          logical, intent(in), optional :: redundant
       end function func
    end interface
@@ -769,7 +769,7 @@ contains
          real (kind=RealKind), intent(in) :: x
          real (kind=RealKind), intent(in), optional :: xi
          real (kind=RealKind) :: y
-         complex (kind=CmplxKind), intent(out) :: aux(:)
+         complex (kind=CmplxKind), intent(out), target :: aux(:)
          logical, intent(in), optional :: redundant
       end function func
    end interface

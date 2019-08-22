@@ -194,8 +194,8 @@ contains
    complex (kind=CmplxKind), pointer :: jost0(:,:), jost1(:,:), jost2(:,:)
    complex (kind=CmplxKind), pointer :: sj0(:,:), sj1(:,:), sj2(:,:)
    complex (kind=CmplxKind), pointer :: am(:,:)
-   complex (kind=CmplxKind), pointer :: sin_t(:,:)
-   complex (kind=CmplxKind), allocatable :: wks_sc(:,:)
+   complex (kind=CmplxKind), pointer :: sin_t(:,:), p1c(:)
+   complex (kind=CmplxKind), allocatable, target :: wks_sc(:,:)
 !
    if (abs(eb-et) < TEN2m6) then
       call ErrorHandler('calQuadraticPoles','et - eb < 0.000001',eb,et)
@@ -227,18 +227,30 @@ contains
 !
       kmax_kkr = (lmax_kkr(id)+1)**2
       kmax_phi = (lmax_phi(id)+1)**2
-      s0 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,1),kmax_phi,kmax_kkr)
-      s1 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,2),kmax_phi,kmax_kkr)
-      s2 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,3),kmax_phi,kmax_kkr)
-      st => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,4),kmax_phi,kmax_kkr)
-      jost0 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,5),kmax_phi,kmax_kkr)
-      jost1 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,6),kmax_phi,kmax_kkr)
-      jost2 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,7),kmax_phi,kmax_kkr)
-      sj0 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,8),kmax_kkr,kmax_kkr)
-      sj1 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,9),kmax_kkr,kmax_kkr)
-      sj2 => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,10),kmax_kkr,kmax_kkr)
-      am => aliasArray2_c(wks_sc(1:kmax_kkr*kmax_kkr,11),kmax_kkr,kmax_kkr)
-      sin_t => aliasArray2_c(wks_sc(1:kmax_phi*kmax_kkr,12),kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,1)
+      s0 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,2)
+      s1 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,3)
+      s2 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,4)
+      st => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,5)
+      jost0 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,6)
+      jost1 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,7)
+      jost2 => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+      p1c => wks_sc(1:kmax_kkr*kmax_kkr,8)
+      sj0 => aliasArray2_c(p1c,kmax_kkr,kmax_kkr)
+      p1c => wks_sc(1:kmax_kkr*kmax_kkr,9)
+      sj1 => aliasArray2_c(p1c,kmax_kkr,kmax_kkr)
+      p1c => wks_sc(1:kmax_kkr*kmax_kkr,10)
+      sj2 => aliasArray2_c(p1c,kmax_kkr,kmax_kkr)
+      p1c => wks_sc(1:kmax_kkr*kmax_kkr,11)
+      am => aliasArray2_c(p1c,kmax_kkr,kmax_kkr)
+      p1c => wks_sc(1:kmax_phi*kmax_kkr,12)
+      sin_t => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
 !
       do is = 1,n_spin_cant
          n = 0

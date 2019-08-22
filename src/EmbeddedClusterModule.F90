@@ -88,6 +88,8 @@ contains
    integer (kind=IntKind) :: BandSize
    integer (kind=IntKind) :: BandSizeCant
 !
+   complex (kind=CmplxKind), pointer :: p1(:)
+!
    type (ScatterInsertStruct), pointer :: head_embed
 !
    stop_routine = istop
@@ -182,9 +184,9 @@ contains
 !                 tau_l stores tau_c, the tau-matrix for the effective
 !                 medium.
 !           ==========================================================
+            p1 => Tau_MatrixBand(:,ig,j)
             EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%kau_l =>      &
-               aliasArray3_c(Tau_MatrixBand(:,ig,j),kmax_kkr,kmax_kkr,&
-                             nSpinCant*nSpinCant)
+                   aliasArray3_c(p1,kmax_kkr,kmax_kkr,nSpinCant*nSpinCant)
             nullify(EmbeddedClusterMatrixBand(j)%MatrixBlock(n)%tau_l)
          enddo
          nk = nk + kmax_kkr_ns

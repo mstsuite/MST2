@@ -213,6 +213,8 @@ contains
    real (kind=RealKind) :: bravais(3,3)
    real (kind=RealKind), allocatable :: global_posi(:,:)
 !
+   complex (kind=CmplxKind), pointer :: p1(:)
+!
    stop_routine = istop
 !
    GlobalNumAtoms = getNumAtoms()
@@ -320,15 +322,23 @@ contains
             MatrixBand(j)%MatrixBlock(n)%row_index = nk + 1
             if (ig == getGlobalIndex(j)) then   ! For now, we only store the diagonal blocks of the big Kau matrix.
                if (isRelativistic) then !by xianglin
-                  MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(Kau_MatrixDiag(nsize+1:nsize+t0size), &
-                                                                      kmaxi*nSpinCant,kmaxi*nSpinCant,1)
-                  MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(Tau_MatrixDiag(nsize+1:nsize+t0size), &
-                                                                      kmaxi*nSpinCant,kmaxi*nSpinCant,1)
+!                 MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(Kau_MatrixDiag(nsize+1:nsize+t0size), &
+!                                                                     kmaxi*nSpinCant,kmaxi*nSpinCant,1)
+                  p1 => Kau_MatrixDiag(nsize+1:nsize+t0size)
+                  MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(p1,kmaxi*nSpinCant,kmaxi*nSpinCant,1)
+!                 MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(Tau_MatrixDiag(nsize+1:nsize+t0size), &
+!                                                                     kmaxi*nSpinCant,kmaxi*nSpinCant,1)
+                  p1 => Tau_MatrixDiag(nsize+1:nsize+t0size)
+                  MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(p1,kmaxi*nSpinCant,kmaxi*nSpinCant,1)
                else
-                  MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(Kau_MatrixDiag(nsize+1:nsize+t0size), &
-                                                                      kmaxi,kmaxi,nSpinCant*nSpinCant)
-                  MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(Tau_MatrixDiag(nsize+1:nsize+t0size), &
-                                                                      kmaxi,kmaxi,nSpinCant*nSpinCant)
+!                 MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(Kau_MatrixDiag(nsize+1:nsize+t0size), &
+!                                                                     kmaxi,kmaxi,nSpinCant*nSpinCant)
+                  p1 => Kau_MatrixDiag(nsize+1:nsize+t0size)
+                  MatrixBand(j)%MatrixBlock(n)%kau_l => aliasArray3_c(p1,kmaxi,kmaxi,nSpinCant*nSpinCant)
+!                 MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(Tau_MatrixDiag(nsize+1:nsize+t0size), &
+!                                                                     kmaxi,kmaxi,nSpinCant*nSpinCant)
+                  p1 => Tau_MatrixDiag(nsize+1:nsize+t0size)
+                  MatrixBand(j)%MatrixBlock(n)%tau_l => aliasArray3_c(p1,kmaxi,kmaxi,nSpinCant*nSpinCant)
                endif
                nsize = nsize + kmaxi*kmaxi*nSpinCant*nSpinCant
             endif
@@ -347,8 +357,10 @@ contains
       kmaxj = (lmax_kkr(j)+1)**2
       do n = 1, GlobalNumAtoms
          kmaxi = MatrixBand(j)%MatrixBlock(n)%kmax_kkr
-         sc_blocks(n,j)%strcon_matrix => aliasArray2_c(SCM_MatrixBand(nsize+1:nsize+kmaxi*kmaxj), &
-                                                       kmaxi,kmaxj)
+!        sc_blocks(n,j)%strcon_matrix => aliasArray2_c(SCM_MatrixBand(nsize+1:nsize+kmaxi*kmaxj), &
+!                                                      kmaxi,kmaxj)
+         p1 => SCM_MatrixBand(nsize+1:nsize+kmaxi*kmaxj)
+         sc_blocks(n,j)%strcon_matrix => aliasArray2_c(p1,kmaxi,kmaxj)
          nsize = nsize + kmaxi*kmaxj
       enddo
    enddo
@@ -532,7 +544,7 @@ contains
    complex (kind=CmplxKind), pointer :: tm1(:,:), tm2(:,:)
    complex (kind=CmplxKind), pointer :: jm1(:,:), jm2(:,:)
    complex (kind=CmplxKind), pointer :: cm1(:,:), cm2(:,:)
-   complex (kind=CmplxKind), pointer :: pm(:), gmat(:,:)
+   complex (kind=CmplxKind), pointer :: pm(:), gmat(:,:), p1(:)
    complex (kind=CmplxKind), pointer :: send_buf(:,:), recv_buf(:,:)
 !
    interface
@@ -596,7 +608,9 @@ contains
             else
                sm1 => getSingleScatteringMatrix('Sine-Matrix',site=i,    &
                                                 atom=site_config(i))
-               jm1 => aliasArray2_c(WORK(1:t0size),kkri_ns,kkri_ns)
+!              jm1 => aliasArray2_c(WORK(1:t0size),kkri_ns,kkri_ns)
+               p1 => WORK(1:t0size)
+               jm1 => aliasArray2_c(p1,kkri_ns,kkri_ns)
                jm1 = sm1
    !           ----------------------------------------------------------
    !            call computeAStar(sm1,kkri_ns,kkri_ns,jm1)                !not needed unless there is B_y
@@ -652,8 +666,12 @@ contains
                                                 site=i,atom=site_config(i))
                sm2 => getSingleScatteringMatrix('Sine-Matrix',spin=2,    &
                                                 site=i,atom=site_config(i))
-               jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
-               jm2 => aliasArray2_c(WORK(t0size+1:2*t0size),kmax_kkr,kmax_kkr)
+!              jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
+               p1 => WORK(1:t0size)
+               jm1 => aliasArray2_c(p1,kmax_kkr,kmax_kkr)
+!              jm2 => aliasArray2_c(WORK(t0size+1:2*t0size),kmax_kkr,kmax_kkr)
+               p1 => WORK(t0size+1:2*t0size)
+               jm2 => aliasArray2_c(p1,kmax_kkr,kmax_kkr)
 !              ----------------------------------------------------------
                call computeAStar(sm1,kmax_kkr,kmax_kkr,jm1)
                call computeAStar(sm2,kmax_kkr,kmax_kkr,jm2)
@@ -701,7 +719,9 @@ contains
             else
                sm1 => getSingleScatteringMatrix('Sine-Matrix',spin=1,    &
                                                 site=i,atom=site_config(i))
-               jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
+!              jm1 => aliasArray2_c(WORK(1:t0size),kmax_kkr,kmax_kkr)
+               p1 => WORK(1:t0size)
+               jm1 => aliasArray2_c(p1,kmax_kkr,kmax_kkr)
 !              ----------------------------------------------------------
                call computeAStar(sm1,kmax_kkr,kmax_kkr,jm1)
 !              ----------------------------------------------------------
@@ -1138,7 +1158,7 @@ contains
    complex (kind=CmplxKind), pointer :: kau_l(:,:), tau_l(:,:)
    complex (kind=CmplxKind), pointer :: sm1(:,:), sm2(:,:), pw(:,:), poi(:,:)
    complex (kind=CmplxKind), pointer :: tm(:,:), om(:,:), oim(:,:)
-   complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:)
+   complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:), p1(:)
    complex (kind=CmplxKind),allocatable :: mat_tmp(:,:) , mat_tmp2(:,:)!xianglin
 !
    interface
@@ -1183,7 +1203,8 @@ contains
       else
          if ( nSpinCant == 2 ) then
             t0size = kmaxj_ns*kmaxj_ns
-            wau_l => aliasArray3_c(WORK(t0size+1),kmaxj,kmaxj,nSpinCant*nSpinCant)
+            p1 => WORK(t0size+1:t0size*2)
+            wau_l => aliasArray3_c(p1,kmaxj,kmaxj,nSpinCant*nSpinCant)
    !        -------------------------------------------------------------
             call rotateGtoL(j, kmaxj, kmaxj, wau_g, wau_l)
    !        -------------------------------------------------------------
@@ -1329,7 +1350,7 @@ contains
    integer (kind=IntKind) :: kmaxj, kmaxj_ns, t0size
 !
    complex (kind=CmplxKind), pointer :: tau_l(:,:), pw(:,:), tm(:,:)
-   complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:)
+   complex (kind=CmplxKind), pointer :: wau_g(:,:), wau_l(:,:,:), p1(:)
 !
    interface
       function getSingleScatteringMatrix(smt,spin,site,atom,dsize) result(sm)
@@ -1363,7 +1384,8 @@ contains
          wau_l => aliasArray3_c(WORK,kmaxj_ns,kmaxj_ns,1)
       else if ( nSpinCant == 2 ) then
          t0size = kmaxj_ns*kmaxj_ns
-         wau_l => aliasArray3_c(WORK(t0size+1),kmaxj,kmaxj,nSpinCant*nSpinCant)
+         p1 => WORK(t0size+1:t0size*2)
+         wau_l => aliasArray3_c(p1,kmaxj,kmaxj,nSpinCant*nSpinCant)
 !        -------------------------------------------------------------
          call rotateGtoL(j, kmaxj, kmaxj, wau_g, wau_l)
 !        -------------------------------------------------------------
@@ -1754,30 +1776,63 @@ contains
    subroutine sumIBZRotation(calculate_tau)
 !  ===================================================================
    use MatrixModule, only : computeUAUtc
+   use GroupCommModule, only : getGroupID, GlobalSumInGroup
    use IBZRotationModule, only : getNumIBZRotations, getIBZRotationMatrix
+   use IBZRotationModule, only : getBasisRotationTable
 !
    implicit none
 !
    logical, intent(in) :: calculate_tau
 !
    integer (kind=IntKind) :: id, jd, ig, irot, nrot, ns, is, js, kkrsz
-   integer (kind=IntKind) :: ni, nj, np, kl, klp, klpp
+   integer (kind=IntKind) :: ni, nj, np, kl, klp, klpp, aGID, ig_rot
+   integer (kind=IntKind), pointer :: rotation_table(:,:)
 !
+   complex (kind=CmplxKind), target :: wtmp(kmax_kkr_max*kmax_kkr_max)
    complex (kind=CmplxKind), pointer :: w0(:,:), rotmat(:,:)
    complex (kind=CmplxKind), pointer :: kmb(:,:), tmb(:,:)
+   complex (kind=CmplxKind), pointer :: matrix_diag(:,:), pm(:)
    complex (kind=CmplxKind) :: cfac
 !
    nrot = getNumIBZRotations()
    cfac = CONE/real(nrot,RealKind)
+   aGID = getGroupID('Unit Cell')
+!
+   rotation_table => getBasisRotationTable()
+   if (KKRMatrixSizeCant*BandSizeCant >= tsize*GlobalNumAtoms) then
+      matrix_diag => aliasArray2_c(TMP_MatrixBand,tsize,GlobalNumAtoms)
+   else
+      call ErrorHandler('sumIBZRotation','KKR lmax needs to be the same for all atoms')
+   endif
+!
+   matrix_diag = CZERO
+   do jd = 1, LocalNumAtoms
+      ig = MatrixBand(jd)%global_index
+      id = gid_array(ig)  ! Here, we only consider&rotate the diagonal blocks of the band matrix
+      kkrsz = MatrixBand(jd)%MatrixBlock(id)%kmax_kkr
+      ns = 0
+      do js = 1, nSpinCant
+         do is = 1, nSpinCant
+            ns = ns + 1
+!           ----------------------------------------------------------
+            call zcopy(kkrsz*kkrsz,MatrixBand(jd)%MatrixBlock(id)%kau_l(1,1,ns),1, &
+                       matrix_diag((ns-1)*kkrsz*kkrsz+1,ig),1)
+!           ----------------------------------------------------------
+         enddo
+      enddo
+   enddo
+!  -------------------------------------------------------------------
+   call GlobalSumInGroup(aGID,matrix_diag,tsize,GlobalNumAtoms)
+!  -------------------------------------------------------------------
 !
    do jd = 1, LocalNumAtoms
       ig = MatrixBand(jd)%global_index
       id = gid_array(ig)  ! Here, we only consider&rotate the diagonal blocks of the band matrix
                           ! For non-diagonal matrix blocks, there is factor of
-                          ! exp(i*(1-Rot(k_vector))*aij_vector) needs to be applied to the
+                          ! exp(i*k_vector*(Rnm_vector)) needs to be applied to the
                           ! transformation
       kkrsz = MatrixBand(jd)%MatrixBlock(id)%kmax_kkr
-      w0 => aliasArray2_c(TMP_MatrixBand,kkrsz,kkrsz)
+      w0 => aliasArray2_c(wtmp,kkrsz,kkrsz)
 
 !ywg  nj = MatrixBand(jd)%column_index-1
 !ywg  ni = MatrixBand(jd)%MatrixBlock(id)%row_index-1
@@ -1785,16 +1840,19 @@ contains
       do js = 1, nSpinCant
          do is = 1, nSpinCant
             ns = ns + 1
-            kmb => MatrixBand(jd)%MatrixBlock(id)%kau_l(:,:,ns)
 !ywg        do kl = 1, kkrsz
 !ywg           np = KKRMatrixSizeCant*(nj+kl+(js-1)*kkrsz-1)+ni+(is-1)*kkrsz
 !ywg           do klp = 1, kkrsz
 !ywg              kmb(klp,kl) = KKR_MatrixBand(np+klp)
 !ywg           enddo
 !ywg        enddo
+!           kmb => MatrixBand(jd)%MatrixBlock(id)%kau_l(:,:,ns)
 !           call writeMatrix('kmb before sum rot',kmb,kkrsz,kkrsz,TEN2m8)
             w0 = CZERO
             do irot = 1, nrot
+               ig_rot = rotation_table(ig,irot)
+               pm => matrix_diag((ns-1)*kkrsz*kkrsz+1:ns*kkrsz*kkrsz,ig_rot)
+               kmb => aliasArray2_c(pm,kkrsz,kkrsz)
                rotmat => getIBZRotationMatrix('c',irot)
 !              -------------------------------------------------------
 !              call checkScatteringMatrixSymmetry(jd,rotmat,kmb,kkrsz, &
@@ -1811,31 +1869,71 @@ contains
 !ywg              KKR_MatrixBand(np+klp) = w0(klp,kl)
 !ywg           enddo
 !ywg        enddo
+            kmb => MatrixBand(jd)%MatrixBlock(id)%kau_l(:,:,ns)
 !           ----------------------------------------------------------
             call zcopy(kkrsz*kkrsz,w0,1,kmb,1)
 !           ----------------------------------------------------------
 !           call writeMatrix('kmb after sum rot',kmb,kkrsz,kkrsz,TEN2m8)
 !
-            if (calculate_tau) then
-               tmb => MatrixBand(jd)%MatrixBlock(id)%tau_l(:,:,ns)
+         enddo
+      enddo
+   enddo
+!
+   if (calculate_tau) then
+      matrix_diag = CZERO
+      do jd = 1, LocalNumAtoms
+         ig = MatrixBand(jd)%global_index
+         id = gid_array(ig)  ! Here, we only consider&rotate the diagonal blocks of the band matrix
+         kkrsz = MatrixBand(jd)%MatrixBlock(id)%kmax_kkr
+         ns = 0
+         do js = 1, nSpinCant
+            do is = 1, nSpinCant
+               ns = ns + 1
+!              -------------------------------------------------------
+               call zcopy(kkrsz*kkrsz,MatrixBand(jd)%MatrixBlock(id)%tau_l(1,1,ns),1, &
+                          matrix_diag((ns-1)*kkrsz*kkrsz+1,ig),1)
+!              -------------------------------------------------------
+            enddo
+         enddo
+      enddo
+!     ----------------------------------------------------------------
+      call GlobalSumInGroup(aGID,matrix_diag,tsize,GlobalNumAtoms)
+!     ----------------------------------------------------------------
+      do jd = 1, LocalNumAtoms
+         ig = MatrixBand(jd)%global_index
+         id = gid_array(ig)  ! Here, we only consider&rotate the diagonal blocks of the band matrix
+                             ! For non-diagonal matrix blocks, there is factor of
+                             ! exp(i*k_vector*(Rnm_vector)) needs to be applied to the
+                             ! transformation
+         kkrsz = MatrixBand(jd)%MatrixBlock(id)%kmax_kkr
+         w0 => aliasArray2_c(wtmp,kkrsz,kkrsz)
+         ns = 0
+         do js = 1, nSpinCant
+            do is = 1, nSpinCant
+               ns = ns + 1
+!              tmb => MatrixBand(jd)%MatrixBlock(id)%tau_l(:,:,ns)
                w0 = CZERO
                do irot = 1, nrot
+                  ig_rot = rotation_table(MatrixBand(jd)%global_index,irot)
+                  pm => matrix_diag((ns-1)*kkrsz*kkrsz+1:ns*kkrsz*kkrsz,ig_rot)
+                  tmb => aliasArray2_c(pm,kkrsz,kkrsz)
                   rotmat => getIBZRotationMatrix('c',irot)
 !                 ----------------------------------------------------
                   call computeUAUtc(rotmat,kkrsz,kkrsz,rotmat,kkrsz,cfac, &
                                     tmb,kkrsz,CONE,w0,kkrsz,WORK)
 !                 ----------------------------------------------------
                enddo
+               tmb => MatrixBand(jd)%MatrixBlock(id)%tau_l(:,:,ns)
 !              -------------------------------------------------------
                call zcopy(kkrsz*kkrsz,w0,1,tmb,1)
 !              -------------------------------------------------------
 !              call writeMatrix('tau',tmb,kkrsz,kkrsz,TEN2m8)
-            endif
+            enddo
          enddo
       enddo
-   enddo
+   endif
 !
-   nullify(w0, rotmat, kmb, tmb)
+   nullify(w0, rotmat, kmb, tmb, matrix_diag)
 !
    end subroutine sumIBZRotation
 !  ===================================================================

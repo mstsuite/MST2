@@ -59,7 +59,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeMatrixr2(a,x,n1,n2,tol_in)
+   subroutine writeMatrixr2(a,x,n1,n2,tol_in,diag)
 !  ===================================================================
    implicit   none
 !
@@ -71,17 +71,28 @@ contains
    real (kind=RealKind), intent(in) :: x(n1, n2)
    real (kind=RealKind), intent(in), optional :: tol_in
    real (kind=RealKind) :: tol
+!
+   logical, optional, intent(in) :: diag
+   logical :: not_d
 ! 
 !  *******************************************************************
 !  * writes out the non-zero elements (> 10**-8) of a N1*N2 complex 
-!  * matrix
+!  * matrix or the diagonal elements
 !  *******************************************************************
+   if (present(diag)) then
+      not_d = .not.diag
+   else
+      not_d = .true.
+   endif
+! 
    if (present(tol_in)) then
       tol = tol_in
+   else if (.not.not_d) then
+      tol = 1.0d-30
    else
       tol = tol0
    endif
-! 
+!
    write(6,'(/,80(''-''))')
    write(6,'(/,27x,a)') '***************************'
    write(6,'(  27x,a )')'* Output from writeMatrix *'
@@ -92,7 +103,7 @@ contains
    write(6,'(a)')'   i   j       Matrix(i,j)'
    do j=1,n2
       do i=1,n1
-         if (abs(x(i,j)) > tol) then
+         if ((not_d .or. i == j) .and. abs(x(i,j)) > tol) then
             write(6,'(2i4,2x,d18.8)')i,j,x(i,j)
          endif
       enddo
@@ -104,7 +115,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeMatrixr2p(a,x,n1,n2,tol_in)
+   subroutine writeMatrixr2p(a,x,n1,n2,tol_in,diag)
 !  ===================================================================
    implicit   none
 !
@@ -116,13 +127,24 @@ contains
    real (kind=RealKind), intent(in) :: x(n1*n2)
    real (kind=RealKind), intent(in), optional :: tol_in
    real (kind=RealKind) :: tol
+!
+   logical, optional, intent(in) :: diag
+   logical :: not_d
 ! 
 !  *******************************************************************
 !  * writes out the non-zero elements (> 10**-8) of a N1*N2 complex 
-!  * matrix
+!  * matrix or the diagonal elements
 !  *******************************************************************
+   if (present(diag)) then
+      not_d = .not.diag
+   else
+      not_d = .true.
+   endif
+! 
    if (present(tol_in)) then
       tol = tol_in
+   else if (.not.not_d) then
+      tol = 1.0d-30
    else
       tol = tol0
    endif
@@ -138,7 +160,7 @@ contains
    do j=1,n2
       k=(j-1)*n1
       do i=1,n1
-         if (abs(x(i+k)) > tol) then
+         if ((not_d .or. i == j) .and. abs(x(i+k)) > tol) then
             write(6,'(2i4,2x,d18.8)')i,j,x(i+k)
          endif
       enddo
@@ -288,7 +310,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeMatrixc2(a,x,n1,n2,tol_in)
+   subroutine writeMatrixc2(a,x,n1,n2,tol_in,diag)
 !  ===================================================================
    implicit   none
 !
@@ -300,13 +322,24 @@ contains
    complex (kind=CmplxKind), intent(in) :: x(n1, n2)
    real (kind=RealKind), intent(in), optional :: tol_in
    real (kind=RealKind) :: tol
+!
+   logical, optional, intent(in) :: diag
+   logical :: not_d
 ! 
 !  *******************************************************************
 !  * writes out the non-zero elements (> 10**-8) of a N1*N2 complex 
-!  * matrix
+!  * matrix or the diagonal elements
 !  *******************************************************************
+   if (present(diag)) then
+      not_d = .not.diag
+   else
+      not_d = .true.
+   endif
+! 
    if (present(tol_in)) then
       tol = tol_in
+   else if (.not.not_d) then
+      tol = 1.0d-30
    else
       tol = tol0
    endif
@@ -321,7 +354,7 @@ contains
    write(6,'(a)')'   i   j                 Matrix(i,j)'
    do j=1,n2
       do i=1,n1
-         if (abs(x(i,j)) > tol) then
+         if ((not_d .or. i == j) .and. abs(x(i,j)) > tol) then
             write(6,'(2i4,2x,2d18.8)')i,j,x(i,j)
          endif
       enddo
@@ -333,7 +366,7 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine writeMatrixc2p(a,x,n1,n2,tol_in)
+   subroutine writeMatrixc2p(a,x,n1,n2,tol_in,diag)
 !  ===================================================================
    implicit   none
 !
@@ -345,13 +378,24 @@ contains
    complex (kind=CmplxKind), intent(in) :: x(n1*n2)
    real (kind=RealKind), intent(in), optional :: tol_in
    real (kind=RealKind) :: tol
+!
+   logical, optional, intent(in) :: diag
+   logical :: not_d
 ! 
 !  *******************************************************************
 !  * writes out the non-zero elements (> 10**-8) of a N1*N2 complex 
-!  * matrix
+!  * matrix or the diagonal elements
 !  *******************************************************************
+   if (present(diag)) then
+      not_d = .not.diag
+   else
+      not_d = .true.
+   endif
+! 
    if (present(tol_in)) then
       tol = tol_in
+   else if (.not.not_d) then
+      tol = 1.0d-30
    else
       tol = tol0
    endif
@@ -367,7 +411,7 @@ contains
    do j=1,n2
       k=(j-1)*n1
       do i=1,n1
-         if (abs(x(i+k)) > tol) then
+         if ((not_d .or. i == j) .and. abs(x(i+k)) > tol) then
             write(6,'(2i4,2x,2d18.8)')i,j,x(i+k)
          endif
       enddo

@@ -97,6 +97,8 @@ contains
 !
    character (len=14) :: sname = "initCPAMedium"
 !
+   complex (kind=CmplxKind), pointer :: p1(:)
+!
    GlobalNumSites = getNumSites()
    LocalNumSites = getLocalNumSites()
    nSpinCant = cant
@@ -179,10 +181,18 @@ contains
          dsize = (lmaxi+1)**2
          CPAMedium(n)%dsize = dsize
          nsize = dsize*nSpinCant
-         CPAMedium(n)%Tcpa => aliasArray2_c(Tcpa(ndim_Tmat+1:),nsize,nsize)
-         CPAMedium(n)%TcpaInv => aliasArray2_c(TcpaInv(ndim_Tmat+1:),nsize,nsize)
-         CPAMedium(n)%Tcpa_old => aliasArray2_c(Tcpa_old(ndim_Tmat+1:),nsize,nsize)
-         CPAMedium(n)%TcpaInv_old => aliasArray2_c(TcpaInv_old(ndim_Tmat+1:),nsize,nsize)
+!        CPAMedium(n)%Tcpa => aliasArray2_c(Tcpa(ndim_Tmat+1:),nsize,nsize)
+         p1 => Tcpa(ndim_Tmat+1:)
+         CPAMedium(n)%Tcpa => aliasArray2_c(p1,nsize,nsize)
+!        CPAMedium(n)%TcpaInv => aliasArray2_c(TcpaInv(ndim_Tmat+1:),nsize,nsize)
+         p1 => TcpaInv(ndim_Tmat+1:)
+         CPAMedium(n)%TcpaInv => aliasArray2_c(p1,nsize,nsize)
+!        CPAMedium(n)%Tcpa_old => aliasArray2_c(Tcpa_old(ndim_Tmat+1:),nsize,nsize)
+         p1 => Tcpa_old(ndim_Tmat+1:)
+         CPAMedium(n)%Tcpa_old => aliasArray2_c(p1,nsize,nsize)
+!        CPAMedium(n)%TcpaInv_old => aliasArray2_c(TcpaInv_old(ndim_Tmat+1:),nsize,nsize)
+         p1 => TcpaInv_old(ndim_Tmat+1:)
+         CPAMedium(n)%TcpaInv_old => aliasArray2_c(p1,nsize,nsize)
 !        CPAMedium(n)%tau_c => aliasArray3_c(Tau(ndim_Tmat+1:),dsize,dsize,nSpinCant*nSpinCant)
          nullify(CPAMedium(n)%tau_c)
          ndim_Tmat = ndim_Tmat + nsize*nsize
@@ -191,12 +201,16 @@ contains
             NumImpurities = NumImpurities + 1
             CPAMedium(n)%CPAMatrix(ic)%content = getSpeciesContent(ic,ig)
             if (nSpinCant == 2) then ! Spin-canted case, use the locally allocated space
-               CPAMedium(n)%CPAMatrix(ic)%tmat_a => aliasArray2_c(Tmat_global(:,NumImpurities),nsize,nsize)
+!              CPAMedium(n)%CPAMatrix(ic)%tmat_a => aliasArray2_c(Tmat_global(:,NumImpurities),nsize,nsize)
+               p1 => Tmat_global(:,NumImpurities)
+               CPAMedium(n)%CPAMatrix(ic)%tmat_a => aliasArray2_c(p1,nsize,nsize)
             else ! In (non-)spin-polarized case, use the Tmat space in SSSolverModule
                nullify(CPAMedium(n)%CPAMatrix(ic)%tmat_a)
             endif
 !           CPAMedium(n)%CPAMatrix(ic)%tau_a => aliasArray3_c(TauA(aid+1:),dsize,dsize,nSpinCant*nSpinCant)
-            CPAMedium(n)%CPAMatrix(ic)%kau_a => aliasArray3_c(KauA(aid+1:),dsize,dsize,nSpinCant*nSpinCant)
+!           CPAMedium(n)%CPAMatrix(ic)%kau_a => aliasArray3_c(KauA(aid+1:),dsize,dsize,nSpinCant*nSpinCant)
+            p1 => KauA(aid+1:)
+            CPAMedium(n)%CPAMatrix(ic)%kau_a => aliasArray3_c(p1,dsize,dsize,nSpinCant*nSpinCant)
             nullify(CPAMedium(n)%CPAMatrix(ic)%tau_a)
             aid = aid + nsize*nsize
          enddo

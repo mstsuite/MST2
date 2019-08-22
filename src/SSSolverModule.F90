@@ -387,6 +387,7 @@ contains
    real (kind=RealKind), pointer :: r_mesh(:)
 !
    complex (kind=CmplxKind) :: smdexp
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    interface 
       function getNumSpecies(id) result(n)
@@ -724,23 +725,35 @@ contains
             spp_2 = ind_intint(ic,is,ia) + kmax_int*kmax_int-1
             spk_1 = ind_intkkr(ic,is,ia)
             spk_2 = ind_intkkr(ic,is,ia) + kmax_int*kmax_kkr-1
-            Scatter(ia)%Solutions(ic,is)%sin_mat => aliasArray2_c( wks_sinmat(spk_1:spk_2), kmax_int, kmax_kkr )
-            Scatter(ia)%Solutions(ic,is)%cos_mat => aliasArray2_c( wks_cosmat(spk_1:spk_2), kmax_int, kmax_kkr )
-            Scatter(ia)%Solutions(ic,is)%t_mat => aliasArray2_c( wks_tmat(spp_1:spp_2), kmax_int, kmax_int)
-            Scatter(ia)%Solutions(ic,is)%t_mat_inv => aliasArray2_c( wks_tmat_inv(spp_1:spp_2), kmax_int, kmax_int)
-            Scatter(ia)%Solutions(ic,is)%jost_mat => aliasArray2_c( wks_jostmat(spk_1:spk_2), kmax_int, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%jinv_mat => aliasArray2_c( wks_jinvmat(spk_1:spk_2), kmax_int, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%Omega_mat => aliasArray2_c(wks_Omega(skk_1:skk_2), kmax_kkr, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%OmegaHat_mat => aliasArray2_c(wks_OmegaHat(skk_1:skk_2), kmax_kkr, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%OmegaHatInv_mat => aliasArray2_c(wks_OmegaHatInv(skk_1:skk_2), kmax_kkr, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%S_mat => aliasArray2_c(wks_S(skk_1:skk_2), kmax_kkr, kmax_kkr)
+            p1c => wks_sinmat(spk_1:spk_2)
+            Scatter(ia)%Solutions(ic,is)%sin_mat => aliasArray2_c( p1c, kmax_int, kmax_kkr )
+            p1c => wks_cosmat(spk_1:spk_2)
+            Scatter(ia)%Solutions(ic,is)%cos_mat => aliasArray2_c( p1c, kmax_int, kmax_kkr )
+            p1c => wks_tmat(spp_1:spp_2)
+            Scatter(ia)%Solutions(ic,is)%t_mat => aliasArray2_c( p1c, kmax_int, kmax_int)
+            p1c => wks_tmat_inv(spp_1:spp_2)
+            Scatter(ia)%Solutions(ic,is)%t_mat_inv => aliasArray2_c( p1c, kmax_int, kmax_int)
+            p1c => wks_jostmat(spk_1:spk_2)
+            Scatter(ia)%Solutions(ic,is)%jost_mat => aliasArray2_c( p1c, kmax_int, kmax_kkr)
+            p1c => wks_jinvmat(spk_1:spk_2)
+            Scatter(ia)%Solutions(ic,is)%jinv_mat => aliasArray2_c( p1c, kmax_int, kmax_kkr)
+            p1c => wks_Omega(skk_1:skk_2)
+            Scatter(ia)%Solutions(ic,is)%Omega_mat => aliasArray2_c(p1c, kmax_kkr, kmax_kkr)
+            p1c => wks_OmegaHat(skk_1:skk_2)
+            Scatter(ia)%Solutions(ic,is)%OmegaHat_mat => aliasArray2_c(p1c, kmax_kkr, kmax_kkr)
+            p1c => wks_OmegaHatInv(skk_1:skk_2)
+            Scatter(ia)%Solutions(ic,is)%OmegaHatInv_mat => aliasArray2_c(p1c, kmax_kkr, kmax_kkr)
+            p1c => wks_S(skk_1:skk_2)
+            Scatter(ia)%Solutions(ic,is)%S_mat => aliasArray2_c(p1c, kmax_kkr, kmax_kkr)
             Scatter(ia)%Solutions(ic,is)%phase_shift => wks_PS(n:n+kmax_phi-1)
             n = n + kmax_phi
 !
             sz_1 = ind_iendphikkr(ic,is,ia)
             sz_2 = ind_iendphikkr(ic,is,ia) + iend*kmax_phi*kmax_kkr-1
-            Scatter(ia)%Solutions(ic,is)%reg_sol => aliasArray3_c( wks_regsol(sz_1:sz_2), iend, kmax_phi, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%reg_dsol => aliasArray3_c( wks_dregsol(sz_1:sz_2), iend, kmax_phi, kmax_kkr)
+            p1c => wks_regsol(sz_1:sz_2)
+            Scatter(ia)%Solutions(ic,is)%reg_sol => aliasArray3_c( p1c, iend, kmax_phi, kmax_kkr)
+            p1c => wks_dregsol(sz_1:sz_2)
+            Scatter(ia)%Solutions(ic,is)%reg_dsol => aliasArray3_c( p1c, iend, kmax_phi, kmax_kkr)
 !
             Scatter(ia)%Solutions(ic,is)%reg_sol = CZERO
             Scatter(ia)%Solutions(ic,is)%reg_dsol = CZERO
@@ -749,14 +762,16 @@ contains
 !
 !tmat_global      if (NumSpins == 2) then
 !tmat_global         nsz = kmax_int*kmax_int*Scatter(ia)%NumSpecies
-!tmat_global         allocate(Scatter(ia)%tmat_global => aliasArray3_c( wks_tmatg(sz_tmatg:sz_tmatg+nsz),kmax_int,kmax_int, &
+!                    p1c => wks_tmatg(sz_tmatg:sz_tmatg+nsz)
+!tmat_global         allocate(Scatter(ia)%tmat_global => aliasArray3_c( p1c,kmax_int,kmax_int, &
 !tmat_global                                                            Scatter(ia)%NumSpecies)
 !tmat_global         sz_tmatg = sz_tmatg + nsz
 !tmat_global      endif
 !
       sz_1 = ind_step(ia)
       sz_2 = ind_step(ia) -1 + Scatter(ia)%numrs_trunc*Scatter(ia)%jmax_step
-      Scatter(ia)%step_rad => aliasArray2_c( wks_step(sz_1:sz_2), Scatter(ia)%numrs_trunc, Scatter(ia)%jmax_step )
+      p1c => wks_step(sz_1:sz_2)
+      Scatter(ia)%step_rad => aliasArray2_c( p1c, Scatter(ia)%numrs_trunc, Scatter(ia)%jmax_step )
       if ( FullSolver ) then
          lmax_step = Scatter(ia)%lmax_step
          call getRadialStepFunction( ia, Scatter(ia)%numrs_mt, Scatter(ia)%numrs_cs, r_mesh, &
@@ -1169,6 +1184,8 @@ use MPPModule, only : MyPE, syncAllPEs
    integer (kind=IntKind) :: ia, is, ic, lmax_phi_max
    integer (kind=IntKind) :: iend, kmax_kkr, kmax_phi, sz, sz_1, sz_2
 !
+   complex (kind=CmplxKind), pointer :: p1c(:)
+!
    lmax_phi_max = 0
    sz = 0
    do ia=1,LocalNumSites
@@ -1191,10 +1208,10 @@ use MPPModule, only : MyPE, syncAllPEs
          do ic = 1, Scatter(ia)%NumSpecies
             sz_1 = sz_2 + 1
             sz_2 = sz_1 - 1 + iend*kmax_phi*kmax_kkr
-            Scatter(ia)%Solutions(ic,is)%irr_sol => aliasArray3_c( wks_irrsol(sz_1:sz_2),  &
-                                                                   iend, kmax_phi, kmax_kkr)
-            Scatter(ia)%Solutions(ic,is)%irr_dsol => aliasArray3_c( wks_dirrsol(sz_1:sz_2),&
-                                                                    iend, kmax_phi, kmax_kkr)
+            p1c => wks_irrsol(sz_1:sz_2)
+            Scatter(ia)%Solutions(ic,is)%irr_sol => aliasArray3_c( p1c, iend, kmax_phi, kmax_kkr)
+            p1c => wks_dirrsol(sz_1:sz_2)
+            Scatter(ia)%Solutions(ic,is)%irr_dsol => aliasArray3_c( p1c, iend, kmax_phi, kmax_kkr)
             Scatter(ia)%Solutions(ic,is)%irr_sol = CZERO
             Scatter(ia)%Solutions(ic,is)%irr_dsol= CZERO
          enddo
@@ -2108,14 +2125,17 @@ use MPPModule, only : MyPE, syncAllPEs
 !
    complex (kind=CmplxKind) :: vcorr
    complex (kind=CmplxKind), pointer :: tmp_pot(:,:), tmp_step(:,:), pot_l(:,:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    loc_spin = min(spin, NumSpins)
 !
    kmax_step = (Scatter(site)%lmax_step+1)**2
    kmax_pot = (Scatter(site)%lmax_pot+1)**2
    npout = Scatter(site)%numrs_cs - Scatter(site)%numrs_mt + 1
-   tmp_pot => aliasArray2_c( wks_scvphi(1:kmax_pot*npout,1),npout,kmax_pot )
-   tmp_step => aliasArray2_c( wks_scvphi(1:kmax_step*npout,2),npout,kmax_step )
+   p1c => wks_scvphi(1:kmax_pot*npout,1)
+   tmp_pot => aliasArray2_c( p1c,npout,kmax_pot )
+   p1c => wks_scvphi(1:kmax_step*npout,2)
+   tmp_step => aliasArray2_c( p1c,npout,kmax_step )
 !
    if (checkLdaCorrection(site,atom)) then
       call ErrorHandler('setupSSSM0','This piece of code needs to be put within a Lp loop')
@@ -4091,6 +4111,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: f3mem(:)
    complex (kind=CmplxKind), pointer :: f4mem(:)
    complex (kind=CmplxKind), pointer :: pv1(:), pv2(:), pv3(:), pv4(:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    pr_mesh => Grid%r_mesh
 !
@@ -4123,10 +4144,10 @@ use MPPModule, only : MyPE, syncAllPEs
       jmax_pot_internal = jmax_pot
       lpot = lofj(jmax_pot)
       kpot = (lpot+1)**2
-      tmp_pot => aliasArray2_c( wks_scvphi(1:kpot*npout,1),&
-                                npout,kpot)
-      tmp_phi => aliasArray2_c( wks_scvphi(1:kmax_phi*npout,2),&
-                                npout,kmax_phi)
+      p1c => wks_scvphi(1:kpot*npout,1)
+      tmp_pot => aliasArray2_c( p1c,npout,kpot)
+      p1c => wks_scvphi(1:kmax_phi*npout,2)
+      tmp_phi => aliasArray2_c( p1c,npout,kmax_phi)
       allocate(tmp_potflag(kpot), WFflag(kmax_phi,kmax_int))
       do klp=1,kpot
          m1=mofk(klp)
@@ -4254,7 +4275,8 @@ use MPPModule, only : MyPE, syncAllPEs
 !           ==========================================================
 !           Note: tmp_cf = sum [gaunt_factor * reg_sol]
 !           ==========================================================
-            tmp_cf => aliasArray2_c(wks_scvphi(1:klppp_max*npout,1),npout,klppp_max)
+            p1c => wks_scvphi(1:klppp_max*npout,1)
+            tmp_cf => aliasArray2_c(p1c,npout,klppp_max)
             tmp_cf = CZERO
             do klpp = kmax_phi,1,-1
                nj3_i3 = nj3(klpp,klp)
@@ -6608,6 +6630,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: der_wfr_irr(:,:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
    complex (kind=CmplxKind), pointer :: mat(:,:), sin_t(:,:), sin_mat(:,:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    if (IrrSolType /= 'H' .and. IrrSolType /= 'h') then
       call ErrorHandler('computeGF0',                  &
@@ -6641,7 +6664,8 @@ use MPPModule, only : MyPE, syncAllPEs
          do js = 1, NumSpins
             do ic = 1, Scatter(ia)%NumSpecies
                loc2 = loc1 + nr*km
-               Scatter(ia)%Solutions(ic,js)%green => aliasArray2_c(wks_green(loc1+1:loc2),nr,km)
+               p1c => wks_green(loc1+1:loc2)
+               Scatter(ia)%Solutions(ic,js)%green => aliasArray2_c(p1c,nr,km)
                loc1 = loc2
             enddo
          enddo
@@ -6655,7 +6679,8 @@ use MPPModule, only : MyPE, syncAllPEs
             do js = 1, NumSpins
                do ic = 1, Scatter(ia)%NumSpecies
                   loc2 = loc1 + nr*km
-                  Scatter(ia)%Solutions(ic,js)%der_green => aliasArray2_c(wks_dgreen(loc1+1:loc2),nr,km)
+                  p1c => wks_dgreen(loc1+1:loc2)
+                  Scatter(ia)%Solutions(ic,js)%der_green => aliasArray2_c(p1c,nr,km)
                   loc1 = loc2
                enddo
             enddo
@@ -6841,6 +6866,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: irrf(:)
    complex (kind=CmplxKind), pointer :: ylmv(:)
    complex (kind=CmplxKind), pointer :: ylmvc(:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    type (GridStruct), pointer :: Grid_loc
 !
@@ -6885,8 +6911,10 @@ use MPPModule, only : MyPE, syncAllPEs
    ylmvc => wks_mtx2(1:kmax_phi_loc)
    regf => wks_mtx1(kmax_phi_loc+1:kmax_phi_loc+kmax_kkr_loc)
    irrf => wks_mtx2(kmax_phi_loc+1:kmax_phi_loc+kmax_kkr_loc)
-   sin_t => aliasArray2_c(wks_mtx1(kmax_phi_loc+kmax_kkr_loc+1:),kmax_phi,kmax_kkr)
-   mat => aliasArray2_c(wks_mtx2(kmax_phi_loc+kmax_kkr_loc+1:),kmax_kkr,kmax_phi)
+   p1c => wks_mtx1(kmax_phi_loc+kmax_kkr_loc+1:)
+   sin_t => aliasArray2_c(p1c,kmax_phi,kmax_kkr)
+   p1c => wks_mtx2(kmax_phi_loc+kmax_kkr_loc+1:)
+   mat => aliasArray2_c(p1c,kmax_kkr,kmax_phi)
 !  -------------------------------------------------------------------
    call calYlm(rvec,lmax_phi_loc,ylmv)
 !  -------------------------------------------------------------------
@@ -6987,6 +7015,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: der_wfr_reg(:,:,:)
    complex (kind=CmplxKind), pointer :: Omega_mat(:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    if (present(spin)) then
       is = min(NumSpins,spin)
@@ -7017,7 +7046,8 @@ use MPPModule, only : MyPE, syncAllPEs
          do js = 1, NumSpins
             do ic = 1, Scatter(ia)%NumSpecies
                loc2 = loc1 + nr*jm
-               Scatter(ia)%Solutions(ic,js)%dos => aliasArray2_c(wks_dos(loc1+1:loc2),nr,jm)
+               p1c => wks_dos(loc1+1:loc2)
+               Scatter(ia)%Solutions(ic,js)%dos => aliasArray2_c(p1c,nr,jm)
                loc1 = loc2
             enddo
          enddo
@@ -7032,7 +7062,8 @@ use MPPModule, only : MyPE, syncAllPEs
             do js = 1, NumSpins
                do ic = 1, Scatter(ia)%NumSpecies
                   loc2 = loc1 + nr*jm
-                  Scatter(ia)%Solutions(ic,js)%der_dos => aliasArray2_c(wks_ddos(loc1+1:loc2),nr,jm)
+                  p1c => wks_ddos(loc1+1:loc2)
+                  Scatter(ia)%Solutions(ic,js)%der_dos => aliasArray2_c(p1c,nr,jm)
                   loc1 = loc2
                enddo
             enddo
@@ -7353,6 +7384,7 @@ use MPPModule, only : MyPE, syncAllPEs
    complex (kind=CmplxKind), pointer :: wfr_reg(:,:,:)
    complex (kind=CmplxKind), pointer :: Omega_mat(:,:)
    complex (kind=CmplxKind), pointer :: OmegaHat_mat(:,:)
+   complex (kind=CmplxKind), pointer :: p1c(:)
 !
    if (present(spin)) then
       is = min(NumSpins,spin)
@@ -7383,8 +7415,9 @@ use MPPModule, only : MyPE, syncAllPEs
          do js = 1, NumSpins
             do ic = 1, Scatter(ia)%NumSpecies
                loc2 = loc1 + nr*jm*Scatter(ia)%kmax_kkr
+               p1c => wks_pdos(loc1+1:loc2)
                Scatter(ia)%Solutions(ic,js)%pdos =>                   &
-                           aliasArray3_c(wks_pdos(loc1+1:loc2),nr,jm,Scatter(ia)%kmax_kkr)
+                           aliasArray3_c(p1c,nr,jm,Scatter(ia)%kmax_kkr)
                loc1 = loc2
             enddo
          enddo

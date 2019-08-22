@@ -119,7 +119,7 @@ Scheme to Generate K (>=0) ::  0
      1. Tetrahedron      ---------
      2. Direction        ---------
 Kx, Ky, Kz Division (> 0)  ::  12  12  12
-Symmetrize BZ Integration  ::   0
+Symmetrize BZ Integration  ::   1
      0. No                 ---------
      1. Yes                ---------                             
     -2. Yes(Equiv. points) ---------

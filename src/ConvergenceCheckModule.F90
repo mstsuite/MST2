@@ -369,7 +369,7 @@ contains
                                                kmax_prod, jmax_prod, 0, prod, vint_mt, tol_in=tol)
 !              -------------------------------------------------------
                pot_rms(is,n) = sqrt(abs(vol_int))/VP_volume
-               pot_rms_av(is) = pot_rms_av(is) + cfac*pot_rms(2,n)
+               pot_rms_av(is) = pot_rms_av(is) + cfac*pot_rms(is,n)
             enddo
          enddo
 !

@@ -9,7 +9,10 @@ program testIBZRotation
 !
    use ErrorHandlerModule, only : ErrorHandler, WarningHandler
 !
-   use SystemModule, only : getNumAtoms, getBravaisLattice, getAtomPosition
+   use ChemElementModule, only : MaxLenOfAtomName
+!
+   use SystemModule, only : getNumAtoms, getBravaisLattice, getAtomPosition, &
+                            getAtomName
 !
    use ScfDataModule, only : NumKMeshs, Symmetrize, isLSMS
 !
@@ -32,6 +35,8 @@ program testIBZRotation
                                  computeRotationMatrix, printIBZRotationMatrix, &
                                  getNumIBZRotations, isProperRotation,&
                                  getIBZRotationMatrix, getIBZRotationMatrix3D
+   use IBZRotationModule, only : checkCrystalSymmetry, setupBasisRotationTable
+   use IBZRotationModule, only : getBasisRotationTable
 !
    use AtomModule, only : getPhiLmax
 !
@@ -47,8 +52,9 @@ program testIBZRotation
    implicit   none
 !
    character (len=4) :: istop = 'none'
+   character (len=MaxLenOfAtomName), allocatable :: AtomName(:)
 !
-   logical :: redundant
+   logical :: redundant, failed
 !
    integer (kind=IntKind) :: iprint = 0
    integer (kind=IntKind) :: def_id, info_id
@@ -59,9 +65,11 @@ program testIBZRotation
    integer (kind=IntKind) :: i, j, l, m, n, ij
    integer (kind=IntKind) :: k, nk, nr, ir, jr, ia, ja, nw, nd
    integer (kind=IntKind), parameter :: MaxRotations = 48
+   integer (kind=IntKind), pointer :: rotation_table(:,:)
+   integer (kind=IntKind), allocatable :: nshift(:,:,:)
 !
    real (kind=RealKind) :: t0, kfac, kr, tw, sumw
-   real (kind=RealKind) :: rot3d(3,3), bravais(3,3)
+   real (kind=RealKind) :: rot3d(3,3), bravais(3,3), Ri(3), Rj(3)
    real (kind=RealKind) :: kin(3), kin_new(3), aij(3), krot(3,MaxRotations)
    real (kind=RealKind), pointer :: kvec(:,:)
    real (kind=RealKind), allocatable :: AtomPosition(:,:)
@@ -70,7 +78,7 @@ program testIBZRotation
    complex (kind=CmplxKind) :: energy, kappa, cfac
    complex (kind=CmplxKind), pointer :: rotmat(:,:), rotmatc(:,:)
    complex (kind=CmplxKind), pointer :: strcon(:,:)
-   complex (kind=CmplxKind), pointer :: strcon_new(:,:)
+   complex (kind=CmplxKind), allocatable :: strcon_new(:,:)
    complex (kind=CmplxKind), allocatable :: strcon_rot(:,:), strcon_ori(:,:)
    complex (kind=CmplxKind), allocatable :: ylm(:), ylm_new(:), ylm_rot(:)
    complex (kind=CmplxKind), allocatable :: emat(:,:)
@@ -91,10 +99,11 @@ program testIBZRotation
 !  ===================================================================
 !
    NumAtoms = getNumAtoms()
-   allocate(AtomPosition(1:3,1:NumAtoms))
+   allocate(AtomPosition(1:3,1:NumAtoms), AtomName(NumAtoms))
 !
    lmax_phi = 0
    do i=1,NumAtoms
+      AtomName(i) = getAtomName(i)
       AtomPosition(1:3,i)=getAtomPosition(i)
       lmax_phi = max(lmax_phi,getPhiLmax(i))
    enddo
@@ -116,7 +125,7 @@ program testIBZRotation
    allocate(ylm(kmax_phi), ylm_new(kmax_phi), ylm_rot(kmax_phi))
    allocate(emat(kmax_phi,kmax_phi), strcon_rot(kmax_phi,kmax_phi))
    allocate(WORK(2*kmax_phi*kmax_phi), strcon_ori(kmax_phi,kmax_phi))
-   allocate(us(kmax_phi))
+   allocate(us(kmax_phi), strcon_new(kmax_phi,kmax_phi))
 !
 !  --------------------------------------------------------------------
    call initTimer()
@@ -124,10 +133,20 @@ program testIBZRotation
    call initIBZRotation(.false.,getLatticeType(),lmax_phi,1)
    call computeRotationMatrix()
    call printIBZRotationMatrix(Rot3D_Only=.true.)
+   if( checkCrystalSymmetry(bravais,NumAtoms,AtomPosition,aname=AtomName) ) then
+      write(6,'(/,a,/)')'The crystal system does have the point group symmetry!'
+   else
+      call ErrorHandler('testIBZRotation','The crystal system does not have the point group symmetry')
+   endif
    nr = getNumIBZRotations()
    nk = getNumKs()
    kvec => getAllKPoints(kfac)
+!
+   allocate(nshift(3,NumAtoms,nr))
 !  -------------------------------------------------------------------
+   call setupBasisRotationTable(bravais,NumAtoms,AtomPosition,inverse=.true.)
+!  -------------------------------------------------------------------
+   rotation_table => getBasisRotationTable(ntab=nshift)
 !
    if (nr > MaxRotations) then
       call ErrorHandler('testBZone','Number of crystal rotations exceeds its physical limit',nr,MaxRotations)
@@ -156,9 +175,12 @@ program testIBZRotation
    write(6,'(/,a,i5)')'Number of rotations: ',nr
    write(6,'(a)')'Check the redundancy of each k-point due to rotations...'
    write(6,'(a)')'Note: the redundancy divided by the number of rotations equals the weight.'
-   write(6,'(60(''=''))')
-   write(6,'(a)')'    k-vec(1)     k-vec(2)     k-vec(3)   redundancy  weight'
-   write(6,'(60(''-''))')
+   write(6,'(a)')'For symmetrized calculation with IBZ rotations, the k-points generated are in IBZ.'
+   write(6,'(a)')'In such case, in the following table, the three numbers under weight should be equal,'
+   write(6,'(a,/)')'and the two numbers under normalized weight should be equal.'
+   write(6,'(93(''=''))')
+   write(6,'(a)')'    k-vec(1)     k-vec(2)     k-vec(3)   redundancy         weight          normalized weight'
+   write(6,'(93(''-''))')
    do k = 1, nk
       nw = 0
       do ir = 1, nr
@@ -184,10 +206,11 @@ program testIBZRotation
             nd = nd - 1
          endif
       enddo
-!     We should get nd = nr/nw = getWeight(k), as well as ONE/(nw*tw) = getWeight(k)/sumw
-      write(6,'(3(f12.5,1x),2x,3i5,3x,3f10.5)')kvec(1:3,k),nw,nr/nw,nd,getWeight(k),ONE/(nw*tw),getWeight(k)/sumw
+!     For symmetrized calculation with IBZ rotations, the k-points generated are
+!     in IBZ, and we should get nd = nr/nw = getWeight(k), as well as ONE/(nw*tw) = getWeight(k)/sumw
+      write(6,'(3(f12.5,1x),2x,i5,5x,2i5,f10.5,2x,2f10.5)')kvec(1:3,k),nw,nr/nw,nd,getWeight(k),ONE/(nw*tw),getWeight(k)/sumw
    enddo
-   write(6,'(60(''=''))')
+   write(6,'(93(''=''))')
 !
 !  -------------------------------------------------------------------
    call initStrConst(lmax_phi,NumAtoms,AtomPosition,bravais,istop,iprint)
@@ -276,66 +299,92 @@ program testIBZRotation
 !     ================================================================
 !     Test 3: rotate the structure constant matrix
 !     ================================================================
-      do n = 1, NumAtoms*NumAtoms
-         ia = mod(n-1,NumAtoms)+1
-         ja = (n-1)/NumAtoms+1
-         strcon => getStrConstMatrix(kin,kappa,ia,ja,lmax_phi,lmax_phi,aij)
-         strcon_ori = strcon
-         do ir = 1, nr
-            rot3d = getIBZRotationMatrix3D(ir)
-            kin_new = ZERO
-            do j = 1, 3
-               do i = 1, 3
-                  kin_new(i) = kin_new(i) + rot3d(i,j)*kin(j)
-               enddo
+!     do n = 1, NumAtoms*NumAtoms
+!        ia = mod(n-1,NumAtoms)+1
+!        ja = (n-1)/NumAtoms+1
+!        strcon => getStrConstMatrix(kin,kappa,ia,ja,lmax_phi,lmax_phi)
+!        write(6,'(a,i5,a,i5)')'ia = ',ia,', ja = ',ja
+!        call writeMatrix('strcon_rot',strcon,kmax_phi,kmax_phi,tol)
+!     enddo
+!
+      LOOP_ir: do ir = 1, nr
+         rot3d = getIBZRotationMatrix3D(ir)
+!        write(6,'(/,a,i5)')'3D rotation matrix of ir = ',ir
+!        write(6,'(3f15.8)')rot3d(1:3,1)
+!        write(6,'(3f15.8)')rot3d(1:3,2)
+!        write(6,'(3f15.8)')rot3d(1:3,3)
+!        write(6,'(a,16i5)')'rotation_table : ',(rotation_table(ia,ir),ia = 1, NumAtoms)
+!        -------------------------------------------------------------
+!        call writeMatrix('rotmat',rotmat,kmax_phi,kmax_phi,tol)
+!        -------------------------------------------------------------
+         kin_new = ZERO
+         do j = 1, 3
+            do i = 1, 3
+               kin_new(i) = kin_new(i) + rot3d(i,j)*kin(j)
             enddo
-            strcon_new => getStrConstMatrix(kin_new,kappa,ia,ja,lmax_phi,lmax_phi)
-            rotmatc => getIBZRotationMatrix('c',ir)
-            rotmat => getIBZRotationMatrix('n',ir)
+         enddo
+         rotmatc => getIBZRotationMatrix('c',ir)
+         rotmat => getIBZRotationMatrix('n',ir)
+         do n = 1, NumAtoms*NumAtoms
+!           ==========================================================
+!           Store the structure constant matrix calculated at kin_new 
+!           in strcon_new
+!           ==========================================================
+            ia = mod(n-1,NumAtoms)+1
+            ja = (n-1)/NumAtoms+1
+            strcon => getStrConstMatrix(kin_new,kappa,ia,ja,lmax_phi,lmax_phi,aij)
+            strcon_new = strcon
+!
+!           ==========================================================
+!           test structure constant matrix transformation using rotation_table and nshift
+!           ==========================================================
+            strcon => getStrConstMatrix(kin,kappa,rotation_table(ia,ir),rotation_table(ja,ir), &
+                                        lmax_phi,lmax_phi)
+            strcon_ori = strcon
             strcon_rot = CZERO
 !           ----------------------------------------------------------
             call computeUAUtc(rotmatc,kmax_phi,kmax_phi,rotmatc,kmax_phi,CONE, &
                               strcon_ori,kmax_phi,CZERO,strcon_rot,kmax_phi,WORK)
 !           ----------------------------------------------------------
-!           do j = kmax_phi, 1, -1
-!              us = CZERO
-!              do ij = kmax_phi, 1, -1
-!                 do i = 1, kmax_phi
-!                    us(i) = us(i) + rotmatc(i,ij)*strcon_ori(ij,j)
-!                 enddo
-!              enddo
-!              do ij = 1, kmax_phi
-!                 do i = 1, kmax_phi
-!                    strcon_rot(i,ij) = strcon_rot(i,ij) + us(i)*rotmat(ij,j)
-!                 enddo
-!              enddo
-!           enddo
-!           ----------------------------------------------------------
             if (ia /= ja) then
-               kr = (kin(1)-kin_new(1))*aij(1)+(kin(2)-kin_new(2))*aij(2)+(kin(3)-kin_new(3))*aij(3)
+               Ri(:) = nshift(1,ia,ir)*bravais(:,1)+nshift(2,ia,ir)*bravais(:,2)+nshift(3,ia,ir)*bravais(:,3)
+               Rj(:) = nshift(1,ja,ir)*bravais(:,1)+nshift(2,ja,ir)*bravais(:,2)+nshift(3,ja,ir)*bravais(:,3)
+               kr = kin(1)*(Ri(1)-Rj(1))+kin(2)*(Ri(2)-Rj(2))+kin(3)*(Ri(3)-Rj(3))
                cfac = exp(SQRTm1*kr)
                strcon_rot = cfac*strcon_rot
             endif
-            do j = 1, kmax_phi
+            failed = .false.
+            LOOP_j1: do j = 1, kmax_phi
                do i = 1, kmax_phi
                   if (abs(strcon_rot(i,j)-strcon_new(i,j)) > tol) then
-                     write(6,'(a,i5)')'strcon_rot <> strcon_new: rotation index = ',ir
-                     write(6,'(/,a)')'3D rotation matrix:'
-                     write(6,'(3f15.8)')rot3d(1:3,1)
-                     write(6,'(3f15.8)')rot3d(1:3,2)
-                     write(6,'(3f15.8)')rot3d(1:3,3)
-                     call writeMatrix('rotmat',rotmat,kmax_phi,kmax_phi,tol)
-                     call writeMatrix('strcon_rot',strcon_rot,kmax_phi,kmax_phi,tol)
-                     call writeMatrix('strcon_new',strcon_new,kmax_phi,kmax_phi,tol)
-                     call ErrorHandler('testIBZRotation','Structure constant rotation test failed!')
+                     failed = .true.
+                     exit LOOP_j1
                   endif
                enddo
-            enddo
+            enddo LOOP_j1
+            if (failed) then
+               write(6,'(a,i5,a,i5,a,3f10.5)')'ia = ',ia,', ja = ',ja,', aij = ',aij(1:3)
+               write(6,'(a,3f10.5)')'kvec after rotation = ',kin_new(1:3)
+               write(6,'(a,i5)')'strcon_rot <> strcon_new: rotation index = ',ir
+               write(6,'(3f15.8)')rot3d(1:3,1)
+               write(6,'(3f15.8)')rot3d(1:3,2)
+               write(6,'(3f15.8)')rot3d(1:3,3)
+!              -------------------------------------------------------
+               call writeMatrix('rotmat',rotmat,kmax_phi,kmax_phi,tol)
+!              -------------------------------------------------------
+               write(6,'(a,2i5)')'ia -> rotation_table : ',ia,rotation_table(ia,ir)
+               write(6,'(a,2i5)')'ja -> rotation_table : ',ja,rotation_table(ja,ir)
+               call writeMatrix('strcon_rot',strcon_rot,kmax_phi,kmax_phi,tol)
+               call writeMatrix('strcon_new',strcon_new,kmax_phi,kmax_phi,tol)
+               call ErrorHandler('testIBZRotation','Structure constant rotation test 2 failed!')
+            endif
          enddo
-      enddo
+      enddo LOOP_ir
       write(6,'(/,a)')'Succeeded in structure constant rotation test...'
    enddo
 !
+   deallocate(AtomPosition, AtomName, nshift)
+   deallocate(strcon_new)
    deallocate(ylm, ylm_new, ylm_rot, emat, strcon_rot, WORK, strcon_ori, us)
 !
    call endStrConst()

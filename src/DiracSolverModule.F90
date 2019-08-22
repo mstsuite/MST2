@@ -227,8 +227,11 @@ include '../lib/arrayTools.F90'
    integer (kind=IntKind) :: ind_solutions(na), ind_tmat(na)
    integer (kind=IntKind) :: ind_nuz(na), ind_indz(na)
    integer (kind=IntKind) :: inda, indb
+   integer (kind=IntKind), pointer :: pi1(:)
 
    real (kind=RealKind) :: evec_l(3), r_global(3)
+!
+   complex (kind=CmplxKind), pointer :: p1(:)
 
    if (Initialized) then
       call ErrorHandler('initDiracSolver', 'module is already initialized')
@@ -296,31 +299,32 @@ include '../lib/arrayTools.F90'
       kkrsz = (lmax(ia)+1)*(lmax(ia)+1)
       inda = ind_solutions(ia)
       indb = inda + (2*Scatter(ia)%NumRs*nuzp*kkrsz) - 1
-      Scatter(ia)%gz => aliasArray3_c(wks_gz(inda:indb), &
-      Scatter(ia)%NumRs, nuzp, 2*kkrsz)
-      Scatter(ia)%fz => aliasArray3_c(wks_fz(inda:indb), &
-                        Scatter(ia)%NumRs, nuzp, 2*kkrsz)
-      Scatter(ia)%gj => aliasArray3_c(wks_gj(inda:indb), &
-                        Scatter(ia)%NumRs, nuzp, 2*kkrsz)
-      Scatter(ia)%fj => aliasArray3_c(wks_fj(inda:indb), &
-                        Scatter(ia)%NumRs, nuzp, 2*kkrsz)
+      p1 => wks_gz(inda:indb)
+      Scatter(ia)%gz => aliasArray3_c(p1, Scatter(ia)%NumRs, nuzp, 2*kkrsz)
+      p1 => wks_fz(inda:indb)
+      Scatter(ia)%fz => aliasArray3_c(p1, Scatter(ia)%NumRs, nuzp, 2*kkrsz)
+      p1 => wks_gj(inda:indb)
+      Scatter(ia)%gj => aliasArray3_c(p1, Scatter(ia)%NumRs, nuzp, 2*kkrsz)
+      p1 => wks_fj(inda:indb)
+      Scatter(ia)%fj => aliasArray3_c(p1, Scatter(ia)%NumRs, nuzp, 2*kkrsz)
       inda = ind_tmat(ia)
       indb = inda + (kkrsz*kkrsz*n_spin_cant*n_spin_cant) - 1
-      Scatter(ia)%t_mat => aliasArray2_c(wks_tmat(inda:indb), &
-                           kkrsz*n_spin_cant, kkrsz*n_spin_cant)
-      Scatter(ia)%d_mat => aliasArray2_c(wks_dmat(inda:indb), &
-                           kkrsz*n_spin_cant, kkrsz*n_spin_cant)
-      Scatter(ia)%d_matp => aliasArray2_c(wks_dmatp(inda:indb), &
-                           kkrsz*n_spin_cant, kkrsz*n_spin_cant)
+      p1 => wks_tmat(inda:indb)
+      Scatter(ia)%t_mat => aliasArray2_c(p1, kkrsz*n_spin_cant, kkrsz*n_spin_cant)
+      p1 => wks_dmat(inda:indb)
+      Scatter(ia)%d_mat => aliasArray2_c(p1, kkrsz*n_spin_cant, kkrsz*n_spin_cant)
+      p1 => wks_dmatp(inda:indb)
+      Scatter(ia)%d_matp => aliasArray2_c(p1, kkrsz*n_spin_cant, kkrsz*n_spin_cant)
       evec_l(1:3) = getLocalEvecOld(ia)
       call matrot1(r_global, evec_l, lmax(ia), Scatter(ia)%d_mat, Scatter(ia)%d_matp)
       inda = ind_nuz(ia)
       indb = inda + (2*kkrsz) - 1
-      Scatter(ia)%nuz => aliasArray1_i(wks_nuz(inda:indb), 2*kkrsz)
+      pi1 => wks_nuz(inda:indb)
+      Scatter(ia)%nuz => aliasArray1_i(pi1, 2*kkrsz)
       inda = ind_indz(ia)
       indb = inda + (2*nuzp*kkrsz) - 1
-      Scatter(ia)%indz => aliasArray2_i(wks_indz(inda:indb), &
-                          nuzp, 2*kkrsz)
+      pi1 => wks_indz(inda:indb)
+      Scatter(ia)%indz => aliasArray2_i(pi1, nuzp, 2*kkrsz)
    enddo
 
    call clebsch

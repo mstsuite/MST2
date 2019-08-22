@@ -4663,7 +4663,7 @@ contains
    complex(kind=CmplxKind) :: expikr, kfact, i2l
    complex(kind=CmplxKind), intent(out), target :: w_interp(:,:)
    complex(kind=CmplxKind), target, allocatable :: w_interp_global(:,:)
-   complex(kind=CmplxKind), pointer :: pv_interp(:,:)
+   complex(kind=CmplxKind), pointer :: pv_interp(:,:), p1(:)
 !
 !  ===================================================================
 !  Interpolation parameters
@@ -4823,7 +4823,8 @@ contains
 !
          nnr = n_interp*nr_int
          jmax = (lmax+1)*(lmax+2)/2
-         pv_interp  => aliasArray2_c(w_interp_global(:,ia),nnr,jmax)
+         p1 => w_interp_global(:,ia)
+         pv_interp  => aliasArray2_c(p1,nnr,jmax)
       else ! For serial FFT, comm = -1.
 !        =============================================================
 !        In this case, pv_interp is to be calculated for the local atoms
@@ -4841,7 +4842,8 @@ contains
 !
          nnr = n_interp*nr_int
          jmax = (lmax+1)*(lmax+2)/2
-         pv_interp  => aliasArray2_c(w_interp(:,ia),nnr,jmax)
+         p1 => w_interp(:,ia)
+         pv_interp  => aliasArray2_c(p1,nnr,jmax)
       endif
       p_Bj_l(1:,0:) => aliasArray2_r(Bj_l, nnr, lmax+1)
 !
