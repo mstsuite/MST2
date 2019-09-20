@@ -1244,7 +1244,7 @@ contains
 !
    sqrt_r(0)=ZERO
    do ir=1,jmt
-       sqrt_r(ir)=sqrt(rr(ir))
+      sqrt_r(ir)=sqrt(rr(ir))
    enddo
 !  ==================================================================
 !  calculate the zeropoint energy....................................
@@ -1256,7 +1256,7 @@ contains
 !  Calculate the kinetic energy of the core and valence electrons
 !  ==================================================================
    do i=1,jmt
-       bndint(i)=deepcore(i)*vrold(i)
+      bndint(i)=deepcore(i)*vrold(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1264,11 +1264,11 @@ contains
    call FitInterp(jmt+1,sqrt_r(0:jmt),bnd(0:jmt),sqrt(rmt),ekinetic,dummy)
 !  ------------------------------------------------------------------
    if(iprint >= 0) then
-       write(6,'(10x,''Deep core 2 terms'',t30,''='',2f22.11)')ecorv,PI8*ekinetic
-       write(6,'(10x,''Deep core K.E.'',t30,''='',f22.11)')ecorv-PI8*ekinetic
+      write(6,'(10x,''Deep core 2 terms'',t30,''='',2f22.11)')ecorv,PI8*ekinetic
+      write(6,'(10x,''Deep core K.E.'',t30,''='',f22.11)')ecorv-PI8*ekinetic
    endif
    do i=1,jmt
-       bndint(i)=semicore(i)*vrold(i)
+      bndint(i)=semicore(i)*vrold(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1276,11 +1276,11 @@ contains
    call FitInterp(jmt+1,sqrt_r(0:jmt),bnd(0:jmt),sqrt(rmt),ekinetic,dummy)
 !  ------------------------------------------------------------------
    if(iprint >= 0) then
-       write(6,'(10x,''Semi core 2 terms'',t30,''='',2f22.11)')esemv,PI8*ekinetic
-       write(6,'(10x,''Semi core K.E.'',t30,''='',f22.11)')esemv-PI8*ekinetic
+      write(6,'(10x,''Semi core 2 terms'',t30,''='',2f22.11)')esemv,PI8*ekinetic
+      write(6,'(10x,''Semi core K.E.'',t30,''='',f22.11)')esemv-PI8*ekinetic
    endif
    do i=1,jmt
-       bndint(i)=valden(i)*vrold(i)
+      bndint(i)=valden(i)*vrold(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1288,8 +1288,8 @@ contains
    call FitInterp(jmt+1,sqrt_r(0:jmt),bnd(0:jmt),sqrt(rmt),ekinetic,dummy)
 !  ------------------------------------------------------------------
    if(iprint >= 0) then
-       write(6,'(10x,''Valence 2 terms'',t30,''='',2f22.11)')evalsum,PI8*ekinetic
-       write(6,'(10x,''Valence   K.E.'',t30,''='',f22.11)')evalsum-PI8*ekinetic
+      write(6,'(10x,''Valence 2 terms'',t30,''='',2f22.11)')evalsum,PI8*ekinetic
+      write(6,'(10x,''Valence   K.E.'',t30,''='',f22.11)')evalsum-PI8*ekinetic
    endif
 !
 !  ==================================================================
@@ -1302,7 +1302,7 @@ contains
 !  Look at some terms of interest
 !  ==================================================================
    do i=1,jmt
-       bndint(i)=rho(i)*vrold(i)
+      bndint(i)=rho(i)*vrold(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1315,7 +1315,7 @@ contains
 !  ==================================================================
 #ifdef No_BLAS
    do i=1,jmt
-       bndint(i)=rhotot(i)
+      bndint(i)=rhotot(i)
    enddo
 #else
 !  ------------------------------------------------------------------
@@ -1327,7 +1327,7 @@ contains
    call calIntegration(jmt+1,sqrt_r(0:jmt),bndint(0:jmt),bnd(0:jmt),5)
 !  ------------------------------------------------------------------
    do i=1,jmt
-       bndint(i)=rho(i)*bnd(i)/rr(i)
+      bndint(i)=rho(i)*bnd(i)/rr(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(jmt+1,sqrt_r(0:jmt),bndint(0:jmt),sqrt(rmt),qtmp,dummy)
@@ -1344,7 +1344,7 @@ contains
 !  ==================================================================
 #ifdef No_BLAS
    do i=1,jmt
-       bndint(i)=rho(i)
+      bndint(i)=rho(i)
    enddo
 #else
 !  ------------------------------------------------------------------
@@ -1360,7 +1360,7 @@ contains
    ezrho = -ezrho*PI4*FOUR*ztotss
    ecoulomb=erho+ezrho
    do i=1,jmt
-       bndint(i)=rho(i)*enxc(i)
+      bndint(i)=rho(i)*enxc(i)
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1370,7 +1370,7 @@ contains
 !  exchen=TWO*PI4*bnd(jmt)
    exchen=TWO*PI4*exchen
    do i=1,jmt
-       bndint(i)=rho(i)*(enxc(i)-vx(i))
+      bndint(i)=rho(i)*(enxc(i)-vx(i))
    enddo
 !  ------------------------------------------------------------------
    call FitInterp(4,sqrt_r(1:4),bndint(1:4),ZERO,bndint(0),dummy)
@@ -1384,17 +1384,17 @@ contains
    etot = ekinetic+ecoulomb+exchen+ezpt/rspin
    press= TWO*ekinetic+ecoulomb-THREE*pterm1+tpzpt/rspin
    if(iprint >= 0) then
-       write(6,'(10x,''esemv'',t30,''='',f22.11)')esemv
-       write(6,'(10x,''ecorev'',t30,''='',f22.11)')ecorv
-       write(6,'(10x,''evssum'',t30,''='',f22.11)')evssum
-       write(6,'(10x,''Kinetic E'',t30,''='',f22.11)') ekinetic
-       write(6,'(10x,''Coulomb E(rho)'',t30,''='',f22.11)') erho
-       write(6,'(10x,''Coulomb E(Z_rho)'',t30,''='',f22.11)') ezrho
-       write(6,'(10x,''Coulomb E'',t30,''='',f22.11)') ecoulomb
-       write(6,'(10x,''Exch E'',t30,''='',f22.11)') exchen
-       write(6,'(10x,''pterm1'',t30,''='',f22.11)')pterm1
-       write(6,'(10x,''ezpt/spin'',t30,''='',f22.11)')ezpt/rspin
-       write(6,'(10x,''tpzpt'',t30,''='',f22.11)')tpzpt/rspin
+      write(6,'(10x,''esemv'',t30,''='',f22.11)')esemv
+      write(6,'(10x,''ecorev'',t30,''='',f22.11)')ecorv
+      write(6,'(10x,''evssum'',t30,''='',f22.11)')evssum
+      write(6,'(10x,''Kinetic E'',t30,''='',f22.11)') ekinetic
+      write(6,'(10x,''Coulomb E(rho)'',t30,''='',f22.11)') erho
+      write(6,'(10x,''Coulomb E(Z_rho)'',t30,''='',f22.11)') ezrho
+      write(6,'(10x,''Coulomb E'',t30,''='',f22.11)') ecoulomb
+      write(6,'(10x,''Exch E'',t30,''='',f22.11)') exchen
+      write(6,'(10x,''pterm1'',t30,''='',f22.11)')pterm1
+      write(6,'(10x,''ezpt/spin'',t30,''='',f22.11)')ezpt/rspin
+      write(6,'(10x,''tpzpt'',t30,''='',f22.11)')tpzpt/rspin
    endif
 #ifdef DEBUG_EPRINT
    e_array(1) = e_array(1) + esemv 
@@ -1627,19 +1627,19 @@ contains
 !  Major print out for current sublattice
 !  *******************************************************************
    if(iprint >= 0) then
-!      write(6,'(10x,''ecorv'',t30,''='',f22.11)')ecorv
-!      write(6,'(10x,''esemv'',t30,''='',f22.11)')esemv
-!      write(6,'(10x,''evalsum'',t30,''='',f22.11)')evalsum
-       write(6,'(10x,''coren'',t30,''='',f22.11)')coren
-       write(6,'(10x,''valen'',t30,''='',f22.11)')valen
-       write(6,'(10x,''exchen'',t30,''='',f22.11)')exchen
-       write(6,'(10x,''correc'',t30,''='',f22.11)') correc
-       write(6,'(10x,''evssum'',t30,''='',f22.11)')evssum
-       write(6,'(10x,''-xcmt'',t30,''='',f22.11)')-xcmt
-       write(6,'(10x,''c3pv'',t30,''='',f22.11)')cor3pv
-       write(6,'(10x,''pterm1'',t30,''='',f22.11)')pterm1
-       write(6,'(10x,''ezpt/spin'',t30,''='',f22.11)')ezpt/rspin
-       write(6,'(10x,''tpzpt'',t30,''='',f22.11)')tpzpt/rspin
+!     write(6,'(10x,''ecorv'',t30,''='',f22.11)')ecorv
+!     write(6,'(10x,''esemv'',t30,''='',f22.11)')esemv
+!     write(6,'(10x,''evalsum'',t30,''='',f22.11)')evalsum
+      write(6,'(10x,''coren'',t30,''='',f22.11)')coren
+      write(6,'(10x,''valen'',t30,''='',f22.11)')valen
+      write(6,'(10x,''exchen'',t30,''='',f22.11)')exchen
+      write(6,'(10x,''correc'',t30,''='',f22.11)') correc
+      write(6,'(10x,''evssum'',t30,''='',f22.11)')evssum
+      write(6,'(10x,''-xcmt'',t30,''='',f22.11)')-xcmt
+      write(6,'(10x,''c3pv'',t30,''='',f22.11)')cor3pv
+      write(6,'(10x,''pterm1'',t30,''='',f22.11)')pterm1
+      write(6,'(10x,''ezpt/spin'',t30,''='',f22.11)')ezpt/rspin
+      write(6,'(10x,''tpzpt'',t30,''='',f22.11)')tpzpt/rspin
    endif
 !
    deallocate( vmvold, rhov, derv, bndint, bnd, rtmp )
@@ -1701,15 +1701,15 @@ contains
 !  write(6,'('' zeropt:: iz,deb,grun,expv,omeg:'',2i5,3d12.4)')     &
 !                        iz,idebye(iz),grune(iz),expvol(iz),omegws
    if(iz.lt.1 .or. iz.gt.49) then
-       ezero=ZERO
-       tpvzer=ZERO
+      ezero=ZERO
+      tpvzer=ZERO
    else
-       if(expvol(iz) > TEN2m10) then
-           ezero=1.125d0*bolts*idebye(iz)*(expvol(iz)/omegws)**grune(iz)
-       else
-           ezero = ZERO
-       endif
-       tpvzer =3.0d0*grune(iz)*ezero
+      if(expvol(iz) > TEN2m10) then
+         ezero=1.125d0*bolts*idebye(iz)*(expvol(iz)/omegws)**grune(iz)
+      else
+         ezero = ZERO
+      endif
+      tpvzer =3.0d0*grune(iz)*ezero
    endif
    ezpt=ezero
    tpzpt=tpvzer
@@ -1783,56 +1783,56 @@ contains
 !
    u0 = ZERO
    u0i = ZERO
-   if(isMuffintinPotential() .or. isMuffintinASAPotential()) then
-       do id=1, LocalNumAtoms
-           Grid => getGrid(id)
-           rmt = Grid%rmt
-           ig = GlobalIndex(id)
-           surfamt=PI4*rmt*rmt
-           omegmt=surfamt*rmt*THIRD
-           qsub_j = ZERO
-           do ia = 1, getLocalNumSpecies(id)
-              lig = global_table_line(ig) + ia
-              qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
-           enddo
-           qsub_j = qsub_j+rhoint*getAtomicVPVolume(ig)
-           u0=u0+rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
-           u0i(id) = rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
-           if(isMuffintinASAPotential()) then
-              dq_mt = ZERO; dq = ZERO
-              do ia = 1, getLocalNumSpecies(id)
-                 lig = global_table_line(ig) + ia
-                 dq_mt = getLocalSpeciesContent(id,ia)*(Qmt_Table(lig)-getAtomicNumber(ig,ia))
-                 dq = dq + getLocalSpeciesContent(id,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
-              enddo
-              dq = dq - rhoint*(getVolume(id)-omegmt)
-              u0=u0+dq*(TWO*dq_mt+dq)/rmt
-           endif
-       enddo
+   if (isMuffintinPotential() .or. isMuffintinASAPotential()) then
+      do id=1, LocalNumAtoms
+         Grid => getGrid(id)
+         rmt = Grid%rmt
+         ig = GlobalIndex(id)
+         surfamt=PI4*rmt*rmt
+         omegmt=surfamt*rmt*THIRD
+         qsub_j = ZERO
+         do ia = 1, getLocalNumSpecies(id)
+            lig = global_table_line(ig) + ia
+            qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+         enddo
+         qsub_j = qsub_j+rhoint*getAtomicVPVolume(ig)
+         u0=u0+rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
+         u0i(id) = rhoint*omegmt*(-sixfifth*rhoint*omegmt+THREE*qsub_j)/rmt
+         if(isMuffintinASAPotential()) then
+            dq_mt = ZERO; dq = ZERO
+            do ia = 1, getLocalNumSpecies(id)
+               lig = global_table_line(ig) + ia
+               dq_mt = getLocalSpeciesContent(id,ia)*(Qmt_Table(lig)-getAtomicNumber(ig,ia))
+               dq = dq + getLocalSpeciesContent(id,ia)*(Qvp_Table(lig)-Qmt_Table(lig))
+            enddo
+            dq = dq - rhoint*(getVolume(id)-omegmt)
+            u0=u0+dq*(TWO*dq_mt+dq)/rmt
+         endif
+      enddo
    endif
 !
    do id = 1, LocalNumAtoms
-       madmat => getMadelungMatrix(id)
-       ig = GlobalIndex(id)
-       qsub_j = ZERO
-       do ia = 1, getLocalNumSpecies(id)
-          lig = global_table_line(ig) + ia
-          qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
-       enddo
-       qsub_j = qsub_j + rhoint*getAtomicVPVolume(ig)
-       do ig=1,GlobalNumAtoms
-          qsub_i = ZERO
-          do ia = 1, getNumAlloyElements(ig)
-             lig = global_table_line(ig) + ia
-             qsub_i = qsub_i + getAlloyElementContent(ig,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
-          enddo
-          qsub_i = qsub_i + rhoint*getAtomicVPVolume(ig)
-          u0=u0+madmat(ig)*qsub_j*qsub_i
-          u0i(id) = u0i(id) + madmat(ig)*qsub_j*qsub_i
-          if (maxval(print_level) >= 0) then
-             write(6,'(a,i4,a,2f18.14)')'Atom =',ig,',  madmat, qsub = ',madmat(ig),qsub_i
-          endif
-       enddo
+      madmat => getMadelungMatrix(id)
+      ig = GlobalIndex(id)
+      qsub_j = ZERO
+      do ia = 1, getLocalNumSpecies(id)
+         lig = global_table_line(ig) + ia
+         qsub_j = qsub_j + getLocalSpeciesContent(id,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+      enddo
+      qsub_j = qsub_j + rhoint*getAtomicVPVolume(ig)
+      do ig=1,GlobalNumAtoms
+         qsub_i = ZERO
+         do ia = 1, getNumAlloyElements(ig)
+            lig = global_table_line(ig) + ia
+            qsub_i = qsub_i + getAlloyElementContent(ig,ia)*(getAtomicNumber(ig,ia)-Q_Table(lig))
+         enddo
+         qsub_i = qsub_i + rhoint*getAtomicVPVolume(ig)
+         u0=u0+madmat(ig)*qsub_j*qsub_i
+         u0i(id) = u0i(id) + madmat(ig)*qsub_j*qsub_i
+         if (maxval(print_level) >= 0) then
+            write(6,'(a,i4,a,2f18.14)')'Atom =',ig,',  madmat, qsub = ',madmat(ig),qsub_i
+         endif
+      enddo
    enddo
 !
 !  -------------------------------------------------------------------

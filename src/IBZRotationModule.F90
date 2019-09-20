@@ -23,12 +23,14 @@ private
 !
       integer (kind=IntKind) :: l_only
       integer (kind=IntKind) :: lmax, kkrsz
+      integer (kind=IntKind) :: NumIBZRotations, NumProperIBZRotations
       integer (kind=IntKind) :: NumRotations
       integer (kind=IntKind) :: NumProperRotations
       integer (kind=IntKind), parameter :: maxrot = 48
 !
-      integer (kind=intKind), allocatable, target :: rt(:,:)
-      integer (kind=intKind), allocatable :: nshift(:,:,:)
+      integer (kind=IntKind), allocatable, target :: rt(:,:)
+      integer (kind=IntKind), allocatable :: nshift(:,:,:)
+      integer (kind=IntKind) :: sym_table(maxrot)
 !
       real (kind=RealKind), target :: rot3d(3,3,maxrot)
       real (kind=RealKind) :: euler(3,maxrot/2)
@@ -112,13 +114,29 @@ contains
 !     ================================================================
 !
 !     cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      subroutine computeRotationMatrix()
+      subroutine computeRotationMatrix(bravais,nbasis,apos,aname,anum)
 !     ================================================================
+      use MathParamModule, only : TEN2m8
       use ErrorHandlerModule, only : ErrorHandler
+      use WriteMatrixModule,  only : writeMatrix
+      use VectorModule, only : getVecLength
 !
       implicit none
 !
+      integer (kind=intKind), intent(in) :: nbasis
+      integer (kind=intKind), intent(in), optional :: anum(nbasis)
+      integer (kind=intKind) :: ib, jb, ir, n
+      integer (kind=intKind) :: nmax, na, nb, nc, is, js, ks
       integer (kind=IntKind) :: i, kl, klp
+!
+      character (len=*), intent(in), optional :: aname(nbasis)
+!
+      real (kind=RealKind), intent(in) :: bravais(3,3)
+      real (kind=RealKind), intent(in) :: apos(3,nbasis)
+      real (kind=RealKind) :: apos_rot(3), apos_ori(3)
+      real (kind=RealKind) :: alen, blen, clen, max_len
+!
+      logical :: found
 !
       if (.not.Initialized) then
          call ErrorHandler('computeRotationMatrix','IBZRotationModule is not initialized')
@@ -138,6 +156,7 @@ contains
       else
          NumRotations = 1
          NumProperRotations = 1
+         NumIBZRotations = 1
          rot3d = ZERO
          rot3d(1,1,1) = ONE
          rot3d(2,2,1) = ONE
@@ -148,6 +167,79 @@ contains
          enddo
          djc = dj
       endif
+!
+      sym_table = 1
+!
+      if (symmetrize) then
+!        ==============================================================
+!        In symmetrize case, Check if the crytsal symmetry is satisfied with
+!        basis atoms present
+!        ==============================================================
+         alen = getVecLength(3,bravais(1:3,1))
+         blen = getVecLength(3,bravais(1:3,2))
+         clen = getVecLength(3,bravais(1:3,3))
+         max_len = max(alen,blen,clen)
+         na = ceiling(max_len/alen)
+         nb = ceiling(max_len/blen)
+         nc = ceiling(max_len/clen)
+         nmax = (2*na+1)*(2*nb+1)*(2*nc+1)
+!
+         do ir = 1, NumRotations
+            do ib = 1, nbasis
+               apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(1,2,ir)*apos(2,ib)+rot3d(1,3,ir)*apos(3,ib)
+               apos_rot(2) = rot3d(2,1,ir)*apos(1,ib)+rot3d(2,2,ir)*apos(2,ib)+rot3d(2,3,ir)*apos(3,ib)
+               apos_rot(3) = rot3d(3,1,ir)*apos(1,ib)+rot3d(3,2,ir)*apos(2,ib)+rot3d(3,3,ir)*apos(3,ib)
+               found = .false.
+               LOOP_jb: do jb = 1, nbasis
+                  do n = 1, nmax
+                     is = mod(n-1,2*na+1) - na                         ! is = -na,...,0,...,+na
+                     js = mod((n-is-na-1)/(2*na+1),2*nb+1) - nb        ! js = -nb,...,0,...,+nb
+                     ks = ((n-is-na-1)/(2*na+1)-(js+nb))/(2*nb+1) - nc ! ks = -nc,...,0,...,+nc
+                     apos_ori(1) = apos(1,jb) + is*bravais(1,1)+js*bravais(1,2)+ks*bravais(1,3)
+                     apos_ori(2) = apos(2,jb) + is*bravais(2,1)+js*bravais(2,2)+ks*bravais(2,3)
+                     apos_ori(3) = apos(3,jb) + is*bravais(3,1)+js*bravais(3,2)+ks*bravais(3,3)
+                     if (present(aname)) then
+                        if (abs(apos_rot(1)-apos_ori(1)) < TEN2m8 .and.           &
+                            abs(apos_rot(2)-apos_ori(2)) < TEN2m8 .and.           &
+                            abs(apos_rot(3)-apos_ori(3)) < TEN2m8 .and. aname(ib) == aname(jb)) then
+                            found = .true.
+                            exit LOOP_jb
+                        endif
+                     else if (present(anum)) then
+                        if (abs(apos_rot(1)-apos_ori(1)) < TEN2m8 .and.           &
+                            abs(apos_rot(2)-apos_ori(2)) < TEN2m8 .and.           &
+                            abs(apos_rot(3)-apos_ori(3)) < TEN2m8 .and. anum(ib) == anum(jb)) then
+                            found = .true.
+                            exit LOOP_jb
+                        endif
+                     else
+                        call ErrorHandler('checkCrystalSymmetry',                 &
+                                          'Either atomic name or atomic number needs to be passed in')
+                     endif
+                  enddo
+               enddo LOOP_jb
+               if (.not.found) then
+                  sym_table(ir) = 0  ! The corresponding rotation does not transform the crystal into itself
+               endif
+            enddo
+         enddo
+      endif
+!
+      NumIBZRotations = 0
+      NumProperIBZRotations = 0
+      do ir = 1, NumRotations
+         if (sym_table(ir) == 1) then
+            NumIBZRotations = NumIBZRotations + 1
+            sym_table(NumIBZRotations) = ir
+            if (ir <= NumProperRotations) then
+               NumProperIBZRotations = NumProperIBZRotations + 1
+            endif
+         endif
+      enddo
+!
+!     ----------------------------------------------------------------
+      call setupBasisRotationTable(bravais,nbasis,apos,inverse=.true.)
+!     ----------------------------------------------------------------
 !
       Computed = .true.
 !
@@ -161,15 +253,19 @@ contains
       implicit none
 !
       integer (kind=intKind), intent(in) :: i
+      integer (kind=intKind) :: j
 !
       logical :: y
 !
-      if (i < 1 .or. i > NumRotations) then
+      if (i < 1 .or. i > NumIBZRotations) then
          call ErrorHandler('isProperRotation','invalid rotation index',i)
-      else if (i <= NumProperRotations) then
-         y = .true.
-      else
-         y = .false.
+      else 
+         j = sym_table(i)
+         if (j <= NumProperRotations) then
+            y = .true.
+         else
+            y = .false.
+         endif
       endif
 !
       end function isProperRotation
@@ -182,7 +278,7 @@ contains
 !
       integer (kind=intKind) :: n
 !
-      n = NumRotations
+      n = NumIBZRotations
 !
       end function getNumIBZRotations
 !     ================================================================
@@ -194,7 +290,7 @@ contains
 !
       integer (kind=intKind) :: n
 !
-      n = NumProperRotations
+      n = NumProperIBZRotations
 !
       end function getNumProperIBZRotations
 !     ================================================================
@@ -208,17 +304,19 @@ contains
       character (len=1), intent(in) :: c
 !
       integer (kind=intKind), intent(in) :: i
+      integer (kind=intKind) :: j
 !
       complex (kind=CmplxKind), pointer :: r(:,:)
 !
-      if (i < 1 .or. i > NumRotations) then
+      if (i < 1 .or. i > NumIBZRotations) then
          call Errorhandler('getIBZRotationMatrix','Invalid rotation index',i)
       endif
 !
+      j = sym_table(i)
       if (c == 'N' .or. c == 'n') then
-         r => dj(:,:,i)
+         r => dj(:,:,j)
       else if (c == 'c' .or. c == 'C') then
-         r => djc(:,:,i)
+         r => djc(:,:,j)
       else
          call Errorhandler('getIBZRotationMatrix','Invalid matrix kind',c)
       endif
@@ -233,14 +331,16 @@ contains
       implicit none
 !
       integer (kind=intKind), intent(in) :: i
+      integer (kind=intKind) :: j
 !
       real (kind=RealKind) :: r(3,3)
 !
-      if (i < 1 .or. i > NumRotations) then
+      if (i < 1 .or. i > NumIBZRotations) then
          call Errorhandler('getIBZRotationMatrix3D','Invalid rotation index',i)
       endif
 !
-      r = rot3d(:,:,i)
+      j = sym_table(i)
+      r = rot3d(:,:,j)
 !
       end function getIBZRotationMatrix3D
 !     ================================================================
@@ -255,7 +355,7 @@ contains
       logical, intent(in), optional :: Rot3D_Only
       logical :: print_rot3d_only
 !
-      integer (kind=IntKind) :: irot, i, j
+      integer (kind=IntKind) :: irot, jrot, i, j, k, irotp1, irotp2
 !
       print_rot3d_Only = .false.
       if (present(Rot3D_Only)) then
@@ -269,35 +369,92 @@ contains
       write(6,'( 23x,a )')'* Output from printIBZRotationMatrix *'
       write(6,'(23x,a,/)')'**************************************'
 !
-      write(6,'('' The lattice system is '',a)') lattice_name
-      do irot=1,NumProperRotations
-!        ===============================================================
-         write(6,'(/,'' Proper rotation no.'',i4)') irot
-         write(6,'('' Euler Angles '',3f10.2)')                         &
-                   euler(1,irot)/PI,euler(2,irot)/PI,euler(3,irot)/PI
-         write(6,'('' Geometrical Proper Rotation'')')
-         do i=1,3
-            write(6,'(3f15.6)') (rot3d(i,j,irot),j=1,3)
+      write(6,'(''The lattice system is '',a)') lattice_name
+      write(6,'(/,''Number of Rotations = '',i5)')NumIBZRotations
+      write(6,'(''Rotation Matrix = '')')
+      write(6,'(80(''=''))')
+      if (print_rot3d_only) then
+         do jrot = 1, NumIBZRotations, 3
+            irot = sym_table(jrot)
+            irotp1 = sym_table(jrot+1)
+            irotp2 = sym_table(jrot+2)
+            k = jrot
+            if (jrot+1 >= NumIBZRotations) then
+               exit
+            endif
+            write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+               &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
+               rot3d(1,1,irot),rot3d(1,2,irot),rot3d(1,3,irot),              &
+               rot3d(1,1,irotp1),rot3d(1,2,irotp1),rot3d(1,3,irotp1),        &
+               rot3d(1,1,irotp2),rot3d(1,2,irotp2),rot3d(1,3,irotp2)
+            write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',    &
+               &      f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,   &
+               &      '']'')') &
+               jrot,rot3d(2,1,irot),rot3d(2,2,irot),rot3d(2,3,irot),            &
+               jrot+1,rot3d(2,1,irotp1),rot3d(2,2,irotp1),rot3d(2,3,irotp1),    &
+               jrot+2,rot3d(2,1,irotp2),rot3d(2,2,irotp2),rot3d(2,3,irotp2)
+            write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+               &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
+               rot3d(3,1,irot),rot3d(3,2,irot),rot3d(3,3,irot),              &
+               rot3d(3,1,irotp1),rot3d(3,2,irotp1),rot3d(3,3,irotp1),        &
+               rot3d(3,1,irotp2),rot3d(3,2,irotp2),rot3d(3,3,irotp2)
          enddo
-         if (.not.print_rot3d_only) then
-            write(6,'('' Angular Mom. Proper Rotation'')')
-!           ------------------------------------------------------------
-            call writeMatrix(' dj(m,m'') ',dj(1:kkrsz,1:kkrsz,irot),kkrsz,kkrsz,TEN2m10)
-!           ------------------------------------------------------------
+         if (NumIBZRotations-k == 0) then
+            irot = sym_table(k)
+            write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']'')')              &
+               rot3d(1,1,irot),rot3d(1,2,irot),rot3d(1,3,irot)
+            write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,'']'')')          &
+               k,rot3d(2,1,irot),rot3d(2,2,irot),rot3d(2,3,irot)
+            write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']'')')                &
+               rot3d(3,1,irot),rot3d(3,2,irot),rot3d(3,3,irot)
+         else if (NumIBZRotations-k == 1) then
+            irot = sym_table(k)
+            irotp1 = sym_table(k+1)
+            write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',       &
+               &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+               rot3d(1,1,irot),rot3d(1,2,irot),rot3d(1,3,irot),              &
+               rot3d(1,1,irotp1),rot3d(1,2,irotp1),rot3d(1,3,irotp1)
+            write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',  &
+               &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+               k,rot3d(2,1,irot),rot3d(2,2,irot),rot3d(2,3,irot),            &
+               k+1,rot3d(2,1,irotp1),rot3d(2,2,irotp1),rot3d(2,3,irotp1)
+            write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+               &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+               rot3d(3,1,irot),rot3d(3,2,irot),rot3d(3,3,irot),              &
+               rot3d(3,1,irotp1),rot3d(3,2,irotp1),rot3d(3,3,irotp1)
          endif
-         write(6,'(''        Rotation no.'',i4)') irot+NumProperRotations
-         write(6,'('' Geometrical Unproper Rotation'')')
-         do i=1,3
-            write(6,'(3f15.6)') (rot3d(i,j,irot+NumProperRotations),j=1,3)
+         write(6,'(/,80(''-''))')
+      else
+         do jrot = 1, NumProperIBZRotations
+            irot = sym_table(jrot)
+!           ============================================================
+            write(6,'(/,'' Proper rotation no.'',i4)') jrot
+            write(6,'('' Euler Angles '',3f10.2)')                         &
+                      euler(1,irot)/PI,euler(2,irot)/PI,euler(3,irot)/PI
+            write(6,'('' Geometrical Proper Rotation'')')
+            do i=1,3
+               write(6,'(3f15.6)') (rot3d(i,j,irot),j=1,3)
+            enddo
+            if (.not.print_rot3d_only) then
+               write(6,'('' Angular Mom. Proper Rotation'')')
+!              ---------------------------------------------------------
+               call writeMatrix(' dj(m,m'') ',dj(1:kkrsz,1:kkrsz,irot),kkrsz,kkrsz,TEN2m10)
+!              ---------------------------------------------------------
+            endif
+            write(6,'(''        Rotation no.'',i4)') jrot+NumProperIBZRotations
+            write(6,'('' Geometrical Unproper Rotation'')')
+            do i=1,3
+               write(6,'(3f15.6)') (rot3d(i,j,irot+NumProperRotations),j=1,3)
+            enddo
+            if (.not.print_rot3d_only) then
+               write(6,'('' Angular Mom. Unproper Rotation'')')
+!              ---------------------------------------------------------
+               call writeMatrix(' dj(m,m'') ',dj(1:kkrsz,1:kkrsz,irot+NumProperRotations), &
+                                kkrsz,kkrsz,TEN2m10)
+!              ---------------------------------------------------------
+            endif
          enddo
-         if (.not.print_rot3d_only) then
-            write(6,'('' Angular Mom. Unproper Rotation'')')
-!           ------------------------------------------------------------
-            call writeMatrix(' dj(m,m'') ',dj(1:kkrsz,1:kkrsz,irot+NumProperRotations), &
-                             kkrsz,kkrsz,TEN2m10)
-!           ------------------------------------------------------------
-         endif
-      enddo
+      endif
 !
       end subroutine printIBZRotationMatrix
 !     ==================================================================
@@ -1009,7 +1166,7 @@ contains
 !
       integer (kind=intKind), intent(in) :: nbasis
       integer (kind=intKind), intent(in), optional :: anum(nbasis)
-      integer (kind=intKind) :: ib, jb, ir, n
+      integer (kind=intKind) :: ib, jb, ir, n, i
       integer (kind=intKind) :: nmax, na, nb, nc, is, js, ks
 !
       character (len=*), intent(in), optional :: aname(nbasis)
@@ -1036,7 +1193,8 @@ contains
 !
       y = .true.
 !
-      do ir = 1, NumRotations
+      do i = 1, NumIBZRotations
+         ir = sym_table(i)
          do ib = 1, nbasis
             apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(1,2,ir)*apos(2,ib)+rot3d(1,3,ir)*apos(3,ib)
             apos_rot(2) = rot3d(2,1,ir)*apos(1,ib)+rot3d(2,2,ir)*apos(2,ib)+rot3d(2,3,ir)*apos(3,ib)
@@ -1116,7 +1274,7 @@ contains
       logical :: inv, found
 !
       integer (kind=intKind), intent(in) :: nbasis
-      integer (kind=intKind) :: ib, jb, kb, ir, n, ni, nj
+      integer (kind=intKind) :: ib, jb, kb, ir, n, ni, nj, i
       integer (kind=intKind) :: nmax, na, nb, nc, is, js, ks
 !
       real (kind=RealKind), intent(in) :: bravais(3,3)
@@ -1124,13 +1282,9 @@ contains
       real (kind=RealKind) :: apos_rot(3), apos_ori(3)
       real (kind=RealKind) :: alen, blen, clen, max_len
 !
-      if (.not.Computed) then
-         call ErrorHandler('setBasisRotationTable','Rotation matrix is not calculated')
-      endif
-!
       if (.not.allocated(rt)) then
-         allocate(rt(nbasis,NumRotations))
-         allocate(nshift(3,nbasis,NumRotations))
+         allocate(rt(nbasis,NumIBZRotations))
+         allocate(nshift(3,nbasis,NumIBZRotations))
       endif
 !
       if (present(inverse)) then
@@ -1150,7 +1304,8 @@ contains
 !
       rt = 0
       nshift = 0
-      do ir = 1, NumRotations
+      do i = 1, NumIBZRotations
+         ir = sym_table(i)
          do ib = 1, nbasis
             if (inv) then
                apos_rot(1) = rot3d(1,1,ir)*apos(1,ib)+rot3d(2,1,ir)*apos(2,ib)+rot3d(3,1,ir)*apos(3,ib)
@@ -1182,10 +1337,10 @@ contains
                call writeMatrix('3-D rotation matrix',rot3d(:,:,ir),3,3)
                call ErrorHandler('setBasisRotationTable','The crystal cystem does not possess the rotation symmetry')
             else
-               rt(ib,ir) = kb
-               nshift(1,ib,ir) = is
-               nshift(2,ib,ir) = js
-               nshift(3,ib,ir) = ks
+               rt(ib,i) = kb
+               nshift(1,ib,i) = is
+               nshift(2,ib,i) = js
+               nshift(3,ib,i) = ks
             endif
          enddo
       enddo

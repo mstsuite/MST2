@@ -802,7 +802,8 @@ contains
    use MPPModule, only : MyPE
    use MatrixModule, only : computeAStarT
    use BZoneModule, only : getNumKs, getAllWeights, getAllKPoints,    &
-                           getNumRotations, getWeightSum
+                           getWeightSum
+   use IBZRotationModule, only : getNumIBZRotations
    use ProcMappingModule, only : isKPointOnMyProc, getNumKsOnMyProc,  &
                                  getKPointIndex, getNumRedundantKsOnMyProc
    use GroupCommModule, only : getGroupID, GlobalSumInGroup, getMyPEinGroup
@@ -985,7 +986,7 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
-   if (getNumRotations() > 1) then
+   if (getNumIBZRotations() > 1) then
       if (isRelativistic) then
          call ErrorHandler('calCrystalMatrix_sumk','Relativistic sumIBZRotation not implemented',INFO)
       else

@@ -56,8 +56,8 @@ private
 !
    integer (kind=IntKind) :: host_kmax_kkr
 !
-   complex (kind=CmplxKind), allocatable, target :: t_host_inv(:) ! t-matrix inverse, in local spin frame, of the 
-                                                                  ! host sites on local CPU
+   complex (kind=CmplxKind), allocatable, target :: t_host_inv(:,:) ! t-matrix inverse, in local spin frame, of the 
+                                                                    ! host sites on local CPU
 !
 contains
 !
@@ -76,7 +76,7 @@ contains
 !
    character (len=*), intent(in) :: istop
 !
-   integer (kind=IntKind), intent(in) :: cant    ! Spin cantinf index
+   integer (kind=IntKind), intent(in) :: cant    ! Spin canting index
    integer (kind=IntKind), intent(in) :: iprint
 !
    character (len=14) :: sname = "initEmbeddedCluster"
@@ -94,8 +94,8 @@ contains
 !
    stop_routine = istop
 !
-   GlobalNumSitesInCluster = getNumSites()
-   LocalNumSitesInCluster = getLocalNumSites()
+   GlobalNumSitesInCluster = getNumSites()      ! This is the total number of sublattices
+   LocalNumSitesInCluster = getLocalNumSites()  ! This is the number of sublattices on the local process
    nSpinCant = cant
    print_level= iprint
 !
@@ -109,8 +109,16 @@ contains
 !     ----------------------------------------------------------------
    endif
 !
+!  ===================================================================
+!  This needs to be further thought through for whether it needs to 
+!  create a Medium Cell communicator.
+!  ===================================================================
    if (isGroupExisting('Medium Cell')) then
       GroupID = getGroupID('Medium Cell')
+      NumPEsInGroup = getNumPEsInGroup(GroupID)
+      MyPEinGroup = getMyPEinGroup(GroupID)
+   else if (isGroupExisting('Unit Cell')) then
+      GroupID = getGroupID('Unit Cell')
       NumPEsInGroup = getNumPEsInGroup(GroupID)
       MyPEinGroup = getMyPEinGroup(GroupID)
    else
@@ -154,7 +162,7 @@ contains
    allocate ( TMP_MatrixBand(KKRMatrixSizeCant*BandSizeCant) )
    Tau_MatrixBand = CZERO; TMP_MatrixBand = CZERO
 !
-   allocate( WORK(tsize), t_host_inv(tsize) )
+   allocate( WORK(tsize), t_host_inv(tsize,LocalNumSitesInCluster) )
    WORK = CZERO; t_host_inv = CZERO
 !
 !  ===================================================================
@@ -419,47 +427,54 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine setupHostMedium(t_host,t_inverse,getMediumTau)
+!  subroutine setupHostMedium(t_host,t_inverse,getMediumTau)
+   subroutine setupHostMedium(e,getSingleSiteTmat,configuration)
 !  ===================================================================
    use MatrixInverseModule, only : MtxInv_LU
+   use CrystalMatrixModule, only : calCrystalMatrix, getMediumTau=>getTau
 !
    implicit none
 !
-   logical, intent(in) :: t_inverse
+   integer (kind=IntKind), intent(in) :: configuration(:)
 !
-   complex (kind=CmplxKind), intent(in) :: t_host(:,:)
+   complex (kind=CmplxKind), intent(in) :: e
+!
+   complex (kind=CmplxKind), pointer :: pt(:)
+   complex (kind=CmplxKind), pointer :: t_host(:,:)
    complex (kind=CmplxKind), pointer :: p_thinv(:,:)
 !
    integer (kind=IntKind) :: i, j, ig, jg
 !
    interface
-      function getMediumTau(local_i,global_i,global_j,dsize) result(tau)
-         use KindParamModule, only : IntKind, RealKind, CmplxKind
-         implicit none
-         integer (kind=IntKind), intent(in), optional :: local_i,global_i,global_j
+      function getSingleSiteTmat(smt,spin,site,atom,dsize) result(sm)
+         use KindParamModule, only : IntKind, CmplxKind
+         character (len=*), intent(in) :: smt
+         integer (kind=IntKind), intent(in), optional :: spin, site, atom
          integer (kind=IntKind), intent(out), optional :: dsize
-         complex (kind=CmplxKind), pointer :: tau(:,:,:)
-      end function getMediumTau
+         complex (kind=CmplxKind), pointer :: sm(:,:)
+      end function getSingleSiteTmat
    end interface
 !
 !  ===================================================================
-!  Setup t_host_inv...................................................
+!  Setup t_host_inv. This needs to be checked for the spin canting case
 !  ===================================================================
-   host_kmax_kkr = size(t_host,1)
-   p_thinv => aliasArray2_c(t_host_inv,host_kmax_kkr,host_kmax_kkr)
-   p_thinv = t_host
-!  ===================================================================
-!  If t_host is t-matrix, rather than t-matrix inverse. Its inverse
-!  needs to be performed.
-!  ===================================================================
-   if (.not.t_inverse) then
-!     ----------------------------------------------------------------
-      call MtxInv_LU(p_thinv,host_kmax_kkr)
-!     ----------------------------------------------------------------
-   endif
+   do i = 1, LocalNumSitesInCluster
+      t_host => getSingleSiteTmat('TInv-Matrix',spin=1,&
+                                        site=i,atom=configuration(i))
+      host_kmax_kkr = size(t_host,1)
+      pt => t_host_inv(:,i)
+      p_thinv => aliasArray2_c(pt,host_kmax_kkr,host_kmax_kkr)
+      p_thinv = t_host
+   enddo
+!
+!  -------------------------------------------------------------------
+   call calCrystalMatrix(e,getSingleSiteTmat,use_tmat=.true.,         &
+                         tau_needed=.true.,configuration=configuration)
+!  -------------------------------------------------------------------
 !
    if (GlobalNumSitesInCluster == 1) then
       EmbeddedClusterMatrixBand(1)%MatrixBlock(1)%tau_l => getMediumTau()
+      EmbeddedClusterMatrixBand(1)%MatrixBlock(1)%kau_l = CZERO
    else
       do j = 1, LocalNumSitesInCluster
          jg = EmbeddedClusterMatrixBand(j)%global_index
@@ -467,6 +482,7 @@ contains
             ig = EmbeddedClusterMatrixBand(j)%MatrixBlock(i)%global_index
             EmbeddedClusterMatrixBand(j)%MatrixBlock(i)%tau_l =>      &
                                          getMediumTau(global_i=ig,global_j=jg)
+            EmbeddedClusterMatrixBand(j)%MatrixBlock(i)%kau_l = CZERO
          enddo
       enddo
    endif
@@ -508,6 +524,7 @@ contains
    complex (kind=CmplxKind), pointer :: p_thinv(:,:)
    complex (kind=CmplxKind), pointer :: p_tainv(:,:)
    complex (kind=CmplxKind), pointer :: tau_c(:,:)
+   complex (kind=CmplxKind), pointer :: pt(:)
 !
    dsize = size(tmat_a,1)
    if (dsize /= host_kmax_kkr) then
@@ -544,7 +561,8 @@ contains
    present_embed%block_index = gid_array(ig)
 !
 !  -------------------------------------------------------------------
-   p_thinv => aliasArray2_c(t_host_inv,dsize,dsize)
+   pt => t_host_inv(:,id)
+   p_thinv => aliasArray2_c(pt,dsize,dsize)
 !  -------------------------------------------------------------------
    if (isInverse) then ! tmat_a is the inverse of t-matrix
       present_embed%diff_TmatInv = tmat_a - p_thinv

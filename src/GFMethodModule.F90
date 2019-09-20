@@ -2281,7 +2281,7 @@ contains
                enddo
             endif
             if ( node_print_level >= 0) then
-               write(6,'(/,3a,i1,a,f11.8,a)')'Atom: ',getLocalAtomName(id),', Spin: ',is, &
+               write(6,'(/,3a,i1,a,f11.8,a)')'Atom: ',getLocalAtomName(id,ia),', Spin: ',is, &
                                              ', Total Atom in Crystal DOS at Energy = ',er,':'
                check_ws = ZERO; check_mt = ZERO
                do kl = kmax_phi(id), 1, -1

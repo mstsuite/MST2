@@ -171,7 +171,7 @@ contains
       local_array_size = local_array_size + getLocalNumSpecies(id)
    enddo
 !
-   allocate( Vint(LocalNumAtoms), q_mix(local_array_size) )
+   allocate( Vint(LocalNumAtoms), q_mix(LocalNumAtoms) )
    allocate( Qmt(local_array_size), Qmt_old(local_array_size) )
    allocate( Qvp(local_array_size), Qvp_old(local_array_size) )
    allocate( Mmt(local_array_size) )
@@ -391,8 +391,8 @@ contains
 !        =============================================================
 !        Mixing the new Qmt, Qvp with the old ones.
 !        =============================================================
-         Qmt_old(lid) = q_mix(lid)*Qmt(lid) + (ONE-q_mix(lid))*Qmt_old(lid)
-         Qvp_old(lid) = q_mix(lid)*Qvp(lid) + (ONE-q_mix(lid))*Qmt_old(lid)
+         Qmt_old(lid) = q_mix(id)*Qmt(lid) + (ONE-q_mix(id))*Qmt_old(lid)
+         Qvp_old(lid) = q_mix(id)*Qvp(lid) + (ONE-q_mix(id))*Qmt_old(lid)
          qint_old = qint_old +                                        &
                   getLocalSpeciesContent(id,ia)*(getLocalAtomicNumber(id,ia)-Qmt_old(lid))
 !        =============================================================

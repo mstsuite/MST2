@@ -2313,14 +2313,24 @@ contains
 !  *******************************************************************
 !
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-   subroutine printBZone()
+   subroutine printBZone(Rot3D)
 !  ===================================================================
    implicit none
+!
+   logical, intent(in), optional :: Rot3D
+   logical :: print_Rot3D
+!
    integer (kind=IntKind) :: i, k
 !
    if (.not.Initialized) then
       call WarningHandler('printBZone','BZoneModule is not initialized')
       return
+   endif
+!
+   if (present(Rot3D)) then
+      print_Rot3D = Rot3D
+   else
+      print_Rot3D = .false.
    endif
 !
    write(6,'(/,a)')'*******************************'
@@ -2340,53 +2350,56 @@ contains
       enddo
    enddo
    write(6,'(''================================================='')')
-   write(6,'(/,''Number of Rotations = '',i5)')NumRotations
-   write(6,'(''Rotation Matrix = '')')
-   write(6,'(80(''=''))')
-   do i=1,NumRotations,3
-      k = i
-      if (i+1 >= NumRotations) then
-         exit
+!
+   if (print_Rot3D) then
+      write(6,'(/,''Number of Rotations = '',i5)')NumRotations
+      write(6,'(''Rotation Matrix = '')')
+      write(6,'(80(''=''))')
+      do i=1,NumRotations,3
+         k = i
+         if (i+1 >= NumRotations) then
+            exit
+         endif
+         write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+            &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
+            Rotation(i,1,1),Rotation(i,1,2),Rotation(i,1,3),              &
+            Rotation(i+1,1,1),Rotation(i+1,1,2),Rotation(i+1,1,3),        &
+            Rotation(i+2,1,1),Rotation(i+2,1,2),Rotation(i+2,1,3)
+         write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',    &
+            &      f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,   &
+            &      '']'')') &
+            i,Rotation(i,2,1),Rotation(i,2,2),Rotation(i,2,3),            &
+            i+1,Rotation(i+1,2,1),Rotation(i+1,2,2),Rotation(i+1,2,3),    &
+            i+2,Rotation(i+2,2,1),Rotation(i+2,2,2),Rotation(i+2,2,3)
+         write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+            &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
+            Rotation(i,3,1),Rotation(i,3,2),Rotation(i,3,3),              &
+            Rotation(i+1,3,1),Rotation(i+1,3,2),Rotation(i+1,3,3),        &
+            Rotation(i+2,3,1),Rotation(i+2,3,2),Rotation(i+2,3,3)
+      enddo
+      if (NumRotations-k == 0) then
+         write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']'')')              &
+            Rotation(k,1,1),Rotation(k,1,2),Rotation(k,1,3)
+         write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,'']'')')          &
+            k,Rotation(k,2,1),Rotation(k,2,2),Rotation(k,2,3)
+         write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']'')')                &
+            Rotation(k,3,1),Rotation(k,3,2),Rotation(k,3,3)
+      else if (NumRotations-k == 1) then
+         write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',       &
+            &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+            Rotation(k,1,1),Rotation(k,1,2),Rotation(k,1,3),              &
+            Rotation(k+1,1,1),Rotation(k+1,1,2),Rotation(k+1,1,3)
+         write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',  &
+            &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+            k,Rotation(k,2,1),Rotation(k,2,2),Rotation(k,2,3),            &
+            k+1,Rotation(k+1,2,1),Rotation(k+1,2,2),Rotation(k+1,2,3)
+         write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
+            &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
+            Rotation(k,3,1),Rotation(k,3,2),Rotation(k,3,3),              &
+            Rotation(k+1,3,1),Rotation(k+1,3,2),Rotation(k+1,3,3)
       endif
-      write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
-         &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
-         Rotation(i,1,1),Rotation(i,1,2),Rotation(i,1,3),              &
-         Rotation(i+1,1,1),Rotation(i+1,1,2),Rotation(i+1,1,3),        &
-         Rotation(i+2,1,1),Rotation(i+2,1,2),Rotation(i+2,1,3)
-      write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',    &
-         &      f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,   &
-         &      '']'')') &
-         i,Rotation(i,2,1),Rotation(i,2,2),Rotation(i,2,3),            &
-         i+1,Rotation(i+1,2,1),Rotation(i+1,2,2),Rotation(i+1,2,3),    &
-         i+2,Rotation(i+2,2,1),Rotation(i+2,2,2),Rotation(i+2,2,3)
-      write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
-         &      f5.2,x,f5.2,x,f5.2,'']        ['',f5.2,x,f5.2,x,f5.2,'']'')') &
-         Rotation(i,3,1),Rotation(i,3,2),Rotation(i,3,3),              &
-         Rotation(i+1,3,1),Rotation(i+1,3,2),Rotation(i+1,3,3),        &
-         Rotation(i+2,3,1),Rotation(i+2,3,2),Rotation(i+2,3,3)
-   enddo
-   if (NumRotations-k == 0) then
-      write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']'')')              &
-         Rotation(k,1,1),Rotation(k,1,2),Rotation(k,1,3)
-      write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,'']'')')          &
-         k,Rotation(k,2,1),Rotation(k,2,2),Rotation(k,2,3)
-      write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']'')')                &
-         Rotation(k,3,1),Rotation(k,3,2),Rotation(k,3,3)
-   else if (NumRotations-k == 1) then
-      write(6,'(/,''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',       &
-         &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
-         Rotation(k,1,1),Rotation(k,1,2),Rotation(k,1,3),              &
-         Rotation(k+1,1,1),Rotation(k+1,1,2),Rotation(k+1,1,3)
-      write(6,'(''r('',i2,'')=['',f5.2,x,f5.2,x,f5.2,''], r('',i2,'')=['',  &
-         &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
-         k,Rotation(k,2,1),Rotation(k,2,2),Rotation(k,2,3),            &
-         k+1,Rotation(k+1,2,1),Rotation(k+1,2,2),Rotation(k+1,2,3)
-      write(6,'(''      ['',f5.2,x,f5.2,x,f5.2,'']        ['',         &
-         &      f5.2,x,f5.2,x,f5.2,'']'')')                            &
-         Rotation(k,3,1),Rotation(k,3,2),Rotation(k,3,3),              &
-         Rotation(k+1,3,1),Rotation(k+1,3,2),Rotation(k+1,3,3)
+      write(6,'(80(''-''))')
    endif
-   write(6,'(80(''-''))')
 !
    end subroutine printBZone
 !  ===================================================================
