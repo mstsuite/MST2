@@ -217,6 +217,7 @@
    n = n + 1; Keys(n) = 'Effective Medium T-matrix Tol (> 0)';   Values(n) = '0.0000001'
    n = n + 1; Keys(n) = 'Desired Core Radius';                   Values(n) = '0.000'
    n = n + 1; Keys(n) = 'Desired Muffin-tin Radius';             Values(n) = '0.000'
+   n = n + 1; Keys(n) = 'Default Radical Plane Ratio';           Values(n) = '0.000'
 !  =============================================================================
 !  Additional input parameters can be added to this table using the 
 !  following format:
