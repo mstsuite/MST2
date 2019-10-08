@@ -35,7 +35,7 @@ program testIBZRotation
                                  computeRotationMatrix, printIBZRotationMatrix, &
                                  getNumIBZRotations, isProperRotation,&
                                  getIBZRotationMatrix, getIBZRotationMatrix3D
-   use IBZRotationModule, only : checkCrystalSymmetry, setupBasisRotationTable
+   use IBZRotationModule, only : checkCrystalSymmetry
    use IBZRotationModule, only : getBasisRotationTable
 !
    use AtomModule, only : getPhiLmax
@@ -131,7 +131,7 @@ program testIBZRotation
    call initTimer()
 !  call initIBZRotation(.false.,getLatticeType(),lmax_phi,Symmetrize)
    call initIBZRotation(.false.,getLatticeType(),lmax_phi,1)
-   call computeRotationMatrix()
+   call computeRotationMatrix(bravais,NumAtoms,AtomPosition,aname=AtomName)
    call printIBZRotationMatrix(Rot3D_Only=.true.)
    if( checkCrystalSymmetry(bravais,NumAtoms,AtomPosition,aname=AtomName) ) then
       write(6,'(/,a,/)')'The crystal system does have the point group symmetry!'
@@ -143,9 +143,6 @@ program testIBZRotation
    kvec => getAllKPoints(kfac)
 !
    allocate(nshift(3,NumAtoms,nr))
-!  -------------------------------------------------------------------
-   call setupBasisRotationTable(bravais,NumAtoms,AtomPosition,inverse=.true.)
-!  -------------------------------------------------------------------
    rotation_table => getBasisRotationTable(ntab=nshift)
 !
    if (nr > MaxRotations) then
