@@ -7,6 +7,8 @@
    use SystemModule, only : getSystemID, getSystemTitle, getNumAtomTypes
    use SystemModule, only : getNumAtomsOfType, getAtomTypeName
 !
+   use SystemVolumeModule, only : getSystemVolume
+!
    use ScfDataModule, only : isSimpleMixing, isDGAMixing, isBroydenMixing
    use ScfDataModule, only : isPotentialMixing, isChargeMixing
    use ScfDataModule, only : n_spin_pola
@@ -36,13 +38,28 @@
 !
    real (kind=RealKind) :: mom
 !
-   character (len=80) :: string_tmp, text
+   character (len=80) :: string_tmp, text, myunit
    character (len=8) :: snum
+   character (len=30) :: ver
+!
+   interface
+      function getTokenPosition(k,s,n) result(p)
+         character (len=*), intent(in) :: s
+         integer, intent(in) :: k
+         integer, intent(out), optional :: n
+         integer :: p
+      end function getTokenPosition
+   end interface
 !
 !  TotalEnergy = getEnergyPerAtom()
 !  PV3 = getPressurePerAtom()
 !
    if (isBookKeepingNew()) then
+#include "git_version.h"
+      i = getTokenPosition(6,myunit)
+      ver = trim(myunit(i:))
+!     ----------------------------------------------------------------
+      call writeHeadLine('Source Code Version',ver)
 !     ----------------------------------------------------------------
       call writeHeadLine('System Description',getSystemTitle())
 !     ----------------------------------------------------------------
@@ -64,6 +81,9 @@
          n = n + m
       enddo
       call writeHeadLine('Number of Atoms in Each Type',string_tmp)
+!     ----------------------------------------------------------------
+      write(string_tmp,'(d15.8)')getSystemVolume()
+      call writeHeadLine('Unit Cell Volume (au^3)',string_tmp)
 !     ----------------------------------------------------------------
       E_offset = int(TotalEnergy,kind=IntKind)
       write(string_tmp,'(i6)')E_offset
