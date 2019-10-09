@@ -85,6 +85,9 @@
       write(string_tmp,'(d15.8)')getSystemVolume()
       call writeHeadLine('Unit Cell Volume (au^3)',string_tmp)
 !     ----------------------------------------------------------------
+      write(string_tmp,'(f12.5)')getSystemVolume()/real(getNumAtoms(),RealKind)
+      call writeHeadLine('Average Atomic Volume (au^3)',string_tmp)
+!     ----------------------------------------------------------------
       E_offset = int(TotalEnergy,kind=IntKind)
       write(string_tmp,'(i6)')E_offset
       call writeHeadLine('Energy Offset',string_tmp)
