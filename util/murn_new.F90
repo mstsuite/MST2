@@ -24,11 +24,11 @@ program murn_new
 !
    real (kind=RealKind) :: convav, conv_inp
    real (kind=RealKind) :: avinp, eninp, av_min, av_max, av
-   real (kind=RealKind) :: alatt0, vol0, e0min, b0, b0prim
+   real (kind=RealKind) :: alatt0, vol0, e0min, b0, b0prim, a0min, der
    real (kind=RealKind) :: alatt, vol, etot, etotry, pr, bm
    real (kind=RealKind) :: e0ev, e0ry, almin, almax, shift
    real (kind=RealKind) :: VOLMIN,VOLMAX,B0MIN,B0MAX,B0PMIN,B0PMAX,FFF
-   real (kind=RealKind), allocatable :: EDATA(:),VDATA(:)
+   real (kind=RealKind), allocatable :: EDATA(:),VDATA(:), ADATA(:)
    real (kind=RealKind), allocatable :: X(:),AUX(:)
 !
    IN=5
@@ -106,7 +106,7 @@ program murn_new
    IF (NNN < 3) THEN
       STOP ' N TOO SMALL'
    ENDIF
-   allocate(EDATA(nnn),VDATA(nnn))
+   allocate(EDATA(nnn),VDATA(nnn),ADATA(nnn))
    allocate(X(10*NVAR),AUX(10*NVAR))
 !
    WRITE(IOUT,'(1X,79(1H-)/1X)')
@@ -117,16 +117,17 @@ program murn_new
 !  Read in alat vs e or vol vs e data
 !  ====================================================================
    DO I=1,NNN
-      READ(IN,*)avinp,eninp
-      if (aorv == 1) then
-         VDATA(I)=avinp**3*CONVAV
-      else
-         VDATA(I)=avinp
-         avinp = (VDATA(I)/CONVAV)**third
-      endif
+      READ(IN,*)ADATA(I),VDATA(I),eninp
+!     READ(IN,*)avinp,eninp
+!     if (aorv == 1) then
+!        VDATA(I)=avinp**3*CONVAV
+!     else
+!        VDATA(I)=avinp
+!        avinp = (VDATA(I)/CONVAV)**third
+!     endif
       EDATA(I)=eninp*CONV_inp
       WRITE(IOUT,'(1X,I5,F10.5,6x,F10.5,4x,F12.5,8x,f12.5)') &
-            I,avinp,VDATA(I),EDATA(I),eninp
+            I,ADATA(I),VDATA(I),EDATA(I),eninp
    enddo
    WRITE(IOUT,'(1X,79(1H-)/1X)')
 !
@@ -141,18 +142,21 @@ program murn_new
 !  ====================================================================
    E0MIN=1.D6
    VOLMIN=1.D6
+   A0MIN=1.D6
    LOOP_I: DO I=1,NNN
       IF(EDATA(I) >= E0MIN) then
          cycle LOOP_I
       endif
       E0MIN=EDATA(I)
       VOLMIN=VDATA(I)
+      A0MIN=ADATA(I)
    enddo LOOP_I
 !
    VOL0=VOLMIN
    E0EV=E0MIN
    E0RY=E0EV/CONVYY
-   ALATT0=(VOL0/CONVAV)**third
+!  ALATT0=(VOL0/CONVAV)**third
+   ALATT0=A0MIN
 !
 !  ====================================================================
 !  FOR OTHER VARIABLES, WE CHOOSE:
@@ -165,8 +169,10 @@ program murn_new
 !
    ALMIN=0.5D0*ALATT0
    ALMAX=1.5D0*ALATT0
-   VOLMIN=ALMIN**3.D0*CONVAV
-   VOLMAX=ALMAX**3.D0*CONVAV
+!  VOLMIN=ALMIN**3.D0*CONVAV
+   call interp(ADATA,VDATA,NNN,ALMIN,VOLMIN,der)
+!  VOLMAX=ALMAX**3.D0*CONVAV
+   call interp(ADATA,VDATA,NNN,ALMAX,VOLMAX,der)
    B0MIN=0.01D0
    B0MAX=10.D0
    B0PMIN=0.01D0
@@ -202,11 +208,12 @@ program murn_new
    LOOP_i2: DO I = 1, MAXITER
 !     CALL DFMND(FUN,X,FFF,NVAR,LIM,AUX,IERR)
       CALL DFMND(X,FFF,NVAR,LIM,AUX,IERR)
+      call interp(VDATA,ADATA,NNN,X(4),ALATT0,der)
 !     ================================================================
 !     THE RESULT OF 20 ITERATION :
 !     ================================================================
       WRITE(IOUT,'(1X,I4,F8.4,2x,2F11.5,F10.5,F13.5,1x,F11.5,2x,I5)')  &
-   &     20*I,(X(4)/CONVAV)**third,X(4),X(2),X(3),X(1)-SHIFT,FFF,IERR
+   &     20*I,ALATT0,X(4),X(2),X(3),X(1)-SHIFT,FFF,IERR
       IF(IERR .EQ. 0) then
          exit LOOP_i2
       endif
@@ -215,28 +222,27 @@ program murn_new
 !  ====================================================================
 !  THE RESULT OF THE LAST ITERATION:
 !  ====================================================================
-   WRITE(IOUT,'(1X,I4,F8.4,2x,2F11.5,F10.5,F13.5,1x,F11.5,2x,I5)')  &
-   &  20*I,(X(4)/CONVAV)**third,X(4),X(2),X(3),X(1)-SHIFT,FFF,IERR
+!  call interp(VDATA,ADATA,NNN,X(4),ALATT0,der)
+!  WRITE(IOUT,'(1X,I4,F8.4,2x,2F11.5,F10.5,F13.5,1x,F11.5,2x,I5)')  &
+!  &  20*I,ALATT0,X(4),X(2),X(3),X(1)-SHIFT,FFF,IERR
    WRITE(IOUT,'(1X,79(1H-)/1X)')
    WRITE(IOUT,'(6X,''ALATT0'',3X, ''VOL0 (ULA**3)'',3X,''B0(MBAR)'',6X, &
    &               ''B0PRIME'',7X,''E0(EV)'',7X,''E0(RY)''/1X)')
    VOL0=X(4)
-   ALATT0=(VOL0/CONVAV)**third
+!  ALATT0=(VOL0/CONVAV)**third
+   call interp(VDATA,ADATA,NNN,VOL0,ALATT0,der)
    B0=X(2)
    B0PRIM=X(3)
    E0EV=X(1)-SHIFT
    E0RY=E0EV/CONVYY
    WRITE(IOUT,'(3X,F9.4,X,3F13.5,2F13.5)')ALATT0,VOL0,B0,B0PRIM,E0EV,E0RY
    WRITE(IOUT,'(1X,79(1H-)/1X)')
-   if (aorv == 1) then
-      write(iout,'(''Alat = '',f12.5,''(Bohr) = '',f12.5,''(A)'')') &
-                     alatt0,ula*alatt0
-   else
-      write(iout,'('' Vol = '',f12.5,''(Bohr^3) = '',f12.5,''(A^3)'')') &
-                     VOL0,ula**3*VOL0
-   endif
+   write(iout,'(''Alat = '',f12.5,''(Bohr)   = '',f12.5,''(A)'')') &
+                alatt0,ula*alatt0
+   write(iout,'('' Vol = '',f12.5,''(Bohr^3) = '',f12.5,''(A^3)'')') &
+                VOL0,ula**3*VOL0
    write(iout,'('' B0  = '',f12.5,''(MBar)   = '',f12.5,''(GPa)'')') &
-                     b0,b0*100.0d0
+                b0,b0*100.0d0
    write(iout,'('' B0p = '',f12.5)')b0prim
    write(iout,'('' E0  = '',f12.5,''(EV)     = '',f12.5,''(Ryd) = '',f12.5,&
    &            ''(Hartree)'')') E0EV,E0RY,E0RY*0.5d0
@@ -258,10 +264,12 @@ program murn_new
       av=av_min + (i-1)*(av_max-av_min)/(num_av-1)
       if (aorv == 1) then
          alatt=av
-         vol = alatt**3 * convav
+!        vol = alatt**3 * convav
+         call interp(ADATA,VDATA,NNN,alatt,vol,der)
       else
          vol = av
-         alatt = (vol/convav)**third
+!        alatt = (vol/convav)**third
+         call interp(VDATA,ADATA,NNN,vol,alatt,der)
       endif
       call murng1(ula,vol,vol0,b0,b0prim,e0ev,etot,pr,bm)
       etotry=etot/convyy
@@ -273,7 +281,7 @@ program murn_new
                vol*ula**3,vol,etot,etotry,pr,bm
       endif
    enddo
-   deallocate(EDATA,VDATA)
+   deallocate(EDATA,VDATA,ADATA)
    deallocate(X,AUX)
 !
 contains
