@@ -89,7 +89,8 @@ contains
       do 3 j=1,n
       q=a(j,i)
       a(j,i)=a(j,k)
- 3    a(j,k)=q
+      a(j,k)=q
+ 3    continue
 
  4    q=a(i,i)
       detl=detl+cdlog(q)
@@ -97,14 +98,16 @@ contains
       q=CONE/q
       a(i,i)=CONE
       do 5 j=1,n
- 5    a(j,i)=a(j,i)*q
+      a(j,i)=a(j,i)*q
+ 5    continue
 
       do 6 j=1,n
       if(j.eq.i) goto 6
       q=a(i,j)
       a(i,j)=CZERO
       do 7 k=1,n
- 7    a(k,j)=a(k,j)-a(k,i)*q
+      a(k,j)=a(k,j)-a(k,i)*q
+ 7    continue
  6    continue
  1 continue
 
@@ -114,7 +117,8 @@ contains
       do 9 k=1,n
       q=a(i,k)
       a(i,k)=a(j,k)
- 9    a(j,k)=q
+      a(j,k)=q
+ 9    continue
  8 continue
 
    end subroutine gjinv
@@ -182,10 +186,11 @@ contains
 
    do 1 i=1,n
       li=ldex(i)
-      do 1 j=1,n
+      do j=1,n
          lj=ldex(j)
          x(i,j)=dconjg(y(j,i))
          if(mod(iabs(li-lj),2).eq.1) x(i,j)=-x(i,j)
+      enddo
  1 continue    
 
    end subroutine replrel
@@ -431,21 +436,25 @@ contains
 !  left product
 
    do 20 i=1,ndi1
-      do 20 j=1,ndi2
+      do j=1,ndi2
          x = CZERO
          do 10 k=1,ndi1
-10          x = x + b(k,j)*u(i,k)
+            x = x + b(k,j)*u(i,k)
+10       continue
          c(i,j)=x
+      enddo
 20 continue
 
 !  right product
 
    do 40 i=1,ndi1
-      do 40 j=1,ndi2
+      do j=1,ndi2
          x = CZERO
          do 30 k=1,ndi2
-30          x = x + ust(k,j)*c(i,k)
+            x = x + ust(k,j)*c(i,k)
+30       continue
          b(i,j)=x
+      enddo
 40 continue
 
    end subroutine tripmt
@@ -468,21 +477,25 @@ contains
 !  left product
 
    do 20 i=1,ndi1
-      do 20 j=1,ndi2
+      do j=1,ndi2
       x = CZERO
       do 10 k=1,ndi1
-10       x = x + b(k,j)*u(i,k)
+         x = x + b(k,j)*u(i,k)
+10    continue
       c(i,j)=x
+      enddo
 20 continue
 
 !  right product
 
    do 40 i=1,ndi1
-      do 40 j=1,ndi2
+      do j=1,ndi2
       x = CZERO
       do 30 k=1,ndi2
-30       x = x + ust(k,j)*c(i,k)
+         x = x + ust(k,j)*c(i,k)
+30    continue
       b1(i,j)=x
+      enddo
 40 continue
 
    end subroutine tripmt1
@@ -510,11 +523,12 @@ contains
 
    write(nper,*) ' real part'
    do 1 i=1,n
-1     write(nper,10) (dreal(mat1(i,j)),j=1,m)
+      write(nper,10) (dreal(mat1(i,j)),j=1,m)
+1  continue
    write(nper,*) ' imaginary part'
    do 2 i=1,n
-2     write(nper,10) (dimag(mat1(i,j)),j=1,m)
-
+      write(nper,10) (dimag(mat1(i,j)),j=1,m)
+2  continue
 10 format(9(1pd14.6))
 
    end subroutine outmat
@@ -646,8 +660,8 @@ contains
    f3=dcmplx(lm(3),-lm(2))
    f4=dconjg(f3)
    ij=iabs(ij0)
-   do 60 in=1,ij
-      do 60 im=1,ij
+   do in=1,ij
+      do im=1,ij
          km=max0(1,in-im+1)
          kx=min0(ij-im+1,in)
          d(in,im)=CZERO
@@ -673,7 +687,9 @@ contains
          if (ij0.lt.0.and.isign(1,ig).ne.1) d(in,im)=-d(in,im)
          if (dabs(dreal(d(in,im))).lt.1.d-14) d(in,im)=dcmplx(ZERO, &
          dimag(d(in,im)))
-60 if (dabs(dimag(d(in,im))).lt.1.d-14) d(in,im)=dreal(d(in,im))
+         if (dabs(dimag(d(in,im))).lt.1.d-14) d(in,im)=dreal(d(in,im))
+      enddo
+   enddo
    c=CZERO
    do i=1,ij
       c=c+d(i,i)

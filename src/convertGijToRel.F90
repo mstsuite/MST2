@@ -90,7 +90,7 @@ end subroutine convertGijToRel
    inr=0
    do 103 l=0,12
       twolp1=dfloat(2*l+1)
-      do 103 m=-l,l
+      do m=-l,l
          inr=inr+1
 
 ! j=l-1/2
@@ -120,6 +120,7 @@ end subroutine convertGijToRel
          ir=2*kap*kap+kap+m+1
          u2(ir)=sqrt((l+m+1)/twolp1)
          ind2(ir)=inr
+      enddo
   103 continue
 
   do ir=1,inr

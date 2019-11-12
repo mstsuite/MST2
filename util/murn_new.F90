@@ -458,10 +458,20 @@ contains
 !
    ISW  =IER
    IER  =0
-      IF (N) 1,1,2
+!     IF (N) 1,1,2
+      IF (N <= 0) THEN
+         GOTO 1
+      ELSE
+         GOTO 2
+      ENDIF
     1 IER  =1000
       GOTO 109
-    2 IF (LIM) 3,3,4
+!   2 IF (LIM) 3,3,4
+    2 IF (LIM <= 0) THEN
+         GOTO 3
+      ELSE
+         GOTO 4
+      ENDIF
     3 IER  =2000
       GOTO 109
 !
@@ -505,16 +515,46 @@ contains
     8 NS   =0
       IP   =0
       DB   =0.D0
-      IF (IW) 10,9,10
+!     IF (IW) 10,9,10
+      IF (IW == 0) THEN
+         GOTO 9
+      ELSE
+         GOTO 10
+      ENDIF
     9 HX   =AUX(I)
-   10 IF (IT-1) 11,11,14
-   11 IF (IS-1) 14,12,14
+!  10 IF (IT-1) 11,11,14
+   10 IF (IT-1 <= 0) THEN
+         GOTO 11
+      ELSE
+         GOTO 14
+      ENDIF
+!  11 IF (IS-1) 14,12,14
+   11 IF (IS-1 == 0) THEN
+         GOTO 12
+      ELSE
+         GOTO 14
+      ENDIF
    12 DM   =.1D0
-      IF (ABS(HX)-1.D0) 38,38,13
+!     IF (ABS(HX)-1.D0) 38,38,13
+      IF (ABS(HX)-1.D0 > 0.0D0) THEN
+         GOTO 13
+      ELSE
+         GOTO 38
+      ENDIF
    13 DM   =-DM*HX
       GOTO 38
-   14 IF (IS-2) 18,15,18
-   15 IF (IT-1) 17,16,17
+!  14 IF (IS-2) 18,15,18
+   14 IF (IS-2 == 0) THEN
+         GOTO 15
+      ELSE
+         GOTO 18
+      ENDIF
+!  15 IF (IT-1) 17,16,17
+   15 IF (IT-1 == 0) THEN
+         GOTO 16
+      ELSE
+         GOTO 17
+      ENDIF
    16 DM   =HQ
       GOTO 38
    17 DM   =DQ
@@ -522,30 +562,60 @@ contains
 !
 !     INTERPOLATION USING ESTIMATE OF SECOND DERIVATIVE
 !
-   18 IF (IW-1) 20,19,20
+!  18 IF (IW-1) 20,19,20
+   18 IF (IW-1 == 0) THEN
+         GOTO 19
+      ELSE
+         GOTO 20
+      ENDIF
    19 J    =N2+I
       GOTO 21
    20 J    =N3+I
    21 HD   =AUX(J)
       DC   =1.D-2
-      IF (IT-2) 23,23,22
+!     IF (IT-2) 23,23,22
+      IF (IT-2 <= 0) THEN
+         GOTO 23
+      ELSE
+         GOTO 22
+      ENDIF
    22 DC   =HQ
    23 DM   =DC
       MK   =1
       GOTO 51
    24 DM   =DC*HD
-      IF (DM) 26,25,26
+!     IF (DM) 26,25,26
+      IF (DM == 0.0D0) THEN
+         GOTO 25
+      ELSE
+         GOTO 26
+      ENDIF
    25 DM   =1.D0
    26 DM   =.5D0*DC-(FM-FB)/DM
       MK   =2
-      IF (FM-FB) 27,29,29
+!     IF (FM-FB) 27,29,29
+      IF (FM-FB < 0.0D0) THEN
+         GOTO 27
+      ELSE
+         GOTO 29
+      ENDIF
    27 FC   =FB
       FB   =FM
       DB   =DC
-      IF (DM-DB) 28,67,28
+!     IF (DM-DB) 28,67,28
+      IF (DM-DB == 0.0D0) THEN
+         GOTO 67
+      ELSE
+         GOTO 28
+      ENDIF
    28 DC   =0.D0
       GOTO 51
-   29 IF (DM-DB) 31,30,31
+!  29 IF (DM-DB) 31,30,31
+   29 IF (DM-DB == 0.0D0) THEN
+         GOTO 30
+      ELSE
+         GOTO 31
+      ENDIF
    30 DA   =DC
       FA   =FM
       GOTO 37
@@ -554,7 +624,12 @@ contains
 !
 !     ANALYSE INTERPOLATED FUNCTION VALUE
 !
-   32 IF (FM-FB) 34,33,33
+!  32 IF (FM-FB) 34,33,33
+   32 IF (FM-FB < 0.0D0) THEN
+         GOTO 34
+      ELSE
+         GOTO 33
+      ENDIF
    33 DA   =DM
       FA   =FM
       GOTO 35
@@ -562,34 +637,76 @@ contains
       FA   =FB
       DB   =DM
       FB   =FM
-   35 IF ((DC-DA)/(DB-DA)) 36,36,50
-   36 IF (DB) 67,37,67
+!  35 IF ((DC-DA)/(DB-DA)) 36,36,50
+   35 IF ((DC-DA)/(DB-DA) <= 0.0D0) THEN
+         GOTO 36
+      ELSE
+         GOTO 50
+      ENDIF
+!  36 IF (DB) 67,37,67
+   36 IF (DB == 0.0D0) THEN
+         GOTO 37
+      ELSE
+         GOTO 67
+      ENDIF
    37 NS   =1
       DM   =-DC
 !
 !     LINEAR SEARCH FOR SMALLER FUNCTION VALUES
 !     ALONG CURRENT DIRECTION
 !
-   38 IF (NS-15) 43,43,39
-   39 IF (FS-FM) 41,40,41
+!  38 IF (NS-15) 43,43,39
+   38 IF (NS-15 <= 0) THEN
+         GOTO 43
+      ELSE
+         GOTO 39
+      ENDIF
+!  39 IF (FS-FM) 41,40,41
+   39 IF (FS-FM == 0.0D0) THEN
+         GOTO 40
+      ELSE
+         GOTO 41
+      ENDIF
    40 MF   =N+2
       DB   =0.D0
       GOTO 67
-   41 IF (ABS(DM)-1.D6) 43,43,42
+!  41 IF (ABS(DM)-1.D6) 43,43,42
+   41 IF (ABS(DM)-1.D6 > 0.0D0) THEN
+         GOTO 42
+      ELSE
+         GOTO 43
+      ENDIF
    42 IER  =100
       GOTO 67
    43 NS   =NS+1
       MK   =3
       GOTO 51
-   44 IF (FM-FB) 45,46,47
+!  44 IF (FM-FB) 45,46,47
+   44 IF (FM-FB < 0.0D0) THEN
+         GOTO 45
+      ELSE IF (FM-FB == 0.0D0) THEN
+         GOTO 46
+      ELSE
+         GOTO 47
+      ENDIF
    45 DA   =DB
       FA   =FB
       DB   =DM
       FB   =FM
       DM   =DM+DM
       GOTO 38
-   46 IF (FS-FB) 47,45,47
-   47 IF (NS-1) 48,48,49
+!  46 IF (FS-FB) 47,45,47
+   46 IF (FS-FB == 0.0D0) THEN
+         GOTO 45
+      ELSE
+         GOTO 47
+      ENDIF
+!  47 IF (NS-1) 48,48,49
+   47 IF (NS-1 <= 0) THEN
+         GOTO 48
+      ELSE
+         GOTO 49
+      ENDIF
    48 DA   =DM
       FA   =FM
       DM   =-DM
@@ -606,10 +723,16 @@ contains
 !
 !     STEP ARGUMENT VECTOR AND CALCULATE FUNCTION VALUE
 !
-   51 IF (IW-1) 54,52,54
+!  51 IF (IW-1) 54,52,54
+   51 IF (IW-1 == 0) THEN
+         GOTO 52
+      ELSE
+         GOTO 54
+      ENDIF
    52 DO 53 K=1,N
          L    =M+K
-   53    AUX(K)=X(K)+DM*AUX(L)
+         AUX(K)=X(K)+DM*AUX(L)
+   53 CONTINUE
       GOTO 55
    54 AUX(I)=HX+DM
 !  55 FM   =F(AUX)
@@ -618,9 +741,24 @@ contains
 !
 !     ANALYSE INTERPOLATED FUNCTION VALUE
 !
-   56 IF (FM-FB) 61,61,57
-   57 IF (IP-3) 58,62,62
-   58 IF ((DC-DB)/(DM-DB)) 60,60,59
+!  56 IF (FM-FB) 61,61,57
+   56 IF (FM-FB > 0.0D0) THEN
+         GOTO 57
+      ELSE
+         GOTO 61
+      ENDIF
+!  57 IF (IP-3) 58,62,62
+   57 IF (IP-3 < 0) THEN
+         GOTO 58
+      ELSE
+         GOTO 62
+      ENDIF
+!  58 IF ((DC-DB)/(DM-DB)) 60,60,59
+   58 IF ((DC-DB)/(DM-DB) > 0.0D0) THEN
+         GOTO 59
+      ELSE
+         GOTO 60
+      ENDIF
    59 DC   =DM
       FC   =FM
       GOTO 50
@@ -634,17 +772,32 @@ contains
 !     ALONG THE CURRENT DIRECTION
 !
    62 HD   =(HD+HD)/(DC-DA)
-      IF (IW-1) 64,63,64
+!     IF (IW-1) 64,63,64
+      IF (IW-1 == 0) THEN
+         GOTO 63
+      ELSE
+         GOTO 64
+      ENDIF
    63 J    =N2+I
       GOTO 65
    64 J    =N3+I
    65 AUX(J)=HD
-      IF (FB-FS) 67,66,67
+!     IF (FB-FS) 67,66,67
+      IF (FB-FS == 0.0D0) THEN
+         GOTO 66
+      ELSE
+         GOTO 67
+      ENDIF
    66 DB   =0.D0
 !
 !     SAVE ARGUMENT VECTOR WITH SMALLEST FUNCTION VALUE FOUND
 !
-   67 IF (IW-1) 70,68,70
+!  67 IF (IW-1) 70,68,70
+   67 IF (IW-1 == 0) THEN
+         GOTO 68
+      ELSE
+         GOTO 70
+      ENDIF
    68 DO K=1,N
          L    =M+K
          J    =N+K
@@ -660,44 +813,111 @@ contains
       HD   =HX+DB
       AUX(I)=HD
       X(I) =HD
-   71 IF (IER-100) 72,108,72
+!  71 IF (IER-100) 72,108,72
+   71 IF (IER-100 == 0) THEN
+         GOTO 108
+      ELSE
+         GOTO 72
+      ENDIF
 !
 !     DETERMINE DIRECTION FOR NEXT LINEAR SEARCH
 !
    72 FS   =FB
-      IF (I-N) 74,73,73
+!     IF (I-N) 74,73,73
+      IF (I-N < 0) THEN
+         GOTO 74
+      ELSE
+         GOTO 73
+      ENDIF
    73 I    =0
    74 I    =I+1
-      IF (IS) 75,75,80
-   75 IF (DB) 77,76,77
-   76 IF (I-IC) 8,77,8
+!     IF (IS) 75,75,80
+      IF (IS <= 0) THEN
+         GOTO 75
+      ELSE
+         GOTO 80
+      ENDIF
+!  75 IF (DB) 77,76,77
+   75 IF (DB == 0.0D0) THEN
+         GOTO 76
+      ELSE
+         GOTO 77
+      ENDIF
+!  76 IF (I-IC) 8,77,8
+   76 IF (I-IC == 0) THEN
+         GOTO 77
+      ELSE
+         GOTO 8
+      ENDIF
    77 IC   =I
       IS   =1
-      IF (IT-N) 79,79,78
+!     IF (IT-N) 79,79,78
+      IF (IT-N <= 0) THEN
+         GOTO 79
+      ELSE
+         GOTO 78
+      ENDIF
    78 IW   =1
    79 I    =ID
       GOTO 8
    80 M    =M+N
-      IF (M-N5) 82,81,81
+!     IF (M-N5) 82,81,81
+      IF (M-N5 < 0) THEN
+         GOTO 82
+      ELSE
+         GOTO 81
+      ENDIF
    81 M    =N4
-   82 IF (IS-1) 83,83,94
-   83 IF (I-1) 84,84,85
+!  82 IF (IS-1) 83,83,94
+   82 IF (IS-1 <= 0) THEN
+         GOTO 83
+      ELSE
+         GOTO 94
+      ENDIF
+!  83 IF (I-1) 84,84,85
+   83 IF (I-1 <= 0) THEN
+         GOTO 84
+      ELSE
+         GOTO 85
+      ENDIF
    84 IW   =1
-   85 IF (I-ID) 8,86,8
+!  85 IF (I-ID) 8,86,8
+   85 IF (I-ID == 0) THEN
+         GOTO 86
+      ELSE
+         GOTO 8
+      ENDIF
    86 HQ   =0.D0
       DO 87 K=N1,N2
-   87    HQ   =HQ+AUX(K)*AUX(K)
-      IF (HQ) 90,88,90
-   88 IF (MF-N1) 108,108,89
+         HQ   =HQ+AUX(K)*AUX(K)
+   87 CONTINUE
+!     IF (HQ) 90,88,90
+      IF (HQ == 0) THEN
+         GOTO 88
+      ELSE
+         GOTO 90
+      ENDIF
+!  88 IF (MF-N1) 108,108,89
+   88 IF (MF-N1 <= 0) THEN
+         GOTO 108
+      ELSE
+         GOTO 89
+      ENDIF
    89 IER  =200
       GOTO 108
    90 DQ   =DSQRT(HQ)
       HQ   =DQ
-      IF (HQ-1.D0) 92,92,91
+!     IF (HQ-1.D0) 92,92,91
+      IF (HQ-1.D0 <= 0.0D0) then
+         goto 92
+      else
+         goto 91
+      endif
    91 HQ   =1.D0
    92 DO 93 K=N1,N2
          L    =M+K-N
-   93    AUX(L)=AUX(K)/DQ
+         AUX(L)=AUX(K)/DQ
+   93 CONTINUE
       IS   =2
       GOTO 8
 !
@@ -706,32 +926,77 @@ contains
 !
    94 IS   =0
       TOL  =EPS
-      IF (ABS(FS)-1.D0) 96,96,95
+!     IF (ABS(FS)-1.D0) 96,96,95
+      IF (ABS(FS)-1.D0 <= 0.0D0) then
+         goto 96
+      ELSE
+         goto 95
+      ENDIF
    95 TOL  =EPS*ABS(FS)
-   96 IF (FL-FS-TOL) 100,100,97
-   97 IF (IT-LIM) 99,99,98
+!  96 IF (FL-FS-TOL) 100,100,97
+   96 IF (FL-FS-TOL <= 0.0D0) THEN
+         goto 100
+      ELSE
+         goto 97
+      ENDIF
+!  97 IF (IT-LIM) 99,99,98
+   97 IF (IT-LIM <= 0) then
+         goto 99
+      ELSE
+         goto 98
+      ENDIF
    98 IER  =10
       GOTO 108
    99 MF   =0
       GOTO 6
-  100 IF (MF-N1) 102,102,101
+! 100 IF (MF-N1) 102,102,101
+  100 IF (MF-N1 <= 0) then
+         goto 102
+      ELSE
+         goto 101
+      ENDIF
   101 IER  =200
       GOTO 108
   102 MF   =MF+1
       DQ   =0.D0
       DO 105 K=1,N
          J    =N+K
-         IF (ABS(AUX(K))-1.D0) 103,103,104
+!        IF (ABS(AUX(K))-1.D0) 103,103,104
+         IF (ABS(AUX(K))-1.D0 <= 0.0D0) then
+            goto 103
+         ELSE
+            goto 104
+         ENDIF
   103    DQ   =DQ+ABS(AUX(J))
          GOTO 105
   104    DQ   =DQ+ABS(AUX(J)/AUX(K))
   105    CONTINUE
-      IF (DQ-ETA) 108,108,106
-  106 IF (MF-N) 6,6,107
+!     IF (DQ-ETA) 108,108,106
+      IF (DQ-ETA <= 0.0D0) then
+         goto 108
+      else
+         goto 106
+      endif
+! 106 IF (MF-N) 6,6,107
+  106 IF (MF-N <= 0) then
+         goto 6
+      else
+         goto 107
+      endif
   107 IER  =1
   108 Y    =FB
-      IF (IER) 111,111,109
-  109 IF (ISW+12345) 110,111,110
+!     IF (IER) 111,111,109
+      IF (IER <= 0) then
+         goto 111
+      else
+         goto 109
+      endif
+! 109 IF (ISW+12345) 110,111,110
+  109 IF (ISW+12345 == 0) then
+         goto 111
+      ELSE
+         goto 110
+      ENDIF
 ! 110 CALL WIER(IER,20212)
   110 CONTINUE
   111 RETURN

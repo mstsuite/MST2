@@ -1,4 +1,6 @@
-#LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.2.3
+LIBXC_PATH = /usr/local/packages/LibXC/libxc-4.3.4
+FFTW_PATH = /usr/local/packages/FFTW/fftw-3.3.8
+P3DFFT_PATH = /usr/local/packages/P3DFFT/p3dfft-2.7.9
 #=====================================================================
 # Compilers and archiver tool
 #=====================================================================
@@ -96,10 +98,13 @@ endif
 #=====================================================================
 Use_FFTW = 1
 ifeq "$(Use_FFTW)" "1"
-   FFTW_PATH = /usr/local/packages/fftw-3.3.8
    FFTW_INC = $(FFTW_PATH)/include
    FFT_FLAG = -DFFTW -I$(FFTW_INC)
    ADDLIBS += -L$(FFTW_PATH)/lib -lfftw3
+ifdef P3DFFT_PATH
+   FFT_FLAG += -DP3DFFT -I$(P3DFFT_PATH)/include
+   ADDLIBS += -L$(P3DFFT_PATH)/lib -lp3dfft
+endif
 endif
 
 #=====================================================================

@@ -1262,7 +1262,7 @@ stop 'Under construction...'
    u1 => getCGCu1()
    u2 => getCGCu2()
 
-   do 10 kmy2=1,98
+   do kmy2=1,98
       c2d=u1(kmy2)
       c2u=u2(kmy2)
       kap2=kapdex(kmy2)
@@ -1317,6 +1317,7 @@ stop 'Under construction...'
          end if
 
   10  continue 
+      enddo
  
    do kmy2=1,72
       kap2=kapdex(kmy2)

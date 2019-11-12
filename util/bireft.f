@@ -106,8 +106,10 @@ C       v^(-2n/3),n=0,1,2,...MAXM
 C       Establish the basis functions:
         P(0,I)=1D0
         X=V(I)**(-TWO3)
-        DO 400 J=1,M
-400       P(J,I)=X**J
+        DO J=1,M
+          P(J,I)=X**J
+        enddo
+400   continue
       CALL LSTSQR(N,M1,E,A,P)
       WRITE(6,415) (I,A(I),I=0,M)
 415   FORMAT(/' Fitting coefficients:'/(1X,I5,1PE16.8))
@@ -123,7 +125,8 @@ C
         ERR=ECK-E(I)
         IF(ABS(ERR).GT.ABS(EMAX)) EMAX=ERR
         ERMS=ERMS+ERR*ERR
-600     WRITE(6,605) I,V(I),E(I),ECK,ERR
+        WRITE(6,605) I,V(I),E(I),ECK,ERR
+600   continue
 605     FORMAT(1X,I5,F12.5,3F15.5)
       ERMS=SQRT(ERMS/N)
 C     Convert the errors to eV
@@ -255,44 +258,57 @@ C     CALCULATE THE ITH FUNCTION
          IP=I+1
          SG2=0D0
          DO 10 K=IP,M
-10         SGP(K)=0D0
+           SGP(K)=0.0D0
+10       continue
 C        AT THE JTH POINT
          DO 30 J=1,N
            SUM=0D0
            DO 20 K=1,IM
-20           SUM=SUM+C(I,K)*G(K,J)
+             SUM=SUM+C(I,K)*G(K,J)
+20         continue
            G(I,J)=P(I,J)+SUM
            SG2=SG2+G(I,J)*G(I,J)
-           DO 30 K=IP,M
-30           SGP(K)=SGP(K)+P(K,J)*G(I,J)
+           DO K=IP,M
+             SGP(K)=SGP(K)+P(K,J)*G(I,J)
+           enddo
+30       continue
 C        AVG2(I)=<G(I)*G(I)>
          AVG2(I)=RN*SG2
 C        C(K,I)= -<P(K)*G(I)>/<G(I)*G(I)>
-         DO 40 K=IP,M
-40         C(K,I)=-SGP(K)/SG2
+         DO K=IP,M
+           C(K,I)=-SGP(K)/SG2
+         enddo
+40    continue
 C     SINCE <G(I)*G(J)>=0 FOR I.NE.J, IT'S TRIVIAL TO FIND
 C     THE COEFFICIENTS FOR A LEAST SQUARES FIT OF F TO THE G'S
       DO 60 I=1,M
          SUM=0D0
          DO 50 J=1,N
-50         SUM=SUM+G(I,J)*F(J)
-60       B(I)=RN*SUM/AVG2(I)
+           SUM=SUM+G(I,J)*F(J)
+50       continue
+         B(I)=RN*SUM/AVG2(I)
+60    continue
 C     TO CONVERT THE B'S INTO A'S, WE FIRST NEED TO FIND THE
 C     COEFFICIENTS FOR EXPANDING THE G'S IN TERMS OF THE P'S
       DO 80 I=1,M
          D(I,I)=1D0
          IM=I-1
-         DO 80 K=1,IM
+         DO K=1,IM
            SUM=0D0
            DO 70 L=K,IM
-70           SUM=SUM+C(I,L)*D(L,K)
-80         D(I,K)=SUM
+             SUM=SUM+C(I,L)*D(L,K)
+70         continue
+           D(I,K)=SUM
+         enddo
+80    continue
 C     FINALLY, WE CAN CHANGE THE B'S INTO A'S
       DO 100 I=1,M
          SUM=0D0
          DO 90 J=I,M
-90         SUM=SUM+B(J)*D(J,I)
-100      A(I)=SUM
+           SUM=SUM+B(J)*D(J,I)
+90       continue
+         A(I)=SUM
+100   continue
       RETURN
       END
 C_______________________________________________________________________
@@ -312,11 +328,14 @@ C     Zeroth order term (in Y)
       IPROD=1
       DO 100 J=0,N
         P(J)=IPROD*A(M)
-100     IPROD=IPROD*(M-J)
+        IPROD=IPROD*(M-J)
+100   continue
       DO 200 I=M-1,0,-1
         IPROD=1
-        DO 200 J=0,N
+        DO J=0,N
           IF(IPROD.GT.0D0) P(J)=P(J)*Y+IPROD*A(I)
-200       IPROD=IPROD*(I-J)
+          IPROD=IPROD*(I-J)
+        enddo
+200   continue
       RETURN
       END

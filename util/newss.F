@@ -305,9 +305,11 @@ c _____________________________________________________________________
              vdif=vdfnw
 c
             do 7 is=1,nspins
-            do 7 ic=1,ncomp
-            do 7 i=1,mesh
+            do ic=1,ncomp
+            do i=1,mesh
             v(i,ic,is)=vnew(i,ic,is)
+            enddo
+            enddo
    7        continue
 c
         endif
@@ -335,9 +337,11 @@ c .....................................................................
 c .....................................................................
 c
        do 8 ic=1,ncomp
-       do 8 is=1,nspins
+       do is=1,nspins
           qsum(ic,is)  = 0.0
-   8      qsums(ic,is) = 0.0
+          qsums(ic,is) = 0.0
+       enddo
+   8   continue
 c .....................................................................
 c
 c  find all bound states:  both core and semi-core
@@ -349,7 +353,7 @@ c
       etopsc = ebott
       do 15 ispin=1,nspins
       is=ispin
-      do 15 icomp=1,ncomp
+      do icomp=1,ncomp
       ic=icomp
 c /////////////////////////////////////////////////////////////////////
 c .....................................................................
@@ -390,7 +394,8 @@ c
               endif
               zcore(ic,is)=0.
               do 10 i=1,mesh
-   10         rhoc(i,ic,is)=0.0
+              rhoc(i,ic,is)=0.0
+   10         continue
 c
           endif
 c /////////////////////////////////////////////////////////////////////
@@ -429,7 +434,8 @@ c
              endif
              zsemi(ic,is)=0.
              do 11 i=1,mesh
-   11        rhosc(i,ic,is)=0
+             rhosc(i,ic,is)=0
+   11        continue
 c
          endif
 c /////////////////////////////////////////////////////////////////////
@@ -441,18 +447,21 @@ c .....................................................................
 c
            sum=0.0
            do 12 i=1,numc(ic,is)
-  12         sum=sum+occ(i,ic,is)
+             sum=sum+occ(i,ic,is)
+  12       continue
            zcore(ic,is)=sum
            sum=0.0
            esum=0.0
            do 13 i=1,numsc(ic,is)
 ccc           ebott = min(ebott,esc(i,ic,is))
               esum=esum+ocsc(i,ic,is)*esc(i,ic,is)
-  13          sum=sum+ocsc(i,ic,is)
+              sum=sum+ocsc(i,ic,is)
+  13       continue
            esemi(ic,is)=esum
            zsemi(ic,is)=sum
            zv2(ic,is)=ztot(ic,is)-zcore(ic,is)-zsemi(ic,is)
 c
+       enddo
   15   continue
 c .....................................................................
                 if(ndiv.eq.0) stop
@@ -523,13 +532,16 @@ c .....................................................................
 c .....................................................................
 c
         do 80 is=1,nspins
-        do 80 ic=1,ncomp
+        do ic=1,ncomp
            zto1(ic,is)=rhomix(jws+1,ic,is)
            vws1(ic,is)=zto1(ic,is)-zcore(ic,is)
            if(ipr.gt.0) write(6,*)' ic=',ic,'  is=',is,'   after mix:'
      >            ,'  zto1=',zto1(ic,is),'   vws1=',vws1(ic,is)
-           do 80 i=1,jws
-   80          rho(i,ic,is)=rhomix(i,ic,is)
+           do i=1,jws
+               rho(i,ic,is)=rhomix(i,ic,is)
+           enddo
+        enddo
+   80   continue
 c
 c      calculate new potential from mixed charge density
 c
@@ -546,7 +558,7 @@ c
       do 90 ispin=1,nspins
          is=ispin
          vd=(is-1)*vdfnw
-         do 90 icomp=1,ncomp
+         do icomp=1,ncomp
             ic=icomp
             chmtcs=.5*qmt(ic)+(nspins-1)*(1.5-is)*xmmt(ic)
             do 88 i=1,jmt
@@ -604,6 +616,7 @@ c .....................................................................
 c .....................................................................
 c
             endif
+        enddo
   90    continue
 c
         rewind(iunot)
@@ -1096,7 +1109,14 @@ c
        endif
 c _____________________________________________________________________
 c
-       if(ipot) 60,50,40
+c      if(ipot) 60,50,40
+       if(ipot < 0) then
+          goto 60
+       else if (ipot == 0) then
+          goto 50
+       else
+          goto 40
+       endif
 c _____________________________________________________________________
 c
  40   call oldrdp(ipot,iunit,mesh,r,jmt,vr,v0,jws,zcore,vws,rho,rhoc,
@@ -1218,11 +1238,13 @@ c
       if(numbs.gt.0) then
             do 20 ist=1,numbs
             read(nin,'(2i5,f12.5)') npbs(ist),lbs(ist),ebs(ist)
-   20       zcore=zcore+2*lbs(ist)+1
+            zcore=zcore+2*lbs(ist)+1
+   20       continue
       endif
       if(numsc.gt.0) then
             do 21 i=1,numsc
-   21       read(nin,'(2i5,f12.5)')  npsc(i),lsc(i),esc(i)
+            read(nin,'(2i5,f12.5)')  npsc(i),lsc(i),esc(i)
+   21       continue
       endif
       if(ntcor.gt.0) then
             read(nin,'(4e20.13)')   (corold(j),j=1,ntcor)
@@ -1231,14 +1253,17 @@ c
 c .............................................................
 c
       do 50 i=1,jmt
-   50 vr(i)=ylag(r(i),rold, vrold, 0,3,jmt0,iex)
+      vr(i)=ylag(r(i),rold, vrold, 0,3,jmt0,iex)
+   50 continue
       if(ntrho.gt.0) then
           do 51 i=1,jws
-   51     rho(i)=ylag(r(i),rold, rhold,0,3,ntrho,iey) /(3-ipot)
+          rho(i)=ylag(r(i),rold, rhold,0,3,ntrho,iey) /(3-ipot)
+   51     continue
       endif
       if(ntcor.gt.0) then
           do 52 i=1,mesh
-   52     rhoc(i)=ylag(r(i),rold,corold,0,3,ntcor,iey)/(3-ipot)
+          rhoc(i)=ylag(r(i),rold,corold,0,3,ntcor,iey)/(3-ipot)
+   52     continue
       endif
 c
 c .....................................................................
@@ -1370,12 +1395,14 @@ c
               do 20 i=1,ncore
               read(iunit,'(2i5,f12.5,4x,a1)')
      >                  npc(i),lc(i),ec(i),lsymc(i)
-   20         zcore=zcore+2*lc(i)+1
+              zcore=zcore+2*lc(i)+1
+   20         continue
       endif
       if(nsemi.gt.0) then
              do 21 i=1,nsemi
-   21        read(iunit,'(2i5,f12.5,4x,a1)')
+             read(iunit,'(2i5,f12.5,4x,a1)')
      >                  npsc(i),lsc(i),esc(i),lsymsc(i)
+   21        continue
       endif
       read(iunit,'(4e20.13)')
      >          (corold(i),i=1,nc)
@@ -1452,13 +1479,15 @@ c ------------------------------------- now write out info
      >          ncore,nsemi
       if(ipr.ge.3) then
              do 100 i=1,ncore
-  100        write(6,'(2i5,f12.5,1x,i2,1x,a1,6x,''core state'')')
+             write(6,'(2i5,f12.5,1x,i2,1x,a1,6x,''core state'')')
      >           npc(i),lc(i),ec(i),npc(i),lsymc(i)
+  100        continue
       endif
       if(ipr.ge.3) then
              do 101 i=1,nsemi
-  101        write(6,'(2i5,f12.5,i3,1x,a1,'' semi-core state'')')
+             write(6,'(2i5,f12.5,i3,1x,a1,'' semi-core state'')')
      >           npsc(i),lsc(i),esc(i),npsc(i),lsymsc(i)
+  101        continue
       endif
       if(ipr.ge.3) write(6,'(4e20.13)')
      >           (corden(i),i=1,mesh,mpr)
@@ -1514,14 +1543,16 @@ c
 c
       if(ncore.gt.0) then
            do 680 i=1,ncore
-  680      write(iunit,'(2i5,f12.5,1x,i2,1x,a1,''      core state'')')
+           write(iunit,'(2i5,f12.5,1x,i2,1x,a1,''      core state'')')
      >           npc(i),lc(i),ec(i),npc(i),lsym(lc(i))
+  680      continue
       endif
 c
       if(nsemi.gt.0) then
            do 690 i=1,nsemi
-  690      write(iunit,'(2i5,f12.5,1x,i2,1x,a1,'' semi-core state'')')
+           write(iunit,'(2i5,f12.5,1x,i2,1x,a1,'' semi-core state'')')
      >           npsc(i),lsc(i),esc(i),npsc(i),lsym(lsc(i))
+  690      continue
       endif
 c
       write(iunit,'(4e20.13)')
@@ -1593,16 +1624,19 @@ c
         xst=xstart - h
         vmuf=(is-1)*vdif
         do 400 i=1,num
-  400   rold(i)=exp(xst+i*h)
+        rold(i)=exp(xst+i*h)
+  400   continue
 c
         do 500 i=1,num
-  500   tmp(i)=ylag(rold(i),r,v,0,3,jws,iex) + vmuf*rold(i)
+        tmp(i)=ylag(rold(i),r,v,0,3,jws,iex) + vmuf*rold(i)
+  500   continue
 c
         write(iunit,'(4e20.13)') (tmp(i),i=1,incrs,mpr)
         write(iunit,'(35x,e20.13,2x,a)') vdif,'muffin-tin zero'
         write(iunit,'(i5,2e20.13)') num,(3-nspins)*vws,(3-nspins)*chmt
         do 600 i=1,num
-  600   tmp(i)=(3-nspins)*ylag(rold(i),r,chden,0,3,jws,iex)
+        tmp(i)=(3-nspins)*ylag(rold(i),r,chden,0,3,jws,iex)
+  600   continue
         write(iunit,'(4e20.13)') (tmp(i),i=1,num,mpr)
 c
         n = 0
@@ -1700,7 +1734,8 @@ c       -Yang Wang, 05/19/2018............
         endif
 c
         do 700 i=1,num
-  700   tmp(i)=(3-nspins)*ylag(rold(i),r,corden,0,3,jws,iex)
+        tmp(i)=(3-nspins)*ylag(rold(i),r,corden,0,3,jws,iex)
+  700   continue
         write(iunit,'(4e20.13)') (tmp(i),i=1,num,mpr)
 c
       return
@@ -1834,9 +1869,11 @@ c
        if(abs(tzed-tz).gt.1.e-8) then
                write(6,*)' stopping: charge discrepency'
                do 64 ic=1,ncomp
-               do 64 is=1,nspins
-               do 64 i=1,jmt,40
+               do is=1,nspins
+               do i=1,jmt,40
                write(6,*)' ic=',ic,'  is=',is,'  rh=',rho(i,ic,is)
+               enddo
+               enddo
   64           continue
                stop
          endif
@@ -1870,7 +1907,8 @@ c
       do 150 ic=1,ncomp
          do 125 i=2,mesh
          zr(i,ic)=q1(i,ic,1)+q1(i,ic,nspins)
- 125     tmp(i)=(rho(i,ic,1)+rho(i,ic,nspins))/r(i)
+         tmp(i)=(rho(i,ic,1)+rho(i,ic,nspins))/r(i)
+ 125     continue
       tmp(1)=0.0
       zr(1,ic)=0.0
       call intqud(tmp,q2(1,ic),r,nblock,nsize)
@@ -1880,7 +1918,8 @@ c
       do 400 ic=1,ncomp
           do 225 is=1,nspins
           dpotmx(ic,is)=0.0
-  225     rmspot(ic,is)=0.0
+          rmspot(ic,is)=0.0
+  225     continue
           vnew(1,ic,1)=-2*hr*zed(ic)
           vnew(1,ic,nspins)=vnew(1,ic,1)
           do 300 i=2,jmt
@@ -1918,9 +1957,11 @@ c ____________________________________________________________________
          do 500 i=1,jmt,mpr
             npr=0
             do 440 ic=1,ncomp
-            do 440 is=1,nspins
+            do is=1,nspins
                npr=npr+1
-  440          tmpr(npr)=vnew(i,ic,is)
+               tmpr(npr)=vnew(i,ic,is)
+            enddo
+  440       continue
            jpr=(npr-1)/4
            do 450 kpr=0,jpr
              if(kpr.eq.jpr) then
@@ -1936,9 +1977,11 @@ c
          write(6,'(1x,78(''-''))')
          npr=0
          do 501 ic=1,ncomp
-         do 501 is=1,nspins
+         do is=1,nspins
            npr=npr+1
-  501      tmpr(npr)=rmspot(ic,is)
+           tmpr(npr)=rmspot(ic,is)
+         enddo
+  501    continue
          jpr=(npr-1)/4
          do 502 kpr=0,jpr
          if(kpr.eq.jpr) then
@@ -1946,13 +1989,16 @@ c
          else
               jend=4
          endif
-  502    write(6,'(2x,''root-mean-squared diff'',4f13.7)')
+         write(6,'(2x,''root-mean-squared diff'',4f13.7)')
      >         (tmpr(kpr*4+j),j=1,jend)
+  502    continue
          npr=0
          do 503 ic=1,ncomp
-         do 503 is=1,nspins
+         do is=1,nspins
            npr=npr+1
-  503      tmpr(npr)=dpotmx(ic,is)
+           tmpr(npr)=dpotmx(ic,is)
+         enddo
+  503    continue
          jpr=(npr-1)/4
          do 504 kpr=0,jpr
          if(kpr.eq.jpr) then
@@ -1960,8 +2006,9 @@ c
          else
               jend=4
          endif
-  504    write(6,'(6x,''maximum difference'',4f13.7)')
+         write(6,'(6x,''maximum difference'',4f13.7)')
      >         (tmpr(kpr*4+j),j=1,jend)
+  504    continue
 c
 c
 c
@@ -1979,27 +2026,31 @@ c
          jblock=jmt/nsize
          do 750 is=1,nspins
             sp=3-2*is
-            do 750 ic=1,ncomp
+            do ic=1,ncomp
                tmp(1)=0.0
                do 509 i=2,jmt
-  509          rhov(i,ic,is)=rho(i,ic,is)-rhoc(i,ic,is)
+               rhov(i,ic,is)=rho(i,ic,is)-rhoc(i,ic,is)
+  509          continue
 c _____________________________________________________________________
 c     - int 2pi r3dr rhocore dv/dr  =  int 2pi r2dr (v-d(rv)/dr)
 c _____________________________________________________________________
 c      where v is vold   and   vold = (vnew-vx) + (vold-vnew+vx)
 c
             do 512 i=2,jmt
-  512       tmp(i)=(vold(i,ic,is)-vnew(i,ic,is))+r(i)*vx(i,ic,is)
+            tmp(i)=(vold(i,ic,is)-vnew(i,ic,is))+r(i)*vx(i,ic,is)
+  512       continue
             call derv5(tmp,tmpi,r,jmt)
             do 515 i=2,jmt
-  515       tmp(i)=rhoc(i,ic,is)*(tmpi(i)-vold(i,ic,is)/r(i)
+            tmp(i)=rhoc(i,ic,is)*(tmpi(i)-vold(i,ic,is)/r(i)
      >                 +2*(q2(jmt,ic)-q2(i,ic)) - vmt(is) )
+  515       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             qs1(ic,is)=-.5*tmpi(jmt)
 c
             call derv5(vold(1,ic,is),tmpi,r,jmt)
             do 522 i=2,jmt
-  522       tmp(i)=rhoc(i,ic,is)*(vold(i,ic,is)/r(i)-tmpi(i))
+            tmp(i)=rhoc(i,ic,is)*(vold(i,ic,is)/r(i)-tmpi(i))
+  522       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             qs2(ic,is)=.5*tmpi(jmt)
 c
@@ -2023,45 +2074,53 @@ c _____________________________________________________________________
 c
 c                                 - int dr 4pi r2 rhoval d(rv)/dr
             do 610 i=2,jmt
-  610       tmp(i)=rhov(i,ic,is)*(2*q2(i,ic)-bt(ic,is))
+            tmp(i)=rhov(i,ic,is)*(2*q2(i,ic)-bt(ic,is))
+  610       continue
 c
             call intqud(tmp,tmpi,r,jblock,nsize)
             term1a(ic,is)=tmpi(jmt)
             call derv5(vx(1,ic,is),tmpi,r,jmt)
             do 620 i=2,jmt
-  620       tmp(i)=-rhov(i,ic,is)*(vx(i,ic,is)+r(i)*tmpi(i))
+            tmp(i)=-rhov(i,ic,is)*(vx(i,ic,is)+r(i)*tmpi(i))
+  620       continue
 c
             call intqud(tmp,tmpi,r,jblock,nsize)
             term1a(ic,is)=term1a(ic,is)+tmpi(jmt)
             call derv5(vnew(1,ic,is),tmpi,r,jmt)
             do 625 i=2,jmt
-  625       tmp(i)=-rhov(i,ic,is)*tmpi(i)
+            tmp(i)=-rhov(i,ic,is)*tmpi(i)
+  625       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             term1b(ic,is)=tmpi(jmt)
 c _____________________________________________________________________
 c
 c                                   int dr 4pi r2 rho (4exc-3vxc)
             do 630 i=2,jmt
-  630       tmp(i)=rho(i,ic,is)*(4*enxc(i,ic)-3*vx(i,ic,is))
+            tmp(i)=rho(i,ic,is)*(4*enxc(i,ic)-3*vx(i,ic,is))
+  630       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             term3(ic,is)=tmpi(jmt)
 c _____________________________________________________________________
 c
 c                                 - int dr 4pi r rhoval d(r2v)/dr
             do 640 i=2,jmt
-  640       tmp(i)=r(i)**2*vx(i,ic,is)
+            tmp(i)=r(i)**2*vx(i,ic,is)
+  640       continue
             call derv5(tmp,tmpi,r,jmt)
             do 650 i=2,jmt
-  650       tmp(i)=-rhov(i,ic,is)*(tmpi(i)+2*((zr(i,ic)-zed(ic))
+            tmp(i)=-rhov(i,ic,is)*(tmpi(i)+2*((zr(i,ic)-zed(ic))
      >            -r(i)*(2*q2(i,ic)-bt(ic,is)) ) )  /r(i)
+  650       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             ptrm2a(ic,is)=tmpi(jmt)
 c
             do 670 i=2,jmt
-  670       tmp(i)=r(i)*vnew(i,ic,is)
+            tmp(i)=r(i)*vnew(i,ic,is)
+  670       continue
             call derv5(tmp,tmpi,r,jmt)
             do 675 i=2,jmt
-  675       tmp(i)=-rhov(i,ic,is)*tmpi(i)/r(i)
+            tmp(i)=-rhov(i,ic,is)*tmpi(i)/r(i)
+  675       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
             ptrm2b(ic,is)=tmpi(jmt)
 c _____________________________________________________________________
@@ -2070,23 +2129,27 @@ c            terms that make energy variational:  correc
 c               and corrections to the pressure:  cor3pv
 c
             do 710 i=2,jmt
-  710       tmp(i)=(vold(i,ic,is)-vnew(i,ic,is))/r(i)
+            tmp(i)=(vold(i,ic,is)-vnew(i,ic,is))/r(i)
+  710       continue
 c
             call derv5(tmp,tmpi,r,jmt)
 c
             do 715 i=2,jmt
-  715       tmp(i)=r(i)*rhoc(i,ic,is)*tmpi(i)
+            tmp(i)=r(i)*rhoc(i,ic,is)*tmpi(i)
+  715       continue
 c
             call intqud(tmp,tmpi,r,jblock,nsize)
             correc(ic,is)=tmpi(jmt)
 c
             do 720 i=2,jmt
-  720       tmp(i)=-rhov(i,ic,is)*(vold(i,ic,is)-vnew(i,ic,is))/r(i)
+            tmp(i)=-rhov(i,ic,is)*(vold(i,ic,is)-vnew(i,ic,is))/r(i)
+  720       continue
             call intqud(tmp,tmpi,r,jblock,nsize)
 c
             cor3pv(ic,is)=correc(ic,is)+2.*tmpi(jmt)
             correc(ic,is)=correc(ic,is)+tmpi(jmt)
 c
+         enddo
   750    continue
 c ____________________________________________________________________
 c
@@ -2095,7 +2158,7 @@ c _____________________________________________________________________
 c
          if(ipr.gt.1)  then
            do 850 ic=1,ncomp
-           do 850 is=1,nspins
+           do is=1,nspins
              xqs=qsum(ic,is)
              xq1=qs1(ic,is)
              qd=xqs-xq1
@@ -2121,6 +2184,7 @@ c
              write(6,'(16x,''pressure:   ptrm3:'',f16.7)') ptrm3(ic,is)
              write(6,'(16x,''pressure: zero-pt:'',f16.7)') tpzpt(ic,is)
              write(6,'(16x,''pressure:  cor3pv:'',f16.7)')cor3pv(ic,is)
+          enddo
   850     continue
          endif
 c ____________________________________________________________________
@@ -2144,16 +2208,18 @@ c
          write(6,828)
          write(6,829)
          do 231 ic=1,ncomp
-         do 231 is=1,nspins
+         do is=1,nspins
             write(6,830) ic,is,esumv(ic,is),qsum(ic,is),
      >             term1a(ic,is),term3(ic,is),term2(ic,is)
+         enddo
   231    continue
 c
          write(6,831)
          do 232 ic=1,ncomp
-         do 232 is=1,nspins
+         do is=1,nspins
             write(6,833) ic,is,ezpt(ic,is),ptrm2a(ic,is),ptrm3(ic,is),
      >        thrpv(ic,is),ten(ic,is)
+         enddo
   232    continue
          write(6,828)
          write(6,832) tpv,toten
@@ -2257,7 +2323,8 @@ c
       bxx(i)= b(i)*x0(i)/cx(i)
       tbq(i)= 2*b(i)/q(i)
       tbxq(i)= tbq(i) + 4*x0(i)/q(i)
-   1  bb(i)= 4*b(i)*( 1 - x0(i)*(b(i) + 2*x0(i))/cx(i) )
+      bb(i)= 4*b(i)*( 1 - x0(i)*(b(i) + 2*x0(i))/cx(i) )
+  1   continue
 c
   30  continue
       zp1= 1 + dz
@@ -2352,7 +2419,7 @@ c
 c
         do 100 is=1,nsites
         iz=z(is)+.1
-        do 100 ns=1,mspn
+        do ns=1,mspn
 c
            if (iz < 1 .or. iz > 49) then
               ezero=0.0d0
@@ -2370,6 +2437,7 @@ c
            ezpt(is,ns)=ezero
            tpzpt(is,ns)=tpvzer
 c
+        enddo
   100   continue
 c
       return
@@ -2540,9 +2608,10 @@ c -----------------------------------------------------------------------
                   do 105 ll=1,ndelt
                   deltl=delt(ll)
                   l=ll-1
-  105             write(6,'('' cmp'',i2,'' spn'',i2,''  e(ry)='',
+                  write(6,'('' cmp'',i2,'' spn'',i2,''  e(ry)='',
      >               2f7.4,3x,''l='',i1,2x,''ph.shift='',2e13.6)')
      >                ic,is,esolv,l,deltl
+  105             continue
                   go to 300
                 endif
                 do 200 i=1,jws
@@ -2653,17 +2722,20 @@ c
       if(numi.lt.1) go to 11
       do 10 n=1,numi
       it=it+1
-  10  el(it)=el(it-1)+dele*sqrtm1
+      el(it)=el(it-1)+dele*sqrtm1
+  10  continue
   11  continue
 c
       do 20 n=1,numr
       it=it+1
-  20  el(it)=el(it-1)+dele
+      el(it)=el(it-1)+dele
+  20  continue
 c
       if(numi.lt.1) go to 31
       do 30 n=1,numi
       it=it+1
-  30  el(it)=el(it-1)-sqrtm1*dele
+      el(it)=el(it-1)-sqrtm1*dele
+  30  continue
   31  continue
 c
       nepts=it
@@ -2743,9 +2815,10 @@ c
         do 78 ir=2,mesh
           zz=q*r(ir)
           call ricbes(ndelt,zz,bj,bh,bn,dj,dh,dn)
-          do 78 lp=1,ndelt
+          do lp=1,ndelt
             bjl(lp,ir)=bj(lp)
             bnl(lp,ir)=bn(lp)
+          enddo
    78   continue
 c
         b0=v(1)
@@ -3101,7 +3174,8 @@ c
              aj = one
              k = 0
              do 500 i=1,l
-  500        aj = aj*x/(i+i-1)
+             aj = aj*x/(i+i-1)
+  500        continue
   600        bj(l) = bj(l)+aj
              k = k+1
              aj = -aj*x**2/((2*k)*(2*(l+k)-1))
@@ -3180,7 +3254,8 @@ c
               npbs1=npbs(i,ic,is)
               lbs1=lbs(i,ic,is)
               ebs1=ebs(i,ic,is)
-   99         write(6,'(2i5,f13.4)') npbs1,lbs1,ebs1
+              write(6,'(2i5,f13.4)') npbs1,lbs1,ebs1
+   99       continue
          endif
 c
       return
@@ -3213,9 +3288,11 @@ c zero out arrays
 c ---------------------------------------------------------------------
         vme(1)=0.0
         do 4 j=2,jmt
-    4   vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+    4   continue
         do 5 j=jmt+1,mesh
-    5   vme(j)=         (l*l+l)/r(j)**2   - emin
+        vme(j)=         (l*l+l)/r(j)**2   - emin
+    5   continue
         lll=mesh
 c ---------------------------------------------------------------------
         call outsch(zed,emin,l,lll,vme,v,r,y,dy)
@@ -3294,7 +3371,8 @@ c =====================================================================
 c _____________________________________________________________________
 c
        do 91 k=1,ipmesh
-  91   rhoc(k)=0.0
+       rhoc(k)=0.0
+  91   continue
 c ...................................
          nmbs=numbs(ic,is)
          do  97 ist=1,nmbs
@@ -3322,7 +3400,8 @@ c
            occbs(ist,ic,is)=twolp1
            ebs(ist,ic,is)=en
            do 95 k=1,kkk
-  95         rhoc(k)=rhoc(k)+rhoc1(k)*twolp1
+             rhoc(k)=rhoc(k)+rhoc1(k)*twolp1
+  95       continue
   97     continue
          nblock=mesh/nsize
          call intqud(rhoc,rhoc1,r,nblock,nsize)
@@ -3371,7 +3450,8 @@ c zero out arrays
         qi2(i)=0.0
         y(i)=0.0
         dy(i)=0.0
-    3   chden(i)=0.0
+        chden(i)=0.0
+    3   continue
 c ---------------------------------------------------------------------
         bigkr=150.
         if(abs(emin).gt.400.) bigkr=125.
@@ -3379,9 +3459,11 @@ c ---------------------------------------------------------------------
         bigkr=.5*bigkr
         vme(1)=0.0
         do 4 j=2,jmt
-    4   vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+    4   continue
         do 5 j=jmt+1,mesh
-    5   vme(j)=         (l*l+l)/r(j)**2   - emin
+        vme(j)=         (l*l+l)/r(j)**2   - emin
+    5   continue
         do 6 i=2,jmt
         j=i
         if(r(i)*sqrt(-emin) .gt. bigkr)go to 7
@@ -3440,9 +3522,11 @@ c
 c find classical turning point ........................................
 c
         do 40 j=2,jmt
-  40    vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - energy
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - energy
+  40    continue
         do 41 j=jmt+1,mesh
-  41    vme(j)=          (l*l+l)/r(j)**2  - energy
+        vme(j)=          (l*l+l)/r(j)**2  - energy
+  41    continue
 c ---------------------------------------------------------------------
 c
         do 42 k=3,jmt
@@ -3617,23 +3701,27 @@ c ---------------------------------------------------------------------
          sqe=sqrt(-energy)
          do 210 i=match,last
           yin(i)=hank(energy,r(i),l,dh)
-  210     dyin(i)=dh*sqe
+          dyin(i)=dh*sqe
+  210    continue
        endif
 c ---------------------------------------------------------------------
 c
          abad=fndt
          kkk=last
          do 225 i=2,match
-  225    chden(i)=y(i)**2
+         chden(i)=y(i)**2
+  225    continue
          anorm=y(match)/yin(match)
          do 226 i=match,last
          y(i)=anorm*yin(i)
          dy(i)=anorm*dyin(i)
-  226    chden(i)=y(i)**2
+         chden(i)=y(i)**2
+  226    continue
          do 224 i=last+1,mesh
          chden(i)=0.0
          dy(i)=0.0
-  224    y(i)=0.0
+         y(i)=0.0
+  224    continue
 c
          en=energy
 c ---------------------------------------------------------------------
@@ -3690,7 +3778,8 @@ c zero out arrays
         qi2(i)=0.0
         y(i)=0.0
         dy(i)=0.0
-    3   chden(i)=0.0
+        chden(i)=0.0
+    3   continue
 c ---------------------------------------------------------------------
        num =-1
        call nbound(zed,r,v,mesh,jmt,l,emin,num,ajl)
@@ -3838,13 +3927,15 @@ c ....................     found state     ............................
 c ....................     found state     ............................
 c .....................................................................
         do 205 j=2,jmt
-  205   vme(j)=(v(j)+(l*l+l)/r(j))/r(j) - energy
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j) - energy
+  205   continue
         sqe=sqrt(-energy)
         call outsch(zed,energy,l,jmt,vme,v,r,y,dy)
 c ---------------------------------------------------------------------
         do 210 i=jmt,mesh
         yin(i)=hank(energy,r(i),l,dh)
-  210   dyin(i)=sqe*dh
+        dyin(i)=sqe*dh
+  210   continue
 c
 c ---------------------------------------------------------------------
 c          tmp=gamhnk(energy,r(jmt),l)
@@ -3857,12 +3948,14 @@ c
          abad=fndt
          kkk=mesh
          do 225 i=2,jmt
-  225    chden(i)=y(i)**2
+         chden(i)=y(i)**2
+  225    continue
          anorm=y(jmt)/yin(jmt)
          do 226 i=jmt,mesh
             y(i)=anorm*yin(i)
             dy(i)=anorm*dyin(i)
-  226       chden(i)=y(i)**2
+            chden(i)=y(i)**2
+  226    continue
 c
          en=energy
 c ---------------------------------------------------------------------
@@ -4576,7 +4669,8 @@ c     nin must be an even integer
       i=i+2
       bsum=bsum+h*(y(i-2)+4.*y(i-1)+y(i))
       yi(i)=asum+bsum
-  40  yi(i-1)=yi(i-2)+g*(5.*y(i-2)+8.*y(i-1)-y(i))
+      yi(i-1)=yi(i-2)+g*(5.*y(i-2)+8.*y(i-1)-y(i))
+  40  continue
       asum=yi(i)
       bsum=0.
   50  continue
@@ -4755,7 +4849,14 @@ c
    10 if (ind.gt.0) go to 40
       do 20 j = 1,imax
          if(abs(xi-x(j)).lt.1.0e-10) go to 130
-         if (xi-x(j)) 30,130,20
+c        if (xi-x(j)) 30,130,20
+         if (xi-x(j) < 0.0d0) then
+            goto 30
+         else if (xi-x(j) > 0.0d0) then 
+            goto 20
+         else
+            goto 130
+         endif
    20 continue
       iex=1
       go to 70
@@ -4779,8 +4880,10 @@ c
             xd=xi
             go to 100
    90       xd=x(j)
-  100       d=d*(xd-x(i))
-  110    s=s+y(j)/d
+            d=d*(xd-x(i))
+  100    continue
+         s=s+y(j)/d
+  110    continue
       ylag=s*p
       return
   130 ylag=y(j)
@@ -4820,7 +4923,14 @@ c
    10 if (ind.gt.0) go to 40
       do 20 j = 1,imax
          if(abs(xi-x(j)).lt.1.0e-10) go to 130
-         if (xi-x(j)) 30,130,20
+c        if (xi-x(j)) 30,130,20
+         if (xi-x(j) < 0.0d0) then
+            goto 30
+         else if (xi-x(j) > 0.0d0) then
+            goto 20
+         else
+            goto 130
+         endif
    20 continue
       iex=1
       go to 70
@@ -4844,8 +4954,10 @@ c
             xd=xi
             go to 100
    90       xd=x(j)
-  100       d=d*(xd-x(i))
-  110    s=s+y(j)/d
+            d=d*(xd-x(i))
+  100       continue
+         s=s+y(j)/d
+  110    continue
       ylagc=s*p
       return
   130 ylagc=y(j)
@@ -4876,10 +4988,11 @@ c
 c
        do 5 jj=1,iter
          j=jj
-         do 5 ii=1,jj
+         do ii=1,jj
          i=ii
          a(ii,jj)=dpdif(i,j,jws,ncomp,nspins,rhoins,rhoots)
          if(ii.ne.jj) a(jj,ii)=a(ii,jj)
+         enddo
    5  continue
 c
       call mxlneq(a,b,idim)
@@ -4887,17 +5000,21 @@ c
       if(nspins.eq.1) then
          is=1
          do 15 ic=1,ncomp
-           do 15 i=1,jws+1
-   15      rhomix(i,ic,is)=sumand(rhoins(1,i,ic,is),rhoots(1,i,ic,is),
+           do i=1,jws+1
+           rhomix(i,ic,is)=sumand(rhoins(1,i,ic,is),rhoots(1,i,ic,is),
      >                                 b,iter,alpha)
+           enddo
+   15    continue
 c
       else
            do 30 ic=1,ncomp
-           do 30 i=1,jws+1
-  30          call summag(rhomix(i,ic,1),rhomix(i,ic,2),
+           do i=1,jws+1
+              call summag(rhomix(i,ic,1),rhomix(i,ic,2),
      >                  rhoins(1,i,ic,1),rhoins(1,i,ic,2),
      >                  rhoots(1,i,ic,1),rhoots(1,i,ic,2),
      >                           b,iter,alpha)
+           enddo
+  30       continue
       endif
 c
       return
@@ -4913,10 +5030,12 @@ c =====================================================================
 c
          sum=0
          do 10 is=1,nspins
-         do 10 ic=1,ncomp
+         do ic=1,ncomp
          do 5 k=1,jws+1
-   5     sum=sum+(rhoins(i,k,ic,is)-rhoots(i,k,ic,is))
+         sum=sum+(rhoins(i,k,ic,is)-rhoots(i,k,ic,is))
      >          *(rhoins(j,k,ic,is)-rhoots(j,k,ic,is))
+   5     continue
+         enddo
   10   continue
 c
          dpdif=sum
@@ -4933,10 +5052,12 @@ c =====================================================================
 c
        n=mod(iter-1,ipits)+1
        do 10 is=1,nspins
-       do 10 ic=1,ncomp
+       do ic=1,ncomp
        rhosav(n,jws+1,ic,is)=totz(ic,is)
-       do 10 i=1,jws
+       do i=1,jws
        rhosav(n,i,ic,is)=rho(i,ic,is)
+       enddo
+       enddo
   10   continue
 c
       return
@@ -4976,7 +5097,8 @@ c
             do  2 j=i,n
             f2=f1*a(j,i-1)
             do 5 k=1,n
-    5       a(j,k)=a(j,k)+f2*a(i-1,k)
+            a(j,k)=a(j,k)+f2*a(i-1,k)
+    5       continue
             y(j)=y(j)+f2*y(i-1)
     2       continue
    10  continue
@@ -4985,7 +5107,8 @@ c ..........................  calculate the determinant ...............
 c
           det=one
           do 19 i=1,n
-  19      det=det*a(i,i)
+          det=det*a(i,i)
+  19      continue
 c
           write(6,1235) n,det
  1235     format(' in mxlneq: order, det',2x,i4,e17.9)
@@ -4994,8 +5117,10 @@ c
       do 20 ij=1,n-1
           i=n-ij
           do 15 j=1,ij
-   15     y(i)=y(i)-y(i+j)*a(i,i+j)
-   20 y(i)=y(i)/a(i,i)
+          y(i)=y(i)-y(i+j)*a(i,i+j)
+   15     continue
+      y(i)=y(i)/a(i,i)
+   20 continue
 c
 c
        return

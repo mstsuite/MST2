@@ -137,9 +137,10 @@ c ---------------------------------------------------------------------
      >            write(6,*) ' ====== warning did not reoccupy levels'
                   renorm=-2.*zed/rv(1,1)
                   do 230 ns=1,numsp
-                      do 230 j=1,mesh
+                      do j=1,mesh
                       rv(j,ns)=renorm*rv(j,ns)
-  230                 continue
+                      enddo
+  230             continue
               else
 c ====================================================================
                   if(alfa.lt.0) call potgen
@@ -176,7 +177,8 @@ c =====================================================================
         do 35 ns=1,numsp
         elcnum(ns)=0.0
              do 21 k=1,1001
-   21        rho(k,ns)=0.
+             rho(k,ns)=0.
+   21        continue
 c =====================================================================
              do 30 n=1,numcor(ns)
              en=ecore(n,ns)
@@ -195,15 +197,18 @@ c =====================================================================
                   elcnum(ns) = elcnum(ns) + occ(n,ns)
                   qsum=qsum-(3-numsp)*occ(n,ns)*qi
                   do 22 k=1,kkk
-   22             snlo(k)=temp(k)
+                  snlo(k)=temp(k)
+   22             continue
                   if(kkk.eq.mesh) go to 24
                   kk1=kkk+1
                   do 23 k=kk1,mesh
-   23             snlo(k)=0.0
+                  snlo(k)=0.0
+   23             continue
    24             continue
                   xxx=occ(n,ns)
                   do 25 k=1,kkk
-   25             rho(k,ns)=rho(k,ns)+xxx*snlo(k)
+                  rho(k,ns)=rho(k,ns)+xxx*snlo(k)
+   25             continue
              endif
 c ---------------------------------------------------------------------
              tmo=(3-numsp)*occ(n,ns)
@@ -234,7 +239,8 @@ c
         do 79 ns=1,numsp
 c ---------------------------------------------------------------------
             do 32 i=1,mesh
-   32       temp(i)=rho(i,ns)*(4.*excen(i)-3.*excpo(i,ns))
+            temp(i)=rho(i,ns)*(4.*excen(i)-3.*excpo(i,ns))
+   32       continue
             call intqud(temp,tmp,r,nblock,nsize)
             enxc=enxc+(3-numsp)*tmp(mesh)
 c
@@ -243,10 +249,12 @@ c ------------------------- the total energy variational --------------
 c
             temp(1)=0.0
             do 56 i=2,mesh
-   56       temp(i)=(rv(i,ns)-rvnew(i,ns))/r(i)
+            temp(i)=(rv(i,ns)-rvnew(i,ns))/r(i)
+   56       continue
             call derv5(temp,tmp,r,mesh)
             do 57 i=2,mesh
-   57       temp(i)=r(i)*rho(i,ns)*tmp(i)
+            temp(i)=r(i)*rho(i,ns)*tmp(i)
+   57       continue
             call intqud(temp,tmp,r,nblock,nsize)
             ecorr=ecorr+(3-numsp)*tmp(mesh)
    79   continue
@@ -273,10 +281,11 @@ c
             rms=0.0
             vrms=0.0
             do 80 ns=1,numsp
-            do 80 k=1,mesh
+            do k=1,mesh
                rms=rms+(rhoold(k,ns)-rho(k,ns))**2
                vrms=vrms+(rvnew(k,ns)-rv(k,ns))**2
                rhoold(k,ns)=rho(k,ns)
+            enddo
    80       continue
             rms=sqrt(rms/(mesh*numsp))
             vrms=sqrt(vrms/(mesh*numsp))
@@ -748,7 +757,8 @@ c
        l(i)=ll(i)
        nprin(i)=nprnc(i)
        e(i)=-3.*zed*zed/nprin(i)**6
-   10  fill(i)=0.
+       fill(i)=0.
+   10  continue
    20  nstate=nstate+1
 c =====================================================================
        if(nstate.gt.20) then
@@ -909,7 +919,8 @@ c                             nin must be an even integer
       i=i+2
       bsum=bsum+h*(y(i-2)+4.*y(i-1)+y(i))
       yi(i)=asum+bsum
-  40  yi(i-1)=yi(i-2)+g*(5.*y(i-2)+8.*y(i-1)-y(i))
+      yi(i-1)=yi(i-2)+g*(5.*y(i-2)+8.*y(i-1)-y(i))
+  40  continue
       asum=yi(i)
       bsum=0.
   50  continue
@@ -1082,7 +1093,8 @@ c
       bxx(i)= b(i)*x0(i)/cx(i)
       tbq(i)= 2*b(i)/q(i)
       tbxq(i)= tbq(i) + 4*x0(i)/q(i)
-   1  bb(i)= 4*b(i)*( 1 - x0(i)*(b(i) + 2*x0(i))/cx(i) )
+      bb(i)= 4*b(i)*( 1 - x0(i)*(b(i) + 2*x0(i))/cx(i) )
+   1  continue
 c
   30  continue
       zp1= 1 + dz
@@ -1209,11 +1221,13 @@ c =====================================================================
 c zero out chden
         do 3 i=1,mesh1
         qi2(i)=0.0
-    3   chden(i)=0.0
+        chden(i)=0.0
+    3   continue
 c =====================================================================
         vme(1)=0.0
         do 4 j=2,mesh
-    4   vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - emin
+    4   continue
         do 6 i=2,mesh
         j=i
         if(r(i)*sqrt(-emin) .gt. 150.)go to 7
@@ -1271,7 +1285,8 @@ c
 c find classical turning point ........................................
 c
         do 40 j=2,mesh
-  40    vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - energy
+        vme(j)=(v(j)+(l*l+l)/r(j))/r(j)   - energy
+  40    continue
 c =====================================================================
         do 42 k=3,mesh
         j=mesh+1-k
@@ -1434,12 +1449,14 @@ c =====================================================================
          abad=fndt
          kkk=last
          do 225 i=1,match
-  225    chden(i)=y(i)**2
+         chden(i)=y(i)**2
+  225    continue
          anorm=y(match)/yin(match)
          do 226 i=match,last
          y(i)=anorm*yin(i)
          dy(i)=anorm*dyin(i)
-  226    chden(i)=(anorm*yin(i))**2
+         chden(i)=(anorm*yin(i))**2
+  226    continue
          en=energy
 c =====================================================================
          nsize=40
@@ -1701,8 +1718,10 @@ c =====================================================================
 c
        n=mod(iter-1,4)+1
        do 10 ns=1,numsp
-       do 10 i=1,1001
-   10  vrout(i,ns,n)=vr(i,ns)
+       do i=1,1001
+       vrout(i,ns,n)=vr(i,ns)
+       enddo
+   10  continue
       return
       end
 c _____________________________________________________________________
@@ -1715,8 +1734,10 @@ c =====================================================================
 c
        n=mod(iter-1,4)+1
        do 10 ns=1,numsp
-       do 10 i=1,1001
-   10  vrin(i,ns,n)=vr(i,ns)
+       do i=1,1001
+       vrin(i,ns,n)=vr(i,ns)
+       enddo
+   10  continue
       return
       end
 c _____________________________________________________________________
@@ -1729,9 +1750,10 @@ c =====================================================================
 c
        sum=0.0
        do 10 ns=1,numsp
-       do 10 k=1,1001
+       do k=1,1001
            sum=sum+(vrin(k,ns,i)-vrout(k,ns,i))
      >      *k*(vrin(k,ns,j)-vrout(k,ns,j))
+       enddo
    10     continue
        dpdif=sum
       return
@@ -1756,20 +1778,23 @@ c
        b(jdim)=1.
        do 5 j=1,ndim
          jj=j
-         do 5 i=1,j
+         do i=1,j
            ii=i
            a(i,j)=dpdif(ii,jj,numsp)
            if(i.ne.j) a(j,i)=a(i,j)
+         enddo
     5  continue
 c
        call mxlneq(a,b,jdim)
 c
        do 20 ns=1,numsp
-       do 20 k=1,1001
+       do k=1,1001
           sum=0.0
           do 10 i=1,ndim
-   10     sum=sum+b(i)*(vrin(k,ns,i)+alpa*(vrout(k,ns,i)-vrin(k,ns,i)))
+          sum=sum+b(i)*(vrin(k,ns,i)+alpa*(vrout(k,ns,i)-vrin(k,ns,i)))
+   10     continue
           vrnew(k,ns)=sum
+       enddo
    20  continue
       return
       end
@@ -1786,7 +1811,8 @@ c
             do  2 j=i,n
             f2=f1*a(j,i-1)
             do 5 k=1,n
-    5       a(j,k)=a(j,k)+f2*a(i-1,k)
+            a(j,k)=a(j,k)+f2*a(i-1,k)
+    5       continue
             y(j)=y(j)+f2*y(i-1)
     2       continue
    10  continue
@@ -1795,7 +1821,8 @@ c ..........................  calculate the determinant ...............
 c
           det=1.
           do 19 i=1,n
-  19      det=det*a(i,i)
+          det=det*a(i,i)
+  19      continue
 c
 c         write(6,1235) n,det
 c1235     format(' in mxlneq: order, det',2x,i4,e17.9)
@@ -1804,8 +1831,10 @@ c
       do 20 ij=1,n-1
           i=n-ij
           do 15 j=1,ij
-   15     y(i)=y(i)-y(i+j)*a(i,i+j)
-   20 y(i)=y(i)/a(i,i)
+          y(i)=y(i)-y(i+j)*a(i,i+j)
+   15     continue
+      y(i)=y(i)/a(i,i)
+   20  continue
 c
 c
       return

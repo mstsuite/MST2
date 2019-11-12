@@ -41,7 +41,14 @@
       iex=n
    10 if (ind.gt.0) go to 40
       do 20 j = 1,imax
-         if (xi-x(j)) 30,130,20
+!        if (xi-x(j)) 30,130,20
+         if (xi-x(j) < 0.0d0) then
+            goto 30
+         else if (xi-x(j) > 0.0d0) then
+            goto 20
+         else
+            goto 130
+         endif
    20 continue
       iex=1
       go to 70

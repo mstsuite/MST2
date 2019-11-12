@@ -707,7 +707,14 @@ include '../lib/arrayTools.F90'
 
    call csbf(l+1,p,rs,fb,fn,fh)
 
-   if(abs(my)-(2*l+1)) 1,2,3
+!  if(abs(my)-(2*l+1)) 1,2,3
+   if(abs(my)-(2*l+1) < 0) then
+      goto 1
+   else if (abs(my)-(2*l+1) == 0) then
+      goto 2
+   else
+      goto 3
+   endif
    3 stop ' spzwafu: my is out of range!'
    2 continue
 !-----------------------------------------------------------------
@@ -1925,7 +1932,7 @@ include '../lib/arrayTools.F90'
    inr=0
    do 103 l=0,12
       twolp1=dfloat(2*l+1)
-      do 103 m=-l,l
+      do m=-l,l
          inr=inr+1
 
 ! j=l-1/2
@@ -1955,6 +1962,7 @@ include '../lib/arrayTools.F90'
          ir=2*kap*kap+kap+m+1
          u2(ir)=sqrt((l+m+1)/twolp1)
          ind2(ir)=inr
+      enddo
   103 continue
 
   do ir=1,inr
@@ -2562,7 +2570,14 @@ include '../lib/arrayTools.F90'
    iex=n
    10 if (ind.gt.0) go to 40
    do 20 j = 1,imax
-      if (xi-x(j)) 30,130,20
+!     if (xi-x(j)) 30, 130, 20
+      if (xi-x(j) < 0.0d0) then
+        goto 30
+      else if (xi-x(j) > 0.0d0) then
+        goto 20
+      else
+        goto 130
+      endif
    20 continue
       iex=1
       go to 70
