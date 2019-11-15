@@ -658,9 +658,10 @@ contains
    endif
 !
    if (nspin > 2) then
-      if ( isKeyExisting(info_id,'Default Evec Mix Param.') ) then
+!     if ( isKeyExisting(info_id,'Default Evec Mix Param.') ) then
+      if ( getKeyValue(info_id,'Default Evec Mix Param.',alpev) == 0 ) then
 !        -------------------------------------------------------------
-         rstatus = getKeyValue(info_id,'Default Evec Mix Param.',alpev)
+!        rstatus = getKeyValue(info_id,'Default Evec Mix Param.',alpev)
 !        -------------------------------------------------------------
          do i=1,NumAtoms
             if (emix(i) < ZERO) then
