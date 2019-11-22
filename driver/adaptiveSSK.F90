@@ -540,7 +540,7 @@ end program adaptiveSSK
    integer (kind=IntKind), intent(in) :: info(*)
    real (kind=RealKind), intent(in) :: e
    real (kind=RealKind), intent(in), optional :: rfac
-   complex (kind=CmplxKind), intent(out) :: aux(:)
+   complex (kind=CmplxKind), intent(out), target :: aux(:)
 !
    logical, intent(in), optional :: redundant
    logical :: red

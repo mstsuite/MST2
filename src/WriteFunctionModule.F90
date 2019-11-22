@@ -13,7 +13,7 @@ public :: writeFunction
    end interface writeFunction
 !
 private
-   integer (kind=IntKind), parameter :: funit = 101
+   integer (kind=IntKind), parameter :: funit = 103
 !
 contains
 !  ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

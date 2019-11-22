@@ -52,7 +52,7 @@
    integer (kind=IntKind), intent(out), optional :: NumSitesOut
    integer (kind=IntKind) :: num_sites
 !
-   integer (kind=IntKind), parameter :: funit = 101
+   integer (kind=IntKind), parameter :: funit = 103
    integer (kind=IntKind) :: ios, status, n, alen, i, j, k, tend
    integer (kind=IntKind), pointer :: AtomicNumber(:)
    integer (kind=IntKind) :: DataForm
