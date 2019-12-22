@@ -304,13 +304,13 @@ c _____________________________________________________________________
 c _____________________________________________________________________
              vdif=vdfnw
 c
-            do 7 is=1,nspins
+            do is=1,nspins
             do ic=1,ncomp
             do i=1,mesh
             v(i,ic,is)=vnew(i,ic,is)
             enddo
             enddo
-   7        continue
+            enddo
 c
         endif
 c _____________________________________________________________________
@@ -336,12 +336,12 @@ c .....................................................................
        call savit(itermx,rho,jws,zto1,ncomp,nspins,rhoins)
 c .....................................................................
 c
-       do 8 ic=1,ncomp
        do is=1,nspins
+       do ic=1,ncomp
           qsum(ic,is)  = 0.0
           qsums(ic,is) = 0.0
        enddo
-   8   continue
+       enddo
 c .....................................................................
 c
 c  find all bound states:  both core and semi-core
@@ -351,7 +351,7 @@ c      ebott is bottom of contour used in integrating
 c      over the valence states
 c
       etopsc = ebott
-      do 15 ispin=1,nspins
+      do ispin=1,nspins
       is=ispin
       do icomp=1,ncomp
       ic=icomp
@@ -393,9 +393,9 @@ c
                   write(6,'(1x,78(''/''))')
               endif
               zcore(ic,is)=0.
-              do 10 i=1,mesh
+              do i=1,mesh
               rhoc(i,ic,is)=0.0
-   10         continue
+              enddo
 c
           endif
 c /////////////////////////////////////////////////////////////////////
@@ -433,9 +433,9 @@ c
                    write(6,'(1x,78(''/''))')
              endif
              zsemi(ic,is)=0.
-             do 11 i=1,mesh
+             do i=1,mesh
              rhosc(i,ic,is)=0
-   11        continue
+             enddo
 c
          endif
 c /////////////////////////////////////////////////////////////////////
@@ -446,23 +446,23 @@ c       electrons for charge neutrality
 c .....................................................................
 c
            sum=0.0
-           do 12 i=1,numc(ic,is)
+           do i=1,numc(ic,is)
              sum=sum+occ(i,ic,is)
-  12       continue
+           enddo
            zcore(ic,is)=sum
            sum=0.0
            esum=0.0
-           do 13 i=1,numsc(ic,is)
+           do i=1,numsc(ic,is)
 ccc           ebott = min(ebott,esc(i,ic,is))
               esum=esum+ocsc(i,ic,is)*esc(i,ic,is)
               sum=sum+ocsc(i,ic,is)
-  13       continue
+           enddo
            esemi(ic,is)=esum
            zsemi(ic,is)=sum
            zv2(ic,is)=ztot(ic,is)-zcore(ic,is)-zsemi(ic,is)
 c
-       enddo
-  15   continue
+       enddo ! ispin
+       enddo ! icomp
 c .....................................................................
                 if(ndiv.eq.0) stop
 c .....................................................................
@@ -531,7 +531,7 @@ c .....................................................................
        call dgamix(itermx,jws,ncomp,nspins,rhoins,rhoots,rhomix,alpa)
 c .....................................................................
 c
-        do 80 is=1,nspins
+        do is=1,nspins
         do ic=1,ncomp
            zto1(ic,is)=rhomix(jws+1,ic,is)
            vws1(ic,is)=zto1(ic,is)-zcore(ic,is)
@@ -541,7 +541,7 @@ c
                rho(i,ic,is)=rhomix(i,ic,is)
            enddo
         enddo
-   80   continue
+        enddo
 c
 c      calculate new potential from mixed charge density
 c
@@ -555,7 +555,7 @@ c
 c _____________________________________________________________________
 c
       vdif=vdfnw
-      do 90 ispin=1,nspins
+      do ispin=1,nspins
          is=ispin
          vd=(is-1)*vdfnw
          do icomp=1,ncomp
@@ -616,8 +616,8 @@ c .....................................................................
 c .....................................................................
 c
             endif
-        enddo
-  90    continue
+         enddo
+      enddo
 c
         rewind(iunot)
 c
@@ -1868,13 +1868,13 @@ c
        write(6,'(1x,78(''_''))')
        if(abs(tzed-tz).gt.1.e-8) then
                write(6,*)' stopping: charge discrepency'
-               do 64 ic=1,ncomp
                do is=1,nspins
+               do ic=1,ncomp
                do i=1,jmt,40
                write(6,*)' ic=',ic,'  is=',is,'  rh=',rho(i,ic,is)
                enddo
                enddo
-  64           continue
+               enddo
                stop
          endif
 c ____________________________________________________________________
@@ -1954,16 +1954,16 @@ c ____________________________________________________________________
          if(ipr.ge.2) mpr=20
          write(6,'(1x,78(''=''))')
          write(6,'(''   new potentials:'')')
-         do 500 i=1,jmt,mpr
+         do i=1,jmt,mpr
             npr=0
-            do 440 ic=1,ncomp
+            do ic=1,ncomp
             do is=1,nspins
                npr=npr+1
                tmpr(npr)=vnew(i,ic,is)
             enddo
-  440       continue
+            enddo
            jpr=(npr-1)/4
-           do 450 kpr=0,jpr
+           do kpr=0,jpr
              if(kpr.eq.jpr) then
                 jend=mod(npr-1,4)+1
              else
@@ -1971,19 +1971,19 @@ c ____________________________________________________________________
              endif
              write(6,'(1x,''i='',i4,3x,''r='',f10.7,2x,4f13.7)')
      >          i,r(i),(tmpr(kpr*4+j),j=1,jend)
-  450      continue
-  500    continue
+           enddo
+         enddo
 c
          write(6,'(1x,78(''-''))')
          npr=0
-         do 501 ic=1,ncomp
+         do ic=1,ncomp
          do is=1,nspins
            npr=npr+1
            tmpr(npr)=rmspot(ic,is)
          enddo
-  501    continue
+         enddo
          jpr=(npr-1)/4
-         do 502 kpr=0,jpr
+         do kpr=0,jpr
          if(kpr.eq.jpr) then
               jend=mod(npr-1,4)+1
          else
@@ -1991,16 +1991,16 @@ c
          endif
          write(6,'(2x,''root-mean-squared diff'',4f13.7)')
      >         (tmpr(kpr*4+j),j=1,jend)
-  502    continue
+         enddo
          npr=0
-         do 503 ic=1,ncomp
+         do ic=1,ncomp
          do is=1,nspins
            npr=npr+1
            tmpr(npr)=dpotmx(ic,is)
          enddo
-  503    continue
+         enddo
          jpr=(npr-1)/4
-         do 504 kpr=0,jpr
+         do kpr=0,jpr
          if(kpr.eq.jpr) then
               jend=mod(npr-1,4)+1
          else
@@ -2008,7 +2008,7 @@ c
          endif
          write(6,'(6x,''maximum difference'',4f13.7)')
      >         (tmpr(kpr*4+j),j=1,jend)
-  504    continue
+         enddo
 c
 c
 c
@@ -2028,9 +2028,9 @@ c
             sp=3-2*is
             do ic=1,ncomp
                tmp(1)=0.0
-               do 509 i=2,jmt
+               do i=2,jmt
                rhov(i,ic,is)=rho(i,ic,is)-rhoc(i,ic,is)
-  509          continue
+               enddo
 c _____________________________________________________________________
 c     - int 2pi r3dr rhocore dv/dr  =  int 2pi r2dr (v-d(rv)/dr)
 c _____________________________________________________________________
@@ -2149,7 +2149,7 @@ c
             cor3pv(ic,is)=correc(ic,is)+2.*tmpi(jmt)
             correc(ic,is)=correc(ic,is)+tmpi(jmt)
 c
-         enddo
+         enddo ! ic
   750    continue
 c ____________________________________________________________________
 c
@@ -2284,6 +2284,7 @@ c     j. phys. c5,1629(1972)
 c
   10  continue
       fm=two**for3-two
+c     print *,' dz = ',dz
       fdz=( (one+dz)**for3 + (one-dz)**for3 - two)/fm
       ex=-0.91633/rs
       exf=ex*two**thrd
@@ -4872,18 +4873,18 @@ c        if (xi-x(j)) 30,130,20
       inu=imax
    80 s=0.
       p=1.
-      do 110 j=inl,inu
+      do j=inl,inu
          p=p*(xi-x(j))
          d=1.
-         do 100 i=inl,inu
+         do i=inl,inu
             if (i.ne.j) go to 90
             xd=xi
             go to 100
    90       xd=x(j)
-            d=d*(xd-x(i))
-  100    continue
+  100       d=d*(xd-x(i))
+         enddo    
          s=s+y(j)/d
-  110    continue
+      enddo
       ylag=s*p
       return
   130 ylag=y(j)
@@ -4946,18 +4947,18 @@ c        if (xi-x(j)) 30,130,20
       inu=imax
    80 s=(0.0,0.0)
       p=1.0
-      do 110 j=inl,inu
+      do j=inl,inu
          p=p*(xi-x(j))
          d=1.
-         do 100 i=inl,inu
+         do i=inl,inu
             if (i.ne.j) go to 90
             xd=xi
             go to 100
    90       xd=x(j)
-            d=d*(xd-x(i))
-  100       continue
+  100       d=d*(xd-x(i))
+         enddo
          s=s+y(j)/d
-  110    continue
+      enddo
       ylagc=s*p
       return
   130 ylagc=y(j)
